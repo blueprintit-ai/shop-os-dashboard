@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UserStore } from "../src/users.js";
@@ -63,6 +63,14 @@ test("unknown username is invalid without revealing which field", async () => {
   s.cleanup();
 });
 
+test("login on a deactivated account returns inactive, even with the correct password", async () => {
+  const s = await setup();
+  s.users.deactivate(s.staff.id);
+  const r = await s.auth.login({ username: "marco", password: "longenough1", remember: false, ip: "x" });
+  assert.deepEqual(r, { ok: false, reason: "inactive" });
+  s.cleanup();
+});
+
 test("deactivating a user kills their live session on the next request", async () => {
   const s = await setup();
   const r = await s.auth.login({ username: "marco", password: "longenough1", remember: false, ip: "x" });
@@ -93,6 +101,19 @@ test("requireUser sends 401 for anonymous; requireOwner sends 403 for staff", as
   const res3 = fakeRes();
   assert.equal(requireOwner(fakeReq(ro.token), res3, s.auth).id, s.owner.id);
   assert.equal(res3.status, null);
+  s.cleanup();
+});
+
+test("gc removes expired sessions and the removed session no longer resolves", async () => {
+  const s = await setup();
+  const r = await s.auth.login({ username: "marco", password: "longenough1", remember: false, ip: "x" });
+  const sessionsPath = join(s.dir, "sessions.json");
+  const data = JSON.parse(readFileSync(sessionsPath, "utf8"));
+  data.sessions[r.token].expiresAt = Date.now() - 1000;
+  writeFileSync(sessionsPath, JSON.stringify(data));
+  const removed = s.auth.gc();
+  assert.equal(removed, 1);
+  assert.equal(s.auth.userForRequest(fakeReq(r.token)), null);
   s.cleanup();
 });
 
