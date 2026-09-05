@@ -1,4 +1,5 @@
 import { api, sse, escapeHtml, toast } from "/static/js/api.js";
+import { renderMarkdown as renderMarkdownSafe } from "/static/js/render-markdown.js";
 
 const root = document.getElementById("chat-root");
 
@@ -30,9 +31,7 @@ const els = {
 };
 
 function renderMarkdown(md) {
-  let html = window.marked.parse(md);
-  return html.replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (_, target, alias) =>
-    `<a class="wikilink" href="#" data-target="${escapeHtml(target.trim())}">${escapeHtml(alias || target)}</a>`);
+  return renderMarkdownSafe(md, (s) => window.marked.parse(s), escapeHtml);
 }
 
 root.addEventListener("click", (e) => {
