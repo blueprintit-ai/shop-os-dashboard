@@ -45,3 +45,19 @@ test("a div with an onclick handler is rendered inert", () => {
   assert.doesNotMatch(html, /<div[^&]*onclick=/);
   assert.match(html, /&lt;div onclick=/);
 });
+
+test("a markdown link with a javascript: scheme (no raw HTML tag involved) is rendered inert", () => {
+  const html = renderMarkdown("[click me](javascript:alert(1))", parse, esc);
+  assert.doesNotMatch(html, /href="javascript:/i);
+  assert.match(html, /href="#"/);
+});
+
+test("a markdown image with a javascript: scheme is rendered inert", () => {
+  const html = renderMarkdown("![img](javascript:alert(1))", parse, esc);
+  assert.doesNotMatch(html, /src="javascript:/i);
+});
+
+test("a normal https markdown link still works", () => {
+  const html = renderMarkdown("[Shop OS](https://blueprintit.ai)", parse, esc);
+  assert.match(html, /href="https:\/\/blueprintit\.ai"/);
+});
