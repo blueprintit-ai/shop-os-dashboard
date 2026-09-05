@@ -1,4 +1,5 @@
 import { api, escapeHtml, toast } from "/static/js/api.js";
+import { sanitizeUrls } from "/static/js/sanitize-urls.js";
 
 const root = document.getElementById("notes-root");
 
@@ -68,7 +69,8 @@ export async function openNote(path) {
     return;
   }
   const note = await res.json();
-  els.viewer.innerHTML = `<h1>${escapeHtml(note.title)}</h1>${renderProps(note.frontmatter)}<div class="note-body">${note.html}</div>${renderBacklinks(note.backlinks)}`;
+  const safeHtml = sanitizeUrls(note.html);
+  els.viewer.innerHTML = `<h1>${escapeHtml(note.title)}</h1>${renderProps(note.frontmatter)}<div class="note-body">${safeHtml}</div>${renderBacklinks(note.backlinks)}`;
 }
 
 function renderSearchResults(rows) {
