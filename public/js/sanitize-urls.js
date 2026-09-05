@@ -1,47 +1,46 @@
-// Neutralizes dangerous URL schemes in href/src attributes of already-rendered
-// HTML. Runs AFTER markdown parsing, as a second, independent layer: the
-// pre-parse `<` escape (see render-markdown.js) blocks raw HTML tags typed
-// directly into the source; this blocks dangerous destinations that marked's
-// OWN link/image syntax can generate from perfectly ordinary markdown
-// (`[text](javascript:...)`), which contains no raw `<` for that first layer
-// to catch. Two independent layers because they close two different holes,
-// not because either alone is enough.
-// Note: "javascript"/"vbscript" URIs are always followed by a scheme colon
-// ("javascript:alert(1)"), but a dangerous "data:" URI is NOT followed by a
-// second colon after its media type -- it's followed by a comma (optionally
-// preceded by ";base64"): "data:text/html,<script>...". So the "javascript"/
-// "vbscript" branch requires a trailing colon while the "data:text/..."
-// branch matches as a standalone prefix; a single shared `\s*:` suffix for
-// both (as if they were symmetric) would silently never match the data: case.
-const LEADING_WS = "[\\s\\x00-\\x20]*";
-const DANGEROUS_SCHEME = new RegExp(
-  "^" + LEADING_WS + "(?:(?:javascript|vbscript)\\s*:|data\\s*:\\s*text/(?:html|javascript))",
-  "i"
-);
+// Neutralizes dangerous URL schemes (javascript:, vbscript:, data:text/html,
+// data:text/javascript) in already-rendered HTML, by parsing the HTML into a
+// real (detached) DOM element and reading back the browser's OWN resolved
+// href/src -- not by pattern-matching the raw string.
+//
+// This replaces two earlier rounds of regex-based detection. Round 1 handled
+// literal schemes; round 2 added data: URI and literal-whitespace handling;
+// both were defeated by HTML named character references (`&colon;`, `&Tab;`,
+// and ~2000 others) that decode into scheme-relevant characters the regex
+// never accounted for. Reimplementing HTML entity decoding well enough to
+// catch every such case is not a fight worth having: the browser already
+// does this decoding correctly and completely every time it parses HTML.
+// Reading back `.protocol`/`.src` AFTER real parsing is authoritative -- if
+// the browser would navigate somewhere dangerous, these properties say so,
+// with no guesswork about how the danger was encoded.
+//
+// `doc` is injectable so this is testable under Node with jsdom; it defaults
+// to the real global `document` at runtime in the browser.
+const DANGEROUS_PROTOCOLS = new Set(["javascript:", "vbscript:"]);
 
-function decodeBasicEntities(s) {
-  return String(s)
-    .replace(/&amp;/gi, "&")
-    .replace(/&#x([0-9a-f]+);?/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/&#(\d+);?/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
+function isDangerousDataUrl(resolved) {
+  // .protocol on any data: URL is always exactly "data:" regardless of media
+  // type, so the media-type check has to run on the fully-resolved string
+  // itself -- which, read back from a DOM property after real parsing, is
+  // already decoded (no entities, no escapes left to hide behind).
+  return /^data:\s*text\/(html|javascript)/i.test(resolved);
 }
 
-// Browsers ignore TAB/newline/carriage-return characters anywhere in a URL
-// when sniffing its scheme (the classic "java<TAB>script:" / "java&#09;script:"
-// filter-bypass trick relies on exactly this). Strip them before testing so
-// splitting the scheme name across a control character can't slip past
-// DANGEROUS_SCHEME the way it would slip past a naive literal match.
-function stripSchemeWhitespace(s) {
-  return String(s).replace(/[\t\n\r]+/g, "");
-}
+export function sanitizeUrls(html, doc = globalThis.document) {
+  const container = doc.createElement("div");
+  container.innerHTML = html;
 
-export function sanitizeUrls(html) {
-  return String(html).replace(/\s(href|src)=(["'])(.*?)\2/gi, (full, attr, quote, rawValue) => {
-    const decoded = stripSchemeWhitespace(decodeBasicEntities(rawValue));
-    const raw = stripSchemeWhitespace(rawValue);
-    if (DANGEROUS_SCHEME.test(decoded) || DANGEROUS_SCHEME.test(raw)) {
-      return " " + attr + "=" + quote + "#" + quote;
+  for (const el of container.querySelectorAll("a[href]")) {
+    if (DANGEROUS_PROTOCOLS.has(el.protocol) || isDangerousDataUrl(el.href)) {
+      el.setAttribute("href", "#");
     }
-    return full;
-  });
+  }
+  for (const el of container.querySelectorAll("img[src]")) {
+    let protocol = "";
+    try { protocol = new URL(el.src, doc.baseURI || "http://localhost/").protocol; } catch { /* relative/invalid: not a scheme attack */ }
+    if (DANGEROUS_PROTOCOLS.has(protocol) || isDangerousDataUrl(el.src)) {
+      el.removeAttribute("src");
+    }
+  }
+  return container.innerHTML;
 }

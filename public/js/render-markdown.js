@@ -14,9 +14,9 @@ import { sanitizeUrls } from "./sanitize-urls.js";
 // can generate from ordinary markdown (`[text](javascript:...)`), since that
 // markdown contains no raw `<` for the escape to catch — so sanitizeUrls()
 // runs as a second, independent layer right after markedParse().
-export function renderMarkdown(md, markedParse, escapeHtmlFn) {
+export function renderMarkdown(md, markedParse, escapeHtmlFn, doc) {
   const safe = String(md).replace(/</g, "&lt;");
-  const html = sanitizeUrls(markedParse(safe));
+  const html = sanitizeUrls(markedParse(safe), doc);
   return html.replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (_, target, alias) =>
     `<a class="wikilink" href="#" data-target="${escapeHtmlFn(target.trim())}">${escapeHtmlFn(alias || target)}</a>`);
 }
