@@ -1,7 +1,19 @@
-<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Shop OS</title></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shop OS</title><link rel="stylesheet" href="/static/css/base.css"></head>
 <body data-role="__ROLE__">
-<p>Dashboard placeholder. Task 9 replaces this content.</p>
-</body>
-</html>
+<header><span class="brand" id="shop-name">Shop OS</span><span id="who"></span><a id="users-link" href="/users" hidden>Users</a><button id="logout">Log out</button></header>
+<nav class="tabs"><button class="tab active" data-tab="chat">Chat</button><button class="tab" data-tab="notes">Notes</button></nav>
+<main><section id="chat-root" data-tab-panel="chat"></section><section id="notes-root" data-tab-panel="notes" hidden></section></main>
+<script src="/static/vendor/marked.min.js"></script>
+<script type="module" src="/static/js/chat.js"></script>
+<script type="module" src="/static/js/notes.js"></script>
+<script type="module">
+import { api } from "/static/js/api.js";
+const me = await (await api("GET", "/api/me")).json();
+document.getElementById("shop-name").textContent = me.shopName;
+document.getElementById("who").textContent = me.user.displayName;
+if (me.user.role === "owner") document.getElementById("users-link").hidden = false;
+document.getElementById("logout").onclick = async () => { await api("POST", "/api/logout", {}); location.href = "/login"; };
+for (const b of document.querySelectorAll(".tab")) b.onclick = () => { document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === b)); document.querySelectorAll("[data-tab-panel]").forEach((p) => p.hidden = p.dataset.tabPanel !== b.dataset.tab); };
+window.showNotesTab = () => document.querySelector('[data-tab="notes"]').click();
+</script>
+</body></html>

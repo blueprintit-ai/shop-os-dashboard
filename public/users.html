@@ -1,7 +1,13 @@
-<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Shop OS — Users</title></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shop OS — Users</title><link rel="stylesheet" href="/static/css/base.css"></head>
 <body>
-<p>Users admin page placeholder. Task 9 replaces this content.</p>
-</body>
-</html>
+<header><span class="brand" id="shop-name">Shop OS</span><span id="who"></span><a href="/owner">Dashboard</a><button id="logout">Log out</button></header>
+<main><section id="users-root"></section></main>
+<script type="module" src="/static/js/users.js"></script>
+<script type="module">
+import { api } from "/static/js/api.js";
+const me = await (await api("GET", "/api/me")).json();
+document.getElementById("shop-name").textContent = me.shopName;
+document.getElementById("who").textContent = me.user.displayName;
+document.getElementById("logout").onclick = async () => { await api("POST", "/api/logout", {}); location.href = "/login"; };
+</script>
+</body></html>
