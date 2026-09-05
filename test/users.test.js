@@ -65,11 +65,26 @@ test("update patches displayName and switches; persists across instances", async
   cleanup();
 });
 
-test("failed login counter locks after 5 and clears", async () => {
+test("NOT_FOUND is thrown for a bogus id on every mutator", async () => {
+  const { store, cleanup } = tmpStore();
+  await store.create({ username: "real", displayName: "Real", password: "longenough1", role: "staff" });
+  const bogus = "00000000-0000-0000-0000-000000000000";
+  assert.throws(() => store.update(bogus, { displayName: "x" }), { code: "NOT_FOUND" });
+  await assert.rejects(store.setPassword(bogus, "longenough1"), { code: "NOT_FOUND" });
+  assert.throws(() => store.deactivate(bogus), { code: "NOT_FOUND" });
+  assert.throws(() => store.reactivate(bogus), { code: "NOT_FOUND" });
+  assert.throws(() => store.recordFailedLogin(bogus), { code: "NOT_FOUND" });
+  assert.throws(() => store.clearFailedLogins(bogus), { code: "NOT_FOUND" });
+  cleanup();
+});
+
+test("failed login counter locks after 5 and clears, not before", async () => {
   const { store, cleanup } = tmpStore();
   const u = await store.create({ username: "mm", displayName: "M", password: "longenough1", role: "staff" });
-  for (let i = 0; i < 5; i++) store.recordFailedLogin(u.id);
-  assert.ok(store.get(u.id).lockedUntil > Date.now());
+  for (let i = 0; i < 4; i++) store.recordFailedLogin(u.id);
+  assert.equal(store.get(u.id).lockedUntil, null, "4 failures must not lock the account");
+  store.recordFailedLogin(u.id);
+  assert.ok(store.get(u.id).lockedUntil > Date.now(), "5th failure must lock the account");
   store.clearFailedLogins(u.id);
   assert.equal(store.get(u.id).failedLogins, 0);
   assert.equal(store.get(u.id).lockedUntil, null);
