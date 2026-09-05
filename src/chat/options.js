@@ -24,8 +24,8 @@ function staffDecision(toolName, input, vaultPath, user) {
     return { deny: true, reason: "tool-not-allowed", message: `${toolName} is not available in this chat. Ask the owner if you need changes made.` };
   }
   const p = pathFromInput(toolName, input, vaultPath);
-  if (toolName === "Grep" && p === null) {
-    return { deny: true, reason: "grep-needs-path", message: "Search inside one of your folders by passing its path." };
+  if ((toolName === "Grep" || toolName === "Glob") && p === null) {
+    return { deny: true, reason: `${toolName.toLowerCase()}-needs-path`, message: "Search inside one of your folders by passing its path." };
   }
   if (p !== null && !isPathAllowed(vaultPath, user, p)) {
     return { deny: true, reason: "out-of-scope", path: p, message: "That file is outside the folders you have access to. Answer from the folders you can read." };
@@ -45,7 +45,7 @@ export function buildQueryOptions({ vaultPath, user, systemPrompt, claudeSession
       skills: "all",
       maxTurns: 60,
       canUseTool: async (toolName, input) => {
-        audit?.log("chat.tool", { userId: user.id, tool: toolName, path: pathFromInput(toolName, input, vaultPath) ?? undefined });
+        audit?.log("chat.tool", { userId: user.id, username: user.username, role: user.role, tool: toolName, path: pathFromInput(toolName, input, vaultPath) ?? undefined });
         return { behavior: "allow", updatedInput: input };
       },
     };
@@ -59,7 +59,7 @@ export function buildQueryOptions({ vaultPath, user, systemPrompt, claudeSession
     canUseTool: async (toolName, input) => {
       const d = staffDecision(toolName, input, vaultPath, user);
       if (d.deny) {
-        audit?.log("chat.denied", { userId: user.id, tool: toolName, path: d.path, reason: d.reason });
+        audit?.log("chat.denied", { userId: user.id, username: user.username, role: user.role, tool: toolName, path: d.path, reason: d.reason });
         return { behavior: "deny", message: d.message };
       }
       return { behavior: "allow", updatedInput: input };
@@ -76,7 +76,7 @@ export function buildQueryOptions({ vaultPath, user, systemPrompt, claudeSession
               if (hookInput.hook_event_name !== "PreToolUse") return {};
               const d = staffDecision(hookInput.tool_name, hookInput.tool_input, vaultPath, user);
               if (d.deny) {
-                audit?.log("chat.denied", { userId: user.id, tool: hookInput.tool_name, path: d.path, reason: d.reason, via: "hook" });
+                audit?.log("chat.denied", { userId: user.id, username: user.username, role: user.role, tool: hookInput.tool_name, path: d.path, reason: d.reason, via: "hook" });
                 return {
                   decision: "block",
                   reason: d.message,

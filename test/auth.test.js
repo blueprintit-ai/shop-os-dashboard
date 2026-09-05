@@ -117,6 +117,17 @@ test("gc removes expired sessions and the removed session no longer resolves", a
   s.cleanup();
 });
 
+test("revokeAllForUser invalidates that user's sessions but not other users' sessions", async () => {
+  const s = await setup();
+  const staffLogin = await s.auth.login({ username: "marco", password: "longenough1", remember: false, ip: "x" });
+  const ownerLogin = await s.auth.login({ username: "glenn", password: "longenough1", remember: false, ip: "x" });
+  const removed = s.auth.revokeAllForUser(s.staff.id);
+  assert.equal(removed, 1);
+  assert.equal(s.auth.userForRequest(fakeReq(staffLogin.token)), null);
+  assert.ok(s.auth.userForRequest(fakeReq(ownerLogin.token)), "other user's session must survive");
+  s.cleanup();
+});
+
 test("sameOriginOk accepts matching Origin or Referer and rejects mismatch or absence", () => {
   const host = "192.168.1.10:50000";
   assert.equal(sameOriginOk({ headers: { host, origin: `http://${host}` } }), true);

@@ -8,6 +8,8 @@ import { findFreePort, lanAddresses } from "../src/lib/net.js";
 import { dashboardHome } from "../src/lib/paths.js";
 import { UserStore } from "../src/users.js";
 import { readLicense } from "../src/license.js";
+import { Audit } from "../src/audit.js";
+import { Auth } from "../src/auth.js";
 
 const c = {
   red: (s) => `\x1b[31m${s}\x1b[0m`,
@@ -91,6 +93,9 @@ async function resetOwner({ home, newPassword }) {
     die(e.message);
     return;
   }
+  const audit = new Audit(join(home, "activity.jsonl"));
+  const auth = new Auth({ users, sessionsPath: join(home, "sessions.json"), audit });
+  auth.revokeAllForUser(target.id);
   console.log(c.green("v ") + `Password updated for ${target.username}`);
 }
 

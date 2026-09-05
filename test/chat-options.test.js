@@ -29,8 +29,8 @@ test("staff canUseTool allows in-scope reads and denies out-of-scope, non-whitel
   assert.equal(denied.behavior, "deny");
   const glob = await o.canUseTool("Glob", { pattern: "**/*.md", path: join(VAULT, "Intelligence") }, {});
   assert.equal(glob.behavior, "deny");
-  const globOk = await o.canUseTool("Glob", { pattern: "*.md" }, {});
-  assert.equal(globOk.behavior, "allow", "Glob with no path defaults to cwd; scope is applied per-result by Read, so allow");
+  const globNoPath = await o.canUseTool("Glob", { pattern: "*.md" }, {});
+  assert.equal(globNoPath.behavior, "deny", "Glob with no path would enumerate the whole vault by filename, including hidden dirs and other staff's data; deny like Grep");
   const grep = await o.canUseTool("Grep", { pattern: "price", path: join(VAULT, "Projects") }, {});
   assert.equal(grep.behavior, "allow");
   assert.equal((await o.canUseTool("Grep", { pattern: "x" }, {})).behavior, "deny");

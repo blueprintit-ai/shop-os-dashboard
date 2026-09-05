@@ -57,13 +57,13 @@ export function notesRoutes(ctx) {
       const md = readFileSync(abs, "utf8");
       const { html, frontmatter } = renderNote(md, { resolveLink: resolveFor(user) });
       const backlinks = index.backlinks(rel).filter((b) => isPathAllowed(vaultPath, user, join(vaultPath, b))).map((b) => ({ path: b, title: index.meta.get(b)?.title ?? basename(b) }));
-      audit.log("note.view", { userId: user.id, path: rel });
+      audit.log("note.view", { userId: user.id, username: user.username, role: user.role, path: rel });
       const title = index.meta.get(rel)?.title ?? basename(abs, extname(abs));
       return sendJson(res, 200, { path: rel, title, html, frontmatter, backlinks }), true;
     }
     if (p === "/api/notes/raw") {
       const abs = scopedAbs(user, res, url.searchParams.get("path")); if (!abs) return true;
-      audit.log("note.raw", { userId: user.id, path: toVaultRelative(vaultPath, abs) });
+      audit.log("note.raw", { userId: user.id, username: user.username, role: user.role, path: toVaultRelative(vaultPath, abs) });
       res.writeHead(200, { "content-type": mimeFor(abs), "content-length": statSync(abs).size });
       createReadStream(abs).pipe(res); return true;
     }

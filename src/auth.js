@@ -25,18 +25,18 @@ export class Auth {
       return { ok: false, reason: "invalid" };
     }
     if (record.lockedUntil && record.lockedUntil > Date.now()) {
-      this.audit.log("login.locked", { userId: record.id, username: record.username, ip });
+      this.audit.log("login.locked", { userId: record.id, username: record.username, role: record.role, ip });
       return { ok: false, reason: "locked" };
     }
     if (!record.active) {
-      this.audit.log("login.failed", { userId: record.id, username: record.username, ip, reason: "inactive" });
+      this.audit.log("login.failed", { userId: record.id, username: record.username, role: record.role, ip, reason: "inactive" });
       return { ok: false, reason: "inactive" };
     }
     const good = await verifyPassword(password ?? "", record.passwordHash);
     if (!good) {
       this.users.recordFailedLogin(record.id);
       const after = this.users.get(record.id);
-      this.audit.log(after.lockedUntil ? "login.lockout" : "login.failed", { userId: record.id, username: record.username, ip, reason: "bad-password" });
+      this.audit.log(after.lockedUntil ? "login.lockout" : "login.failed", { userId: record.id, username: record.username, role: record.role, ip, reason: "bad-password" });
       return { ok: false, reason: "invalid" };
     }
     this.users.clearFailedLogins(record.id);
@@ -45,7 +45,7 @@ export class Auth {
     const sessions = this._load();
     sessions[token] = { userId: record.id, createdAt: Date.now(), expiresAt: Date.now() + ttl, remember: !!remember, ip };
     this._save(sessions);
-    this.audit.log("login", { userId: record.id, username: record.username, ip, remember: !!remember });
+    this.audit.log("login", { userId: record.id, username: record.username, role: record.role, ip, remember: !!remember });
     return { ok: true, token, maxAgeSec: Math.floor(ttl / 1000), user: this.users.get(record.id) };
   }
 
@@ -55,7 +55,24 @@ export class Auth {
     const s = sessions[token];
     delete sessions[token];
     this._save(sessions);
-    if (s) this.audit.log("logout", { userId: s.userId });
+    if (s) {
+      const u = this.users.get(s.userId);
+      this.audit.log("logout", { userId: s.userId, username: u?.username, role: u?.role });
+    }
+  }
+
+  revokeAllForUser(userId) {
+    const sessions = this._load();
+    let removed = 0;
+    for (const [t, s] of Object.entries(sessions)) {
+      if (s.userId === userId) { delete sessions[t]; removed++; }
+    }
+    if (removed) {
+      this._save(sessions);
+      const u = this.users.get(userId);
+      this.audit.log("sessions.revoked", { userId, username: u?.username, role: u?.role, count: removed });
+    }
+    return removed;
   }
 
   tokenFor(req) { return parseCookies(req)[COOKIE_NAME] ?? null; }

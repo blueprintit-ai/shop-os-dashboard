@@ -34,24 +34,25 @@ export function usersRoutes(ctx) {
       if (req.method === "POST" && p === "/api/users") {
         const b = await readJsonBody(req);
         const u = await users.create({ username: b.username, displayName: b.displayName, password: b.password, role: b.role ?? "staff", switches: b.switches ?? {} });
-        audit.log("user.created", { by: owner.id, userId: u.id, username: u.username, role: u.role });
+        audit.log("user.created", { by: owner.id, byUsername: owner.username, byRole: owner.role, userId: u.id, username: u.username, role: u.role });
         return sendJson(res, 201, u), true;
       }
       if (m && req.method === "PATCH" && !m[2]) {
         const b = await readJsonBody(req);
         const u = users.update(m[1], { displayName: b.displayName, role: b.role, switches: b.switches });
-        audit.log("user.updated", { by: owner.id, userId: u.id, patch: Object.keys(b) });
+        audit.log("user.updated", { by: owner.id, byUsername: owner.username, byRole: owner.role, userId: u.id, patch: Object.keys(b) });
         return sendJson(res, 200, u), true;
       }
       if (m && req.method === "POST" && m[2] === "password") {
         const b = await readJsonBody(req);
         await users.setPassword(m[1], b.password);
-        audit.log("user.password-reset", { by: owner.id, userId: m[1] });
+        auth.revokeAllForUser(m[1]);
+        audit.log("user.password-reset", { by: owner.id, byUsername: owner.username, byRole: owner.role, userId: m[1] });
         res.writeHead(204); res.end(); return true;
       }
       if (m && req.method === "POST" && (m[2] === "deactivate" || m[2] === "reactivate")) {
         const u = m[2] === "deactivate" ? users.deactivate(m[1]) : users.reactivate(m[1]);
-        audit.log(`user.${m[2]}d`, { by: owner.id, userId: u.id });
+        audit.log(`user.${m[2]}d`, { by: owner.id, byUsername: owner.username, byRole: owner.role, userId: u.id });
         return sendJson(res, 200, u), true;
       }
     } catch (e) { return fail(res, e), true; }

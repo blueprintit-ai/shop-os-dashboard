@@ -146,14 +146,14 @@ async function endConversation() {
 
 async function endSession(sender) {
   if (!STATE.sessionId || STATE.turns.length === 0) return;
-  await sender("POST", "/api/chat/end", { sessionId: STATE.sessionId, turns: STATE.turns });
+  await sender("POST", "/api/chat/end", { sessionId: STATE.sessionId });
 }
 
 els.end.addEventListener("click", () => { endConversation(); });
 
 window.addEventListener("beforeunload", () => {
   if (!STATE.sessionId || STATE.turns.length === 0) return;
-  const payload = JSON.stringify({ sessionId: STATE.sessionId, turns: STATE.turns });
+  const payload = JSON.stringify({ sessionId: STATE.sessionId });
   if (navigator.sendBeacon) {
     navigator.sendBeacon("/api/chat/end", new Blob([payload], { type: "application/json" }));
   } else {

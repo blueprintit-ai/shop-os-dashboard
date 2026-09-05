@@ -10,11 +10,12 @@ export function authRoutes(ctx) {
       if (!isLoopback(req)) return sendJson(res, 403, { error: "Set up Shop OS on the shop computer first" }), true;
       if (users.count() > 0) return sendJson(res, 409, { error: "Already set up" }), true;
       const b = await readJsonBody(req);
+      let u;
       try {
-        await users.create({ username: b.username, displayName: b.displayName, password: b.password, role: "owner" });
+        u = await users.create({ username: b.username, displayName: b.displayName, password: b.password, role: "owner" });
       } catch (e) { return sendJson(res, 400, { error: e.message, code: e.code }), true; }
       const r = await auth.login({ username: b.username, password: b.password, remember: true, ip: req.socket.remoteAddress });
-      audit.log("setup.owner-created", { username: b.username });
+      audit.log("setup.owner-created", { userId: u.id, username: u.username, role: u.role });
       return sendJson(res, 200, { ok: true }, { "set-cookie": auth.issueCookie(r.token, r.maxAgeSec) }), true;
     }
     if (req.method === "POST" && p === "/api/login") {
