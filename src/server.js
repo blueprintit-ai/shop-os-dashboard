@@ -20,6 +20,7 @@ import { pageRoutes } from "./routes/pages.js";
 import { LayoutStore } from "./layout.js";
 import { layoutRoutes } from "./routes/layout-routes.js";
 import { artifactsRoutes } from "./routes/artifacts-routes.js";
+import { snapshotsRoutes } from "./routes/snapshots-routes.js";
 
 export const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup"]);
@@ -37,7 +38,7 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
   const layoutStore = new LayoutStore(homeDir);
   const ctx = { vaultPath, homeDir, users, auth, audit, index, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore };
 
-  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx)];
+  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx)];
   const gc = setInterval(() => { auth.gc(); chatSessions.gc(); }, 10 * 60 * 1000); gc.unref?.();
 
   const server = createHttpServer(async (req, res) => {
