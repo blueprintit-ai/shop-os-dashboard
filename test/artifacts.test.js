@@ -93,9 +93,11 @@ function seedArtifactInto(vault) {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "owner-only.html"), "<title>Owner Report</title>");
   writeFileSync(join(dir, "owner-only.json"), JSON.stringify({ title: "Owner Report", visibility: "owner" }));
+  writeFileSync(join(dir, "staff-shared.html"), "<title>Staff Shared</title>");
+  writeFileSync(join(dir, "staff-shared.json"), JSON.stringify({ title: "Staff Shared", visibility: "staff" }));
 }
 
-test("GET /api/artifacts and POST /api/artifacts/remove role matrix", async () => {
+test("GET /api/artifacts role matrix: anon 401, staff sees only staff-visibility artifacts, owner sees all", async () => {
   const t = await bootServer();
   try {
     seedArtifactInto(t.vault);
@@ -103,10 +105,30 @@ test("GET /api/artifacts and POST /api/artifacts/remove role matrix", async () =
     const anon = await fetch(`${t.base}/api/artifacts`);
     assert.equal(anon.status, 401);
 
+    // this staff user was created with switches.artifactsShared left at its default (true) via defaultSwitches()
+    const asStaff = await t.http("GET", "/api/artifacts", { as: "staff" });
+    assert.equal(asStaff.status, 200);
+    const staffFiles = (await asStaff.json()).artifacts.map((a) => a.file);
+    assert.ok(staffFiles.includes("staff-shared.html"), "staff must see the staff-visibility artifact");
+    assert.ok(!staffFiles.includes("owner-only.html"), "staff must not see the owner-only artifact");
+
     const asOwner = await t.http("GET", "/api/artifacts", { as: "owner" });
     assert.equal(asOwner.status, 200);
-    const ownerBody = await asOwner.json();
-    assert.ok(ownerBody.artifacts.some((a) => a.file === "owner-only.html"));
+    const ownerFiles = (await asOwner.json()).artifacts.map((a) => a.file);
+    assert.ok(ownerFiles.includes("owner-only.html") && ownerFiles.includes("staff-shared.html"), "owner must see both");
+  } finally { t.cleanup(); }
+});
+
+test("POST /api/artifacts/remove role matrix: anon 401, staff 403, owner 200", async () => {
+  const t = await bootServer();
+  try {
+    seedArtifactInto(t.vault);
+
+    const anon = await fetch(`${t.base}/api/artifacts/remove`, {
+      method: "POST", headers: { "content-type": "application/json", origin: t.base },
+      body: JSON.stringify({ file: "owner-only.html" }),
+    });
+    assert.equal(anon.status, 401);
 
     const removeAsStaff = await t.http("POST", "/api/artifacts/remove", { as: "staff", body: { file: "owner-only.html" } });
     assert.equal(removeAsStaff.status, 403);
