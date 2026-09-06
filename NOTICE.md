@@ -32,3 +32,7 @@ file; both are required to stay in compliance with CC BY 4.0.
 
 RoboNuggets and Jay E do not endorse Blueprint IT or Shop OS. Use of the
 original work under CC BY 4.0 does not imply any affiliation.
+
+## Other vendored code
+
+`vendor/thinking-orbs.js` is MIT-licensed, (c) Jakub Antalik, used unmodified — see the file's own header.
