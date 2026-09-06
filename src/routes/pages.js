@@ -36,10 +36,11 @@ export function pageRoutes(ctx) {
     if (p === "/owner") {
       if (!user) return redirect(res, "/login"), true;
       if (user.role !== "owner") return redirect(res, "/employee"), true;
+      const layout = ctx.layoutStore.get(user.id);
       const html = page("owner.html")
         .replace("__ROLE__", user.role)
         .replace("__SHOP_NAME__", readShopName(vaultPath))
-        .replace("__THEME_CLASS__", "");
+        .replace("__THEME_CLASS__", layout.theme === "light" ? "light" : "");
       return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
     }
     if (p === "/users") {

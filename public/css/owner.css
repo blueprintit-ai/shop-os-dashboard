@@ -8,3 +8,435 @@ html.light {
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--cream); font-family: system-ui, sans-serif; }
+
+/* ============================================================================
+   Structural/chrome CSS below is ported from the reference kit at
+   Robonuggets/agentic-os/dashboard.html (its <style> block, roughly lines
+   236-751). Selector names are kept IDENTICAL to the kit on purpose -- later
+   tasks (9-12) port the kit's JS as-is and it is hard-wired to these names
+   (.w/.wh/.wb/.wx/.rs, #orbBox/#ringCv/.oi, #searchBar, #tourCard, #deck/.dk,
+   .board/.brow, body.edit/.dragging/.searchopen/.searching, etc).
+
+   Only VALUES were adapted, never selectors:
+   - var(--text) -> var(--cream), var(--muted) -> var(--mute),
+     var(--cardsolid)/var(--card) -> var(--panel) (the token block from Task 1
+     doesn't define separate aliases for these).
+   - rgba(var(--ink),N) and rgba(var(--accent-rgb),N) hairline
+     borders/tints/glows -> color-mix(in srgb, var(--cream|--accent) N%, transparent),
+     since Task 1's token block has no --ink/--accent-rgb RGB-triplet tokens
+     and this file must not invent new color tokens -- color-mix() gets the
+     same "theme-reactive translucent" effect from tokens that already exist.
+   - Literal #000/#fff are kept where the kit itself uses them literally (drop
+     shadows, white text on the accent-colored button) -- these are graphic
+     effects, not theme colors, and the kit does not route them through a
+     token either.
+   - 'Doto'/'Outfit' font-family references were dropped (no font import was
+     added in this task); rules fall back to the body's existing font stack.
+
+   Deliberately NOT ported (out of scope for this project / later tasks own
+   it, not this one): Google Calendar & email widgets (.w-mail/.w-cal), the
+   action wheel (#wheelWrap - excluded from this project's default layout
+   already, see defaultLayout()'s `removed` array in src/layout.js), the OS
+   Tweak settings panel (#osTweak/#tweakFab/#twPick), the add-skill/run-skill/
+   add-app copy-a-prompt popups (#addpop/#runpop/#appop) and the model x
+   effort adjuster (#adj/#mx/#pill/#knob) -- none of those flows exist in this
+   project, the reference kit's own in-dashboard chat bar (#chatBar/#chatLog/
+   .cm - this project already has a separate chat.js/#chat-root), the
+   "second brain" iframe portal transition (#brainWrap/#portal/#sgFx/etc),
+   the spin-reward quote card (#quoteCard), and the decorative hex-grid
+   cursor/background canvas (#hexCv, custom cursor variables) - all cosmetic
+   extras with no functional hook in this project's widget set.
+   ============================================================================ */
+
+/* ---- OS shell: full-viewport canvas, no page scroll ---- */
+body { overflow: hidden; height: 100vh; }
+
+/* ---- widget chrome: transparent card, top rule, header/body/resize/close ---- */
+.w {
+  position: fixed; background: transparent; border-radius: 0;
+  border-top: 2px solid var(--cream); box-shadow: none;
+  display: flex; flex-direction: column; z-index: 10;
+  backdrop-filter: none; overflow: hidden;
+  transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease;
+}
+.w::after {
+  content: ""; position: absolute; top: -2px; left: 0; width: 0; height: 2px;
+  background: var(--accent); transition: width .5s cubic-bezier(.2,.8,.3,1); pointer-events: none;
+}
+.w:hover::after { width: 88px; }
+.w.live { transition: none; opacity: .9; z-index: 15; border-top-color: var(--accent); }
+.w.chromeless { background: transparent; box-shadow: none; backdrop-filter: none; border-top: 0; z-index: 25; }
+.w.chromeless::after { display: none; }
+
+.wh {
+  padding: 13px 4px 9px; font-size: 12.6px; letter-spacing: 3.6px;
+  user-select: none; display: flex; gap: 9px; align-items: center;
+}
+body.edit .wh { cursor: move; }
+.wh .g {
+  color: var(--mute); opacity: 0; transition: opacity .15s; font-size: 13px;
+  width: 12px; flex: 0 0 auto; text-align: center;
+}
+body.edit .wh .g { opacity: 1; }
+.wh .tick { margin-left: auto; font-size: 11.4px; color: var(--mute); letter-spacing: 1.2px; }
+.wh .hic, .wh canvas { display: block; flex: 0 0 auto; }
+.wh .hbtn { flex: 0 0 auto; }
+body.edit .wh .hbtn { pointer-events: none; opacity: .4; }
+
+.wb { flex: 1; margin: 0 14px 12px; min-height: 0; overflow: hidden; position: relative; }
+body.edit .wb { pointer-events: none; }
+.wb.live { overflow: hidden; }
+.wb.live::-webkit-scrollbar { width: 5px; }
+.wb.live::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--cream) 22%, transparent); border-radius: 3px; }
+
+.wx {
+  position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff; border: 0; font-size: 13px; line-height: 1;
+  cursor: pointer; display: none; box-shadow: 2px 2px 0 #000; z-index: 6;
+}
+body.edit .w:not(.chromeless) .wx { display: block; }
+
+.rs {
+  position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px;
+  background: var(--accent); border-radius: 3px; cursor: nwse-resize; display: none; z-index: 6;
+}
+body.edit .w .rs { display: block; }
+
+#ghost {
+  position: fixed; border: 2px dashed var(--accent); border-radius: 8px; z-index: 14; display: none;
+  background: color-mix(in srgb, var(--accent) 6%, transparent); pointer-events: none;
+}
+#ghost.swap { border-style: solid; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* ---- ring/orb container ---- */
+#orbBox { position: fixed; z-index: 1; pointer-events: none; transition: z-index 0s, filter .35s ease; }
+#orbBox.front { z-index: 60; }
+#orbBox canvas { width: 100%; height: 100%; display: block; }
+#ringCv { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+#gridCv { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity .18s; }
+body.dragging #gridCv { opacity: 1; }
+#orbGrip {
+  position: fixed; z-index: 25; width: 16px; height: 16px; background: var(--accent);
+  border-radius: 4px; cursor: nwse-resize; display: none; box-shadow: 3px 3px 0 #000;
+}
+body.edit #orbGrip { display: block; }
+
+.oi {
+  position: fixed; left: 0; top: 0; border-radius: 50%; cursor: grab; z-index: 20;
+  will-change: transform; transition: opacity .25s, box-shadow .25s;
+}
+.oi canvas, .oi svg { transition: transform .15s; }
+.oi:hover canvas, .oi:hover svg { transform: scale(1.12); }
+.oi.drag { cursor: grabbing; z-index: 30; }
+.oi.drag canvas, .oi.drag svg { transform: scale(1.12); }
+.oi canvas { display: block; }
+.oi svg {
+  position: absolute; stroke: var(--cream); fill: none;
+  stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none;
+}
+
+#tip {
+  position: fixed; z-index: 60; pointer-events: none; opacity: 0; transition: opacity .12s;
+  background: var(--panel); border-radius: 8px; box-shadow: 4px 4px 0 #000; padding: 8px 12px; max-width: 230px;
+}
+#tip.show { opacity: 1; }
+#tip .t1 { font-size: 10.5px; font-weight: 600; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
+#tip .t2 { font-size: 11px; color: var(--mute); margin-top: 3px; letter-spacing: .4px; line-height: 1.5; }
+
+/* ---- search bar (floats over the orb; the orb itself falls out of focus) ---- */
+#searchBar {
+  position: fixed; z-index: 65; display: none; flex-direction: column;
+  align-items: center; gap: 7px; width: 320px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 16px; padding: 14px 20px;
+  box-shadow: 0 14px 44px rgba(0,0,0,.65); backdrop-filter: blur(6px);
+}
+body.searchopen #searchBar { display: flex; }
+#searchIn {
+  background: transparent; border: 0; outline: 0; color: var(--cream); width: 100%;
+  font: 500 12px/1 system-ui, sans-serif; letter-spacing: 2px; text-transform: uppercase;
+  caret-color: var(--accent); text-align: center;
+}
+#searchIn::placeholder { color: var(--mute); }
+#searchN { font-size: 9px; letter-spacing: 2px; color: var(--mute); white-space: nowrap; }
+#searchN:empty { display: none; }
+body.searchopen #orbBox { filter: blur(11px) brightness(.7); }
+
+body.searching .oi { opacity: .08; }
+body.searching .oi.hit {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 26px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+body.searching .w:not(#w-title), body.searching #orbBox { opacity: .22; transition: opacity .25s; }
+
+/* ---- info tour: popup cards that point at each control ---- */
+#tourCard {
+  position: fixed; z-index: 9996; width: 258px; background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--cream) 22%, transparent); border-radius: 10px;
+  box-shadow: 4px 4px 0 #000; padding: 13px 15px 11px; display: none;
+}
+#tourCard.show { display: block; }
+#tourCard h3 {
+  font-size: 12.5px; font-weight: 700; letter-spacing: 1.5px; color: var(--cream);
+  text-transform: uppercase; margin: 0 18px 6px 0;
+}
+#tourCard p { font-size: 11.5px; line-height: 1.6; color: var(--warm); margin: 0; }
+#tourCard p a { color: var(--accent); text-decoration: underline dotted; }
+#tourCard .arr { position: absolute; width: 12px; height: 12px; background: var(--panel); transform: rotate(45deg); }
+#tourCard.below .arr {
+  top: -7px; border-left: 1px solid color-mix(in srgb, var(--cream) 22%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--cream) 22%, transparent);
+}
+#tourCard.above .arr {
+  bottom: -7px; border-right: 1px solid color-mix(in srgb, var(--cream) 22%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--cream) 22%, transparent);
+}
+#tourCard .tfoot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+#tourCard .tfoot span {
+  font-size: 10px; letter-spacing: 1.5px; color: var(--mute); margin-right: auto; font-weight: 700;
+}
+#tourCard .tfoot button {
+  background: var(--panel); color: var(--cream);
+  border: 1px solid color-mix(in srgb, var(--cream) 20%, transparent); border-radius: 7px;
+  font-size: 9.5px; letter-spacing: 1.5px; padding: 5px 10px; cursor: pointer;
+}
+#tourCard .tfoot button:hover { border-color: var(--accent); color: var(--accent); }
+#tourCard .tfoot #tourNext { background: var(--accent); color: #fff; border-color: var(--accent); }
+#tourCard .tfoot #tourNext:hover { color: #fff; filter: brightness(1.1); }
+#tourX { position: absolute; top: 6px; right: 9px; background: none; border: 0; color: var(--mute); font-size: 13px; cursor: pointer; }
+#tourX:hover { color: var(--accent); }
+
+.tourHi { border-radius: 7px; animation: tourGlow 1.5s ease-in-out infinite; }
+.oi.tourHi { border-radius: 50% !important; }
+#tourOrbGlow { position: fixed; z-index: 9995; pointer-events: none; border-radius: 50%; display: none; animation: tourGlow 1.5s ease-in-out infinite; }
+#tourOrbGlow.show { display: block; }
+@keyframes tourGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 95%, transparent),
+      0 0 16px 4px color-mix(in srgb, var(--accent) 60%, transparent),
+      0 0 36px 10px color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 65%, transparent),
+      0 0 10px 2px color-mix(in srgb, var(--accent) 38%, transparent),
+      0 0 24px 6px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+}
+
+/* ---- title widget (w-title) ---- */
+#w-title .tb { text-align: center; padding: 6px 10px; position: relative; width: 100%; }
+#w-title h1 {
+  font-size: 26px; font-weight: 700; letter-spacing: -.5px; white-space: nowrap;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+}
+#w-title h1 .hexlogo { width: 26px; height: 26px; flex: 0 0 auto; }
+#w-title h1 span { color: var(--accent); font-weight: 300; letter-spacing: .5px; }
+#w-title .sub { font-size: 12px; color: var(--mute); }
+.tbar { display: flex; justify-content: center; gap: 18px; margin-top: 7px; }
+.tbar button { width: 22px; height: 22px; background: transparent; border: 0; padding: 1px; cursor: pointer; }
+.tbar button svg {
+  width: 100%; height: 100%; stroke: var(--mute); fill: none; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; transition: stroke .15s;
+}
+.tbar button:hover svg { stroke: var(--accent); }
+body.edit #editBtn svg, body.searchopen #searchBtn svg { stroke: var(--accent); }
+
+/* ---- generic widget list-row building blocks (routines/briefing/recent/etc) ---- */
+.rows { display: flex; flex-direction: column; }
+.rowi {
+  display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4.5px 0;
+  border-top: 1px solid color-mix(in srgb, var(--cream) 8%, transparent);
+}
+.rowi:first-child { border-top: 0; }
+.rowi .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cream); opacity: .7; flex: 0 0 auto; }
+.rowi .dot.hot { background: var(--accent); opacity: 1; }
+.rowi .meta { margin-left: auto; font-size: 10.5px; color: var(--mute); white-space: nowrap; }
+
+.hero { display: flex; align-items: baseline; gap: 8px; padding: 2px 0 6px; }
+.hero .big { font-weight: 900; font-size: 26px; color: var(--accent); }
+.hero .sub { font-size: 10.5px; color: var(--mute); }
+
+.row2 {
+  display: flex; align-items: center; gap: 9px; font-size: 12px; padding: 4.5px 5px; margin: 0 -5px;
+  border-radius: 5px; cursor: pointer;
+}
+.row2:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.row2 b { font-weight: 500; white-space: nowrap; }
+.row2 small { display: block; font-size: 10px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row2 .age { margin-left: auto; font-size: 10px; color: var(--mute); white-space: nowrap; }
+.row2 .act { display: none; margin-left: auto; font-size: 9px; letter-spacing: 2px; color: var(--accent); font-weight: 600; }
+.row2:hover .act { display: inline; }
+.row2:hover .age { display: none; }
+
+#w-ba .row2 { padding: 3px 5px; gap: 7px; font-size: 11.5px; }
+#w-ba .row2 .st { color: #b68a2c; font-size: 11px; flex: 0 0 auto; line-height: 1; }
+#w-ba .row2 b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#w-ba .row2 .cat {
+  flex: 0 0 auto; font-size: 8px; letter-spacing: 1.4px; color: var(--mute); text-transform: uppercase;
+  max-width: 44%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#w-ba .row2:hover .cat { display: none; }
+
+.chip {
+  font-size: 8px; letter-spacing: 1.5px; border: 1px solid color-mix(in srgb, var(--cream) 25%, transparent);
+  padding: 2px 6px; border-radius: 4px; color: var(--mute); text-transform: uppercase; flex: 0 0 auto;
+}
+.chip.hot { border-color: var(--accent); color: var(--accent); }
+.pix { image-rendering: pixelated; flex: 0 0 auto; }
+
+.foot2 {
+  font-size: 9px; color: var(--mute); letter-spacing: 1.2px; margin-top: auto; padding-top: 8px;
+  display: flex; align-items: center; gap: 7px;
+}
+.foot2 i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+
+.hbtn {
+  background: none; border: 1px solid color-mix(in srgb, var(--cream) 30%, transparent); color: var(--cream);
+  border-radius: 5px; font-size: 9px; letter-spacing: 2px; padding: 5px 10px; cursor: pointer;
+  transition: border-color .15s, color .15s; white-space: nowrap;
+}
+.hbtn:hover { border-color: var(--accent); color: var(--accent); }
+.hbtn.solid { background: var(--accent); border-color: var(--accent); color: #fff; }
+.hbtn.solid:hover { color: #fff; filter: brightness(1.1); }
+
+/* ---- stats widget (2x2 bignum grid) ---- */
+.bignum { font-weight: 600; font-size: 32px; color: var(--accent); line-height: 1; letter-spacing: -.01em; }
+.cap { font-size: 10px; color: var(--mute); letter-spacing: 1px; line-height: 1.5; }
+.caprow { display: flex; align-items: center; gap: 11px; }
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; margin-top: 10px; }
+.statgrid .bignum { font-size: 26px; }
+.statgrid .cap { font-size: 9.5px; }
+.up { margin-left: auto; font-size: 10.5px; color: var(--accent); font-weight: 500; letter-spacing: 1px; white-space: nowrap; }
+.lbl { font-size: 8.5px; letter-spacing: 2.5px; color: var(--mute); margin: 10px 0 4px; text-transform: uppercase; }
+
+/* ---- skills deck (list rows, "from 04-skills/skills-widget-canvas.html") ---- */
+#deck { margin-top: 2px; }
+#deck .row2.skrow { position: relative; }
+#deck .row2.skrow .cat {
+  flex: 0 0 auto; font-size: 8px; letter-spacing: 1.4px; color: var(--mute);
+  text-transform: uppercase; white-space: nowrap;
+}
+#deck .row2.skrow:hover .cat, #deck .row2.skrow.busy .cat { display: none; }
+#deck .row2.skrow .act { display: none; margin-left: auto; align-items: center; gap: 6px; }
+#deck .row2.skrow:hover .act { display: flex; }
+#deck .row2.skrow.busy .act { display: none; }
+#deck .row2.skrow .abtn { width: 22px; height: 20px; font-size: 10px; }
+#deck .row2.skrow .prog { position: static; margin-left: auto; width: 120px; display: flex; align-items: center; gap: 7px; }
+
+.dk {
+  position: relative; background: var(--panel); border: 2px solid transparent; border-radius: 8px;
+  box-shadow: 4px 4px 0 #000; padding: 5px 10px; display: flex; flex-direction: column; gap: 2px;
+  overflow: hidden; transition: transform .15s, box-shadow .15s;
+}
+.dk:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 #000; }
+.dk canvas { image-rendering: pixelated; flex: 0 0 auto; }
+.dk .nm {
+  font-weight: 600; font-size: 12px; line-height: 1.15; letter-spacing: .2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dk .nm .sl { color: var(--accent); }
+.dk .cfg {
+  font-size: 9px; line-height: 1.1; letter-spacing: 1.6px; color: var(--mute);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.dk .cfg b { font-weight: 600; }
+.dk .btns { display: flex; gap: 6px; margin-top: auto; }
+.dk .abtn { width: 24px; height: 19px; font-size: 10px; }
+.dk.busy { padding-bottom: 22px; }
+.dk.flat { flex-direction: row; align-items: center; gap: 10px; }
+.dk.flat .mid { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.dk.flat .btns { margin: 0; flex: 0 0 auto; }
+.dk.big .nm { font-size: 16px; }
+.dk.big .cfg { font-size: 10px; }
+
+.abtn {
+  width: 26px; height: 24px; border: 1.5px solid color-mix(in srgb, var(--cream) 30%, transparent);
+  background: transparent; color: var(--cream); border-radius: 6px; cursor: pointer; font-size: 11px;
+  line-height: 1; display: grid; place-items: center;
+  transition: transform .12s, box-shadow .12s, background .15s, border-color .15s;
+  position: relative; overflow: hidden;
+}
+.abtn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 #000; border-color: var(--cream); }
+.abtn:active { transform: translate(1px,1px); box-shadow: 0 0 0 #000; }
+.abtn.play { border-color: var(--accent); color: var(--accent); }
+.abtn.play:hover { background: var(--accent); color: #fff; }
+.abtn.play.running { color: var(--mute); border-color: color-mix(in srgb, var(--cream) 30%, transparent); pointer-events: none; }
+
+.prog { position: absolute; left: 9px; right: 9px; bottom: 5px; height: 14px; display: flex; align-items: center; gap: 7px; z-index: 2; }
+.prog .track {
+  flex: 1; height: 5px; border: 1px solid color-mix(in srgb, var(--cream) 30%, transparent); border-radius: 3px;
+  overflow: hidden; background: var(--panel);
+}
+.prog .track i { display: block; height: 100%; width: 0%; background: var(--accent); }
+.prog .tm { font-weight: 700; font-size: 9.5px; color: var(--mute); min-width: 30px; text-align: right; }
+.prog.ok .tm { color: var(--accent); }
+
+.dkresize {
+  position: absolute; right: 1px; bottom: 1px; width: 14px; height: 14px; cursor: nwse-resize;
+  opacity: 0; transition: opacity .15s;
+  background:
+    radial-gradient(circle at 11px 11px, var(--mute) 1.3px, transparent 1.8px),
+    radial-gradient(circle at 6px 11px, var(--mute) 1.3px, transparent 1.8px),
+    radial-gradient(circle at 11px 6px, var(--mute) 1.3px, transparent 1.8px);
+}
+.dk:hover .dkresize { opacity: 1; }
+
+.wh .addskill {
+  border: 1.5px solid var(--accent); color: var(--accent); background: transparent;
+  border-radius: 6px; font-size: 9px; letter-spacing: 1.5px; padding: 4px 8px; cursor: pointer; margin-left: 8px;
+  transition: background .15s, color .15s, transform .12s, box-shadow .12s;
+}
+.wh .addskill:hover { background: var(--accent); color: #fff; transform: translate(-1px,-1px); box-shadow: 3px 3px 0 #000; }
+body.edit .wh .addskill { pointer-events: none; opacity: .4; }
+
+/* ---- routines firing board (split-flap rows, "from 02-routines/board-canvas.html") ---- */
+.board {
+  flex: 1; min-height: 0; background: var(--panel); border-radius: 8px; padding: 9px 10px 7px;
+  box-shadow: inset 0 2px 10px #000; display: flex; flex-direction: column; overflow: hidden;
+}
+.bwrap { height: 100%; display: flex; flex-direction: column; }
+.bhead {
+  display: flex; justify-content: space-between; font-size: 8px; letter-spacing: 2.5px;
+  color: var(--mute); padding: 0 4px 6px; border-bottom: 1px solid color-mix(in srgb, var(--cream) 14%, transparent);
+  margin-bottom: 4px; flex: 0 0 auto;
+}
+.brows, .approws {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--cream) 25%, transparent) transparent;
+}
+.brows::-webkit-scrollbar, .approws::-webkit-scrollbar { width: 6px; }
+.brows::-webkit-scrollbar-thumb, .approws::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--cream) 25%, transparent); border-radius: 3px; }
+.brows::-webkit-scrollbar-thumb:hover, .approws::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+.brows::-webkit-scrollbar-track, .approws::-webkit-scrollbar-track { background: transparent; }
+.brow { display: flex; align-items: center; gap: 8px; padding: 3.5px 4px; border-radius: 4px; }
+.brow:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.flap {
+  font-weight: 700; font-size: 12px; letter-spacing: 1px;
+  background: linear-gradient(180deg, var(--panel) 48%, var(--panel) 52%); color: var(--cream);
+  border-radius: 3px; padding: 3px 6px; position: relative; min-width: 50px; text-align: center;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--cream) 9%, transparent), 0 1px 2px #000;
+  flex: 0 0 auto; transition: transform .12s;
+}
+.flap::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0,0,0,.9); }
+.brow.ticked .flap { animation: flapflip .3s ease; }
+@keyframes flapflip { 0% { transform: rotateX(80deg); } 100% { transform: rotateX(0); } }
+.brow .nm {
+  font-size: 11.5px; font-weight: 500; color: var(--cream); letter-spacing: .4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.srcic { image-rendering: pixelated; flex: 0 0 auto; display: block; }
+.srcwrap { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.srclab { font-size: 7px; letter-spacing: 1.2px; color: var(--mute); }
+.srcic.agent { animation: hopspr 1.2s ease-in-out infinite; }
+@keyframes hopspr { 0%, 100% { transform: translateY(0); } 15% { transform: translateY(-.6px); } 30% { transform: translateY(0); } }
+.brow .st { margin-left: auto; font-size: 8.5px; letter-spacing: 1.5px; color: var(--mute); white-space: nowrap; }
+.brow.done { opacity: .36; }
+.brow.next .flap { background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 75%, white) 48%, var(--accent) 52%); color: #fff; }
+.brow.next .nm { color: #fff; }
+.brow.next .st { color: var(--accent); }
+.wfoot {
+  font-size: 7.5px; color: var(--mute); letter-spacing: 1px; padding: 5px 2px 0; flex: 0 0 auto;
+  display: flex; justify-content: space-between;
+}
+.wfoot .leg { display: flex; align-items: center; gap: 4px; }

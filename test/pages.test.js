@@ -70,3 +70,21 @@ test("GET /owner serves owner.html, not employee.html", async () => {
     cleanup();
   }
 });
+
+test("GET /owner reflects the user's saved theme with no flash", async () => {
+  const { base, cookie, cleanup } = await bootAsOwner();
+  try {
+    const current = await (await fetch(`${base}/api/layout`, { headers: { cookie } })).json();
+    const put = await fetch(`${base}/api/layout`, {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json", origin: base },
+      body: JSON.stringify({ ...current, theme: "light" }),
+    });
+    assert.equal(put.status, 200);
+    const res = await fetch(`${base}/owner`, { headers: { cookie } });
+    const body = await res.text();
+    assert.match(body, /<html lang="en" class="light">/);
+  } finally {
+    cleanup();
+  }
+});
