@@ -32,6 +32,7 @@
 
 import { api, toast } from "/static/js/api.js";
 import { mountChatToggle } from "./chat-toggle.js";
+import { sanitizeArtifactSvg } from "./sanitize-svg.js";
 
 const POLL_MS = 15000;
 const BRAIN_URL = "http://localhost:5210";
@@ -66,20 +67,6 @@ const ART_GLYPH = {
 
 const sr = (i) => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
 const wrap = (a) => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
-
-/* ---- sidecar SVG is agent-writable content (src/artifacts.js's meta.svg,
-   sourced from a JSON sidecar an agent run can write into
-   <vault>/Dashboard/artifacts/), not trusted input - <script>/<foreignObject>
-   won't execute via innerHTML but SVG event attributes and javascript: URLs
-   will, so strip those constructs before assigning to innerHTML. An empty
-   result falls back to the built-in glyph table (see syncArtifactBalls()). ---- */
-function sanitizeArtifactSvg(svg) {
-  if (!svg) return svg;
-  if (/<script|<foreignObject/i.test(svg)) return "";
-  if (/\son\w+\s*=/i.test(svg)) return "";
-  if (/href\s*=\s*["']?\s*javascript:/i.test(svg)) return "";
-  return svg;
-}
 
 /* created-stamp formatter (dashboard.html:1606-1614, ported as-is) */
 function fmtCreated(iso) {
