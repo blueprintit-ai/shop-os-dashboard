@@ -1,0 +1,6 @@
+{
+  "title": "Sample Report",
+  "visibility": "staff",
+  "kind": "artifact",
+  "note": "Fixture artifact for tests."
+}
