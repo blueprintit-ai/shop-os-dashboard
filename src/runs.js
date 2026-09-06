@@ -46,7 +46,7 @@ function writeReport(vaultPath, { skillId, model, effort, seconds, ok, resultTex
   const now = new Date();
   const stamp = now.toISOString().slice(0, 16).replace(/[-:T]/g, "").replace(/(\d{8})(\d{4})/, "$1-$2");
   const slug = `${skillId}-${stamp}`;
-  const body = resultText?.trim() ? marked.parse(resultText) : "<p>(no output captured)</p>";
+  const body = resultText?.trim() ? marked.parse(esc(resultText)) : "<p>(no output captured)</p>";
   const html = `<!doctype html><meta charset="utf-8"><title>/${esc(skillId)} run</title>
 <body style="font:15px system-ui;max-width:760px;margin:56px auto;">
 <p style="text-transform:uppercase;letter-spacing:2px;color:#8d8775;">Shop OS · headless skill run</p>

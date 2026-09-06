@@ -39,6 +39,27 @@ test("runSkill writes a run log, an HTML report artifact with a visibility field
   rmSync(vault, { recursive: true, force: true });
 });
 
+test("runSkill escapes raw HTML in the LLM's result text before markdown-rendering the report, preventing stored XSS", async () => {
+  async function* xssRunTurn() {
+    const text = `## Result\n<script>alert(1)</script>\n<img src=x onerror="alert(2)">\n`;
+    yield { type: "text", delta: text };
+    yield { type: "done", text, stats: { duration_ms: 1200 } };
+  }
+  const vault = mkdtempSync(join(tmpdir(), "sod-runs-"));
+  const job = await runSkill({
+    vaultPath: vault, skillId: "bp-digest", input: "", model: "SONNET", effort: "MEDIUM",
+    runTurn: xssRunTurn, audit: { log() {} },
+  });
+  assert.equal(job.status, "done");
+  const artifactsDir = join(vault, "Dashboard", "artifacts");
+  const html = readFileSync(join(artifactsDir, job.reportFile), "utf8");
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+  assert.doesNotMatch(html, /<img src=x onerror="alert\(2\)">/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(html, /&lt;img src=x onerror=&quot;alert\(2\)&quot;&gt;/);
+  rmSync(vault, { recursive: true, force: true });
+});
+
 test("runSkill records a failed run without throwing", async () => {
   async function* failingRunTurn() {
     yield { type: "error", message: "boom" };
