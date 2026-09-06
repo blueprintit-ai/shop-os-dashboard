@@ -1,7 +1,7 @@
 ---
 type: project-index
 project: shop-os-dashboard
-status: planning
+status: in-progress
 tags: [shop-os, dashboard, foundation, agentic-os, auth, note-viewer, installer]
 ---
 
@@ -11,15 +11,16 @@ Shop OS Dashboard: one local Node server that becomes the center access point fo
 
 ## Status
 
-> [!success] Design spec approved 2026-09-05. Plan 1 of 3 (Foundation) written 2026-09-05, ready to execute. Plans 2 (owner dashboard port) and 3 (installer) follow after Plan 1 lands.
+> [!success] Design spec approved 2026-09-05. Plan 1 of 3 (Foundation) implemented (branch `foundation-implementation`). Plan 2 of 3 (Owner dashboard port) implemented 2026-09-06 on branch `owner-dashboard-implementation` — all 14 tasks complete, including the final Playwright browser pass and full role-matrix audit; the branch now goes to a whole-branch final review before merge. Plan 3 (installer) is next and has not been started.
 > Built in a new repo and package alongside the current system. No shipped repo is modified until cutover.
 
 ## Links
 
 - [[Projects/shop-os-dashboard/specs/2026-09-05-shop-os-dashboard-design|Design spec]]
 - [[Projects/shop-os-dashboard/plans/2026-09-05-shop-os-dashboard-foundation|Plan 1: Foundation]] (server, auth, notes, chat, employee page, Users screen)
+- [[Projects/shop-os-dashboard/plans/2026-09-05-shop-os-dashboard-owner-dashboard|Plan 2: Owner dashboard]] (ring/widgets port, artifacts, assets, skills runner, settings, users activity, browser tests)
 - [[Projects/shop-os-chat|Shop OS Chat]] (engine source)
-- [[Projects/shop-os-installer|Shop OS installer]] (install logic source)
+- [[Projects/shop-os-installer|Shop OS installer]] (install logic source, Plan 3, not started)
 - [[Projects/shop-os-license-server|License server]] (reused unchanged)
 - Reference kits: `Dropbox/Robonuggets/agentic-os`, `Dropbox/Robonuggets/second-brain` (CC BY 4.0, NOTICE.md in each)
 
