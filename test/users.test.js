@@ -1,13 +1,52 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { UserStore, hashPassword, verifyPassword, DEFAULT_STAFF_FOLDERS } from "../src/users.js";
+import { createServer } from "../src/server.js";
 
 function tmpStore() {
   const dir = mkdtempSync(join(tmpdir(), "sod-users-"));
   return { store: new UserStore(join(dir, "users.json")), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+const FIX = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "vault");
+
+async function bootAsOwner() {
+  const root = mkdtempSync(join(tmpdir(), "sod-users-routes-"));
+  const vault = join(root, "vault"); cpSync(FIX, vault, { recursive: true });
+  const server = createServer({ vaultPath: vault, homeDir: join(root, "home"), licenseCheck: () => ({ ok: true }) });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const b = `http://127.0.0.1:${server.address().port}`;
+
+  const setup = await fetch(`${b}/api/setup`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: b },
+    body: JSON.stringify({ displayName: "Glenn", username: "glenn", password: "longenough1" }),
+  });
+  const jar = { owner: setup.headers.get("set-cookie").split(";")[0] };
+
+  const staffRes = await fetch(`${b}/api/users`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: b, cookie: jar.owner },
+    body: JSON.stringify({ displayName: "Staff User", username: "staff", password: "longenough2", role: "staff" }),
+  });
+  await staffRes.json();
+
+  const staffLogin = await fetch(`${b}/api/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: b },
+    body: JSON.stringify({ username: "staff", password: "longenough2" }),
+  });
+  jar.staff = staffLogin.headers.get("set-cookie").split(";")[0];
+
+  return { server, jar, root };
+}
+
+function base(server) {
+  return `http://127.0.0.1:${server.address().port}`;
 }
 
 test("hashPassword produces scrypt format and verifyPassword round-trips", async () => {
@@ -89,4 +128,17 @@ test("failed login counter locks after 5 and clears, not before", async () => {
   assert.equal(store.get(u.id).failedLogins, 0);
   assert.equal(store.get(u.id).lockedUntil, null);
   cleanup();
+});
+
+test("GET /api/users/activity is owner-only and returns recent audit rows", async () => {
+  const { server, jar, root } = await bootAsOwner();
+  const b = base(server);
+  assert.equal((await fetch(`${b}/api/users/activity`, { headers: { cookie: jar.staff } })).status, 403);
+  const res = await fetch(`${b}/api/users/activity?limit=5`, { headers: { cookie: jar.owner } });
+  assert.equal(res.status, 200);
+  const rows = await res.json();
+  assert.ok(Array.isArray(rows));
+  assert.ok(rows.every((r) => "event" in r && "username" in r));
+  server.close(); server.ctx.index.close();
+  rmSync(root, { recursive: true, force: true });
 });

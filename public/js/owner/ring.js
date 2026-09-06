@@ -31,6 +31,7 @@
 // /api/artifacts on its own timer.
 
 import { api, toast } from "/static/js/api.js";
+import { mountChatToggle } from "./chat-toggle.js";
 
 const POLL_MS = 15000;
 const BRAIN_URL = "http://localhost:5210";
@@ -190,6 +191,9 @@ export function mountRing(root) {
     assignSlots();
     syncBallSizes();
     wakeRing();
+    // Task 13: broadcast the fresh list so search.js always has the current
+    // artifacts without a second fetch of its own (see boot.js).
+    window.dispatchEvent(new CustomEvent("artifacts:list", { detail: list }));
   }
 
   async function pullArtifacts() {
@@ -521,7 +525,15 @@ export function mountRing(root) {
   const pollId = setInterval(pullArtifacts, POLL_MS);
   teardown.timers.push(pollId);
   on(window, "resize", () => { drawRail(); placeOrb(); wakeRing(); });
+  // Task 13: skills-deck.js dispatches this right after a run finishes, so a
+  // fresh report shows up on the ring immediately instead of waiting up to
+  // POLL_MS for the next scheduled poll.
+  on(window, "artifacts:refresh", pullArtifacts);
   teardown.raf = requestAnimationFrame(frame);
+
+  // Task 13: the chat-bar toggle -- opens/closes Plan 1's #chat-root without
+  // reimplementing any part of the chat engine (see chat-toggle.js).
+  mountChatToggle(root);
 }
 
 /* ---- 3D orb particle build, split out for readability. Ported from

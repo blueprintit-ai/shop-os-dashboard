@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { readJsonBody, sendJson } from "../lib/http.js";
 import { requireOwner } from "../auth.js";
 import { HIDDEN_DIRS } from "../scope.js";
+import { readAll } from "../audit.js";
 
 const CODE_STATUS = { USERNAME_TAKEN: 409, INVALID_USERNAME: 400, INVALID_ROLE: 400, WEAK_PASSWORD: 400, LAST_OWNER: 409, NOT_FOUND: 404 };
 function fail(res, e) { return sendJson(res, CODE_STATUS[e.code] ?? 500, { error: e.message, code: e.code ?? "ERROR" }); }
@@ -22,13 +23,18 @@ function listFolders(vaultPath) {
 }
 
 export function usersRoutes(ctx) {
-  const { users, auth, audit, vaultPath } = ctx;
+  const { users, auth, audit, vaultPath, homeDir } = ctx;
   return async (req, res, url) => {
     const p = url.pathname;
     if (!p.startsWith("/api/users")) return false;
     const owner = requireOwner(req, res, auth); if (!owner) return true;
     const m = p.match(/^\/api\/users\/([^/]+)(?:\/(password|deactivate|reactivate))?$/);
     try {
+      if (req.method === "GET" && p === "/api/users/activity") {
+        const limit = Math.min(100, Number(url.searchParams.get("limit")) || 20);
+        const rows = readAll(join(homeDir, "activity.jsonl")).reverse().slice(0, limit);
+        return sendJson(res, 200, rows), true;
+      }
       if (req.method === "GET" && p === "/api/users/folders") return sendJson(res, 200, listFolders(vaultPath)), true;
       if (req.method === "GET" && p === "/api/users") return sendJson(res, 200, users.list()), true;
       if (req.method === "POST" && p === "/api/users") {

@@ -47,6 +47,12 @@ export function pageRoutes(ctx) {
       if (!user || user.role !== "owner") return redirect(res, "/"), true;
       return send(res, 200, { "content-type": "text/html; charset=utf-8" }, page("users.html")), true;
     }
+    if (p === "/assets") {
+      if (!user) return redirect(res, "/login"), true;
+      if (user.role !== "owner" && user.switches?.assetsView !== true) return redirect(res, "/"), true;
+      const html = page("assets.html").replace("__ROLE__", user.role);
+      return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
+    }
     return false;
   };
 }
