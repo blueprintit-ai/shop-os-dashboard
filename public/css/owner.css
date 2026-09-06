@@ -51,6 +51,15 @@ body { margin: 0; background: var(--bg); color: var(--cream); font-family: syste
 /* ---- OS shell: full-viewport canvas, no page scroll ---- */
 body { overflow: hidden; height: 100vh; }
 
+/* ---- Plan 1's #chat-root/#notes-root ship with base.css's own
+   `@media (min-width: 900px) { #notes-root { display: grid; ... } }` rule,
+   which is author-origin and beats the browser's default `[hidden]{display:
+   none}` UA rule at >=900px. Without this override, owner.html's
+   `<div id="notes-root" hidden>` renders visible at the dashboard's own
+   primary target viewport (desktop) from first paint, before anything has
+   asked to show it. base.css is Plan 1's file and is not touched here. ---- */
+#notes-root[hidden], #chat-root[hidden] { display: none !important; }
+
 /* ---- widget chrome: transparent card, top rule, header/body/resize/close ---- */
 .w {
   position: fixed; background: transparent; border-radius: 0;

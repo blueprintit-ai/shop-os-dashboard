@@ -32,8 +32,10 @@ limited to:
   an artifact when both the file is marked `staff`-visible and their own
   account has the `artifactsShared` switch on.
 - Added a Business Assets browser (`assets.html`, `/api/assets*`), a Claude
-  Code chat bar and run history, and configuration changes in
-  `os-config.json`.
+  Code chat bar and run history, and moved the assets folder configuration
+  from the kit's `os-config.json` to this project's own `src/settings.js`,
+  owner-configurable at runtime via `/api/settings` instead of a static
+  config file.
 
 `REDESIGN.md` is carried over from the original kit's reskin-contract
 document, updated for this project's own file names and palette. The full

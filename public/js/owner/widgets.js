@@ -104,7 +104,14 @@ export function mountGrid(root, layout, kindRenderers) {
     window.addEventListener("pointerup", onUp);
   }
 
-  for (const w of layout.widgets) renderWidget(w);
+  // Post-review fix (finding 8): src/layout.js's LayoutStore.save() now
+  // guards against a malformed saved layout server-side, but this stays as
+  // a second line of defense (client input is still not trusted) -- without
+  // it, a `layout.widgets` that is missing, null, or not an array (e.g. the
+  // string "not an array") would throw here and abort this whole module
+  // load, taking mountSearch/mountTour/#editBtn down with it. `?? []` alone
+  // would not catch a truthy non-array value, hence the explicit Array.isArray check.
+  for (const w of Array.isArray(layout.widgets) ? layout.widgets : []) renderWidget(w);
 
   // Re-place everything on viewport resize -- CELL is derived from root's
   // width, so a resize invalidates every widget's pixel position/size.

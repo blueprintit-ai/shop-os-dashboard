@@ -10,6 +10,7 @@
     "bin",
     "src",
     "public",
+    "LICENSE",
     "NOTICE.md",
     "README.md"
   ],

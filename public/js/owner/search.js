@@ -1,3 +1,5 @@
+import { escapeHtml } from "/static/js/api.js";
+
 export function mountSearch(root, getArtifacts) {
   const bar = document.createElement("div");
   bar.id = "searchBar";
@@ -17,11 +19,16 @@ export function mountSearch(root, getArtifacts) {
   }
   function apply(q) {
     const list = getArtifacts().filter((a) => (a.title + " " + a.note).toLowerCase().includes(q.toLowerCase()));
-    results.innerHTML = list.map((a) => `<a href="${a.url}" target="_blank">${a.title}</a>`).join("");
+    results.innerHTML = list.map((a) => `<a href="${a.url}" target="_blank">${escapeHtml(a.title)}</a>`).join("");
   }
   input.addEventListener("input", () => apply(input.value));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "/" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); open(); }
+    if (e.key === "/") {
+      const el = document.activeElement;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable) return;
+      e.preventDefault();
+      open();
+    }
     if (e.key === "Escape") close();
   });
   document.getElementById("searchBtn")?.addEventListener("click", open);

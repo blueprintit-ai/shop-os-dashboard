@@ -30,6 +30,7 @@ import { mountAssetsFavorites } from "./assets-widget.js";
 import { mountRing } from "./ring.js";
 import { mountSearch } from "./search.js";
 import { mountTour } from "./tour.js";
+import { openNotesPanel } from "./chat-toggle.js";
 
 const layout = await getLayout();
 const allKinds = { ...kindRenderers, skills: mountSkillsDeck, assets: mountAssetsFavorites };
@@ -48,9 +49,19 @@ mountTour(layout);
 
 document.getElementById("editBtn")?.addEventListener("click", () => document.body.classList.toggle("edit"));
 
-// Same contract as public/employee.html's own window.showNotesTab: switch
-// the #chat-root/#notes-root tab-panel pair so the orb's note-viewer
-// fallback (ring.js, when no Second Brain answers) has somewhere to land.
+// Same contract as public/employee.html's own window.showNotesTab: give the
+// orb's note-viewer fallback (ring.js, when no Second Brain answers)
+// somewhere to land.
+//
+// Post-review fix (finding 7): the previous version only flipped
+// [data-tab-panel] visibility on #chat-root/#notes-root, unlike
+// chat-toggle.js's CHAT button which also hides #ring-root/#widgets-root
+// (both are position:fixed and would otherwise stay drawn on top of the
+// note viewer) -- and it had no exit path back to the ring at all. This now
+// routes through chat-toggle.js's own 3-state panel manager (ring/chat/
+// notes) so opening notes hides the ring+widgets the same way opening chat
+// does, and the same CHAT/CLOSE button that is already on screen becomes
+// the way back to the ring view.
 window.showNotesTab = () => {
-  document.querySelectorAll("[data-tab-panel]").forEach((p) => { p.hidden = p.dataset.tabPanel !== "notes"; });
+  openNotesPanel();
 };

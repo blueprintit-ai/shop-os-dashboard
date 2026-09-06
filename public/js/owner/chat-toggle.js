@@ -25,11 +25,32 @@
 // flip together: chat replaces the whole ring+grid view, not just the ring
 // canvas.
 //
+// Post-review fix (finding 7): this button is now a 3-state view manager --
+// 'ring' (the dashboard), 'chat' (this button's own panel) and 'notes' (the
+// orb's "no Second Brain" fallback, opened through window.showNotesTab; see
+// ring.js's openNoteViewer() and boot.js). Whichever non-ring panel is open,
+// #ring-root/#widgets-root stay hidden together for the same reason as
+// above, and the CHAT button doubles as that panel's own close/back
+// affordance (it always reads CLOSE while chat OR notes is open, and always
+// returns to the ring view) -- so opening notes by clicking the orb no
+// longer leaves the dashboard with no control to get back to it.
+//
 // owner.css deliberately has no CSS for a chat-bar button (it excludes the
 // kit's #chatBar/#chatLog/.cm by name) -- this uses the one generic button
 // chrome class owner.css does ship (.hbtn) and inline-positions itself, the
 // same pattern ring.js's own #ballMenu already uses for a DOM piece with no
 // dedicated selector.
+//
+// panelState is module-level (not returned from mountChatToggle) because
+// ring.js calls mountChatToggle(root) as the last line of its own
+// mountRing() with no return value in its contract, while the thing that
+// needs to reach into the "notes" state -- boot.js's window.showNotesTab --
+// is defined separately, after mountRing() has already run. Module scope is
+// the simplest way for openNotesPanel() below to reach the same instance
+// mountChatToggle() just built, without changing mountRing()/ring.js's
+// existing call contract.
+let panelState = null;
+
 export function mountChatToggle(ringRoot) {
   document.getElementById("chatBar")?.remove(); // idempotent, mirrors mountRing's own repeat-mount tolerance
 
@@ -45,12 +66,49 @@ export function mountChatToggle(ringRoot) {
   document.body.appendChild(btn);
 
   const chatRoot = document.getElementById("chat-root");
+  const notesRoot = document.getElementById("notes-root");
   const widgetsRoot = document.getElementById("widgets-root");
-  btn.addEventListener("click", () => {
-    const opening = chatRoot.hidden;
-    chatRoot.hidden = !opening;
-    ringRoot.hidden = opening;
-    if (widgetsRoot) widgetsRoot.hidden = opening;
-    btn.textContent = opening ? "CLOSE" : "CHAT";
-  });
+
+  let mode = "ring";
+
+  function showRing() {
+    mode = "ring";
+    ringRoot.hidden = false;
+    if (widgetsRoot) widgetsRoot.hidden = false;
+    chatRoot.hidden = true;
+    if (notesRoot) notesRoot.hidden = true;
+    btn.textContent = "CHAT";
+    btn.title = "Open chat";
+  }
+  function showChat() {
+    mode = "chat";
+    ringRoot.hidden = true;
+    if (widgetsRoot) widgetsRoot.hidden = true;
+    chatRoot.hidden = false;
+    if (notesRoot) notesRoot.hidden = true;
+    btn.textContent = "CLOSE";
+    btn.title = "Back to dashboard";
+  }
+  function showNotes() {
+    mode = "notes";
+    ringRoot.hidden = true;
+    if (widgetsRoot) widgetsRoot.hidden = true;
+    chatRoot.hidden = true;
+    if (notesRoot) notesRoot.hidden = false;
+    btn.textContent = "CLOSE";
+    btn.title = "Back to dashboard";
+  }
+
+  btn.addEventListener("click", () => { mode === "ring" ? showChat() : showRing(); });
+
+  panelState = { showNotes };
+}
+
+// Used by boot.js's window.showNotesTab (the contract ring.js's own
+// openNoteViewer() already documents) so opening the note viewer from the
+// orb goes through the same panel manager as the CHAT button, instead of
+// only flipping [data-tab-panel] visibility and leaving the ring/widgets
+// grid drawn on top of it with no way back.
+export function openNotesPanel() {
+  panelState?.showNotes();
 }
