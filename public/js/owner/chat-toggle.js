@@ -17,6 +17,14 @@
 // SDK session, it does not hide the panel). The button is appended to
 // document.body instead, so it survives ringRoot being hidden.
 //
+// Post-review fix: the ring is not the only thing behind #chat-root --
+// #widgets-root's ".w" widgets are position:fixed too, with no z-index
+// coordination against #chat-root (which has no dedicated positioning CSS
+// of its own). Hiding only ring-root left the widget grid visibly
+// overlapping the opened chat panel. Both #ring-root and #widgets-root now
+// flip together: chat replaces the whole ring+grid view, not just the ring
+// canvas.
+//
 // owner.css deliberately has no CSS for a chat-bar button (it excludes the
 // kit's #chatBar/#chatLog/.cm by name) -- this uses the one generic button
 // chrome class owner.css does ship (.hbtn) and inline-positions itself, the
@@ -37,10 +45,12 @@ export function mountChatToggle(ringRoot) {
   document.body.appendChild(btn);
 
   const chatRoot = document.getElementById("chat-root");
+  const widgetsRoot = document.getElementById("widgets-root");
   btn.addEventListener("click", () => {
     const opening = chatRoot.hidden;
     chatRoot.hidden = !opening;
     ringRoot.hidden = opening;
+    if (widgetsRoot) widgetsRoot.hidden = opening;
     btn.textContent = opening ? "CLOSE" : "CHAT";
   });
 }
