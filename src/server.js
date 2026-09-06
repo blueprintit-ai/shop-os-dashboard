@@ -24,6 +24,7 @@ import { snapshotsRoutes } from "./routes/snapshots-routes.js";
 import { SettingsStore } from "./settings.js";
 import { settingsRoutes } from "./routes/settings-routes.js";
 import { assetsRoutes } from "./routes/assets-routes.js";
+import { runsRoutes } from "./routes/runs-routes.js";
 
 export const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup"]);
@@ -42,7 +43,7 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
   const settingsStore = new SettingsStore(homeDir);
   const ctx = { vaultPath, homeDir, users, auth, audit, index, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore };
 
-  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx)];
+  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx)];
   const gc = setInterval(() => { auth.gc(); chatSessions.gc(); }, 10 * 60 * 1000); gc.unref?.();
 
   const server = createHttpServer(async (req, res) => {
