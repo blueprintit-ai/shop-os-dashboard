@@ -11,10 +11,16 @@ Shop OS Dashboard (this package) includes, starting with Plan 2, a modified vers
 ## Changes made
 
 This copy has been changed from the original. Changes include, but are not
-limited to: rebranding the title widget and theme colors to Blueprint IT /
-Shop OS, adding a Business Assets browser (`assets.html`, `/api/assets*`),
-adding a Claude Code chat bar and run history, and configuration changes in
-`os-config.json`. The full CC BY 4.0 license text is preserved in LICENSE.
+limited to: rebuilding the ring-and-widgets owner dashboard as a dedicated
+`/owner` page (`public/owner.html`, `public/css/owner.css`,
+`public/js/owner/*`) inside this project's own module structure instead of
+the kit's single inline-script file, rebranding the title widget and theme
+colors to Blueprint IT / Shop OS, adding a Business Assets browser
+(`assets.html`, `/api/assets*`), adding a Claude Code chat bar and run
+history, and configuration changes in `os-config.json`. `REDESIGN.md` is
+carried over from the original kit's reskin-contract document, updated for
+this project's own file names and palette. The full CC BY 4.0 license text
+is preserved in LICENSE.
 
 ## Attribution in the product
 

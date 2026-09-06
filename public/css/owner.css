@@ -1,0 +1,10 @@
+:root {
+  --accent: #1c6ea4; --cream: #e8e2d2; --mute: #8d8775; --warm: #b9b19c;
+  --bg: #141310; --panel: #0d0c09;
+}
+html.light {
+  --accent: #1c6ea4; --cream: #0c1e2f; --mute: #5c6b78; --warm: #38495a;
+  --bg: #f2efe8; --panel: #ffffff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--cream); font-family: system-ui, sans-serif; }

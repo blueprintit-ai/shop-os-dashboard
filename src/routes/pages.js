@@ -1,11 +1,12 @@
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { send, serveStatic, isLoopback } from "../lib/http.js";
+import { readShopName } from "../chat/system-prompt.js";
 
 function redirect(res, to) { res.writeHead(302, { location: to }); res.end(); }
 
 export function pageRoutes(ctx) {
-  const { users, auth, publicDir } = ctx;
+  const { users, auth, publicDir, vaultPath } = ctx;
   const page = (name) => readFileSync(join(publicDir, name), "utf8");
   return async (req, res, url) => {
     if (req.method !== "GET") return false;
@@ -27,9 +28,18 @@ export function pageRoutes(ctx) {
       return send(res, 200, { "content-type": "text/html; charset=utf-8" }, page("setup.html")), true;
     }
     if (p === "/login") return send(res, 200, { "content-type": "text/html; charset=utf-8" }, page("login.html")), true;
-    if (p === "/employee" || p === "/owner") {
+    if (p === "/employee") {
       if (!user) return redirect(res, "/login"), true;
       const html = page("employee.html").replace("__ROLE__", user.role);
+      return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
+    }
+    if (p === "/owner") {
+      if (!user) return redirect(res, "/login"), true;
+      if (user.role !== "owner") return redirect(res, "/employee"), true;
+      const html = page("owner.html")
+        .replace("__ROLE__", user.role)
+        .replace("__SHOP_NAME__", readShopName(vaultPath))
+        .replace("__THEME_CLASS__", "");
       return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
     }
     if (p === "/users") {
