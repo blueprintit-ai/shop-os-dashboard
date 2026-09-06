@@ -75,3 +75,33 @@ test("GET/PUT /api/layout round-trips per user, requires auth", async () => {
     server.close(); server.ctx.index.close(); rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("cross-origin PUT /api/layout is refused (CSRF protection)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "sod-layout-csrf-"));
+  const vault = join(root, "vault"); cpSync(FIX, vault, { recursive: true });
+  const home = join(root, "home");
+  async function* fakeRunTurn() { yield { type: "done", text: "", stats: {} }; }
+  const server = createServer({ vaultPath: vault, homeDir: home, runTurn: fakeRunTurn, licenseCheck: () => ({ ok: true }) });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  try {
+    // Cross-origin PUT with mismatched origin header
+    const r = await fetch(base + "/api/layout", {
+      method: "PUT",
+      headers: { "content-type": "application/json", origin: "http://evil.example" },
+      body: JSON.stringify({ theme: "light" }),
+    });
+    assert.equal(r.status, 403, "cross-origin PUT is refused");
+
+    // PUT with no origin header at all is also refused
+    const r2 = await fetch(base + "/api/layout", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ theme: "light" }),
+    });
+    assert.equal(r2.status, 403, "PUT with no Origin header is also refused");
+  } finally {
+    server.close(); server.ctx.index.close(); rmSync(root, { recursive: true, force: true });
+  }
+});

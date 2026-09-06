@@ -42,7 +42,7 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
   const server = createHttpServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://localhost");
-      if ((req.method === "POST" || req.method === "PATCH") && !sameOriginOk(req)) {
+      if ((req.method === "POST" || req.method === "PATCH" || req.method === "PUT") && !sameOriginOk(req)) {
         return sendJson(res, 403, { error: "cross-origin" });
       }
       if (url.pathname.startsWith("/api/") && !LICENSE_EXEMPT.has(url.pathname)) {
