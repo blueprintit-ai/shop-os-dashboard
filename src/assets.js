@@ -11,7 +11,7 @@ const ASSET_MIME = {
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 const MAX_FAVORITES = 4;
-const MAX_UPLOAD = 50 * 1024 * 1024;
+export const MAX_UPLOAD = 50 * 1024 * 1024;
 
 const metaFile = (root) => join(root, ".assets.json");
 const readMeta = (root) => { try { return JSON.parse(readFileSync(metaFile(root), "utf8")); } catch { return { favorites: [] }; } };

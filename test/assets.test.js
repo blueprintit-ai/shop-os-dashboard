@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scanAssets, setFavorite, saveUpload, assetPath, assetId } from "../src/assets.js";
+import { scanAssets, setFavorite, saveUpload, assetPath, assetId, MAX_UPLOAD } from "../src/assets.js";
 import { createServer } from "../src/server.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "vault");
@@ -66,6 +66,15 @@ test("saveUpload never overwrites; it appends a (2), (3)... suffix on collision"
   assert.equal(second.name, "lease (3).pdf");
   const unknownCategory = saveUpload(root, "NoSuchCategory", "x.pdf", Buffer.from("x"));
   assert.equal(unknownCategory.code, 400);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("saveUpload rejects a buffer over the 50MB cap", () => {
+  const root = seedRoot();
+  const oversized = Buffer.alloc(MAX_UPLOAD + 1); // zero-filled; no need for real content
+  const result = saveUpload(root, "", "big.bin", oversized);
+  assert.equal(result.code, 413);
+  assert.ok(result.error);
   rmSync(root, { recursive: true, force: true });
 });
 

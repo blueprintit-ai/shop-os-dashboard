@@ -2,7 +2,7 @@ import { join, basename } from "node:path";
 import { statSync, createReadStream, existsSync } from "node:fs";
 import { requireUser } from "../auth.js";
 import { sendJson, readJsonBody } from "../lib/http.js";
-import { scanAssets, setFavorite, saveUpload, assetPath, assetMime } from "../assets.js";
+import { scanAssets, setFavorite, saveUpload, assetPath, assetMime, MAX_UPLOAD } from "../assets.js";
 
 const FILE_PREFIX = "/assets/file/";
 
@@ -39,6 +39,8 @@ export function assetsRoutes({ auth, settingsStore, homeDir, audit }) {
       if (!canSeeAssets(user)) return sendJson(res, 403, { error: "forbidden" }), true;
       const category = url.searchParams.get("category") || "";
       const name = url.searchParams.get("name") || "document";
+      const declaredLength = Number(req.headers["content-length"] || 0);
+      if (declaredLength > MAX_UPLOAD) return sendJson(res, 413, { error: "file over 50 MB" }), true;
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const result = saveUpload(root(), category, name, Buffer.concat(chunks));
