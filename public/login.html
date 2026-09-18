@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shop OS — Sign in</title><link rel="stylesheet" href="/static/css/base.css"></head>
+<body>
+<form class="card" id="login-form">
+  <h1>Sign in</h1>
+  <div class="error" id="login-error"></div>
+  <label>Username<input type="text" name="username" autocomplete="username" required autofocus></label>
+  <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+  <label class="checkbox-row"><input type="checkbox" name="remember"> Remember this device</label>
+  <button type="submit">Sign in</button>
+</form>
+<script type="module">
+import { api } from "/static/js/api.js";
+
+const form = document.getElementById("login-form");
+const errorEl = document.getElementById("login-error");
+
+const REASONS = {
+  invalid: "Wrong username or password",
+  locked: "Too many attempts, try again in 15 minutes",
+  inactive: "This account is deactivated",
+};
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  errorEl.textContent = "";
+  const fd = new FormData(form);
+  const res = await fetch("/api/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: fd.get("username"),
+      password: fd.get("password"),
+      remember: fd.get("remember") === "on",
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    errorEl.textContent = REASONS[data.reason] || "Sign in failed. Try again.";
+    return;
+  }
+  const me = await (await api("GET", "/api/me")).json();
+  if (me.license && me.license.ok === false) {
+    errorEl.textContent = "Shop OS needs attention on this license. Contact support to continue.";
+    return;
+  }
+  location.href = "/";
+});
+</script>
+</body></html>

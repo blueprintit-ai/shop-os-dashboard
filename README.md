@@ -22,3 +22,15 @@ Shop OS Dashboard: one local Node server that becomes the center access point fo
 - [[Projects/shop-os-installer|Shop OS installer]] (install logic source)
 - [[Projects/shop-os-license-server|License server]] (reused unchanged)
 - Reference kits: `Dropbox/Robonuggets/agentic-os`, `Dropbox/Robonuggets/second-brain` (CC BY 4.0, NOTICE.md in each)
+
+## Package
+
+To start the dashboard:
+```bash
+shop-os-dashboard "<vault path>"
+```
+
+To run tests:
+```bash
+npm test
+```

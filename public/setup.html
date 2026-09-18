@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shop OS — Set up</title><link rel="stylesheet" href="/static/css/base.css"></head>
+<body>
+<form class="card" id="setup-form">
+  <h1>Set up Shop OS</h1>
+  <div class="error" id="setup-error"></div>
+  <label>Display name<input type="text" name="displayName" required autofocus></label>
+  <label>Username<input type="text" name="username" autocomplete="username" required></label>
+  <label>Password<input type="password" name="password" autocomplete="new-password" required minlength="10"></label>
+  <label>Confirm password<input type="password" name="confirmPassword" autocomplete="new-password" required minlength="10"></label>
+  <button type="submit">Create owner account</button>
+</form>
+<div class="card" id="next-steps">
+  <h2>Next steps</h2>
+  <ol>
+    <li>Open a terminal in the vault folder.</li>
+    <li>Run <code>claude</code> and sign in.</li>
+    <li>Run <code>/bp-setup</code>.</li>
+  </ol>
+</div>
+<script type="module">
+const form = document.getElementById("setup-form");
+const errorEl = document.getElementById("setup-error");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  errorEl.textContent = "";
+  const fd = new FormData(form);
+  const password = fd.get("password");
+  const confirmPassword = fd.get("confirmPassword");
+  if (password !== confirmPassword) {
+    errorEl.textContent = "Passwords do not match.";
+    return;
+  }
+  const res = await fetch("/api/setup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      displayName: fd.get("displayName"),
+      username: fd.get("username"),
+      password,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) {
+    errorEl.textContent = data.error || "Setup failed. Try again.";
+    return;
+  }
+  location.href = "/";
+});
+</script>
+</body></html>
