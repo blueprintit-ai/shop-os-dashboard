@@ -1990,6 +1990,18 @@ if (-not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
   }
 }
 
+# $ErrorActionPreference = "Stop" only catches terminating exceptions and
+# cmdlet errors, not a non-zero exit code from a native exe like tar.exe — a
+# corrupted/partial tarball download would otherwise let this fall through
+# silently into `npm install --production` against an empty/partial
+# directory, then into the final launch line below with a confusing raw
+# Node "module not found" error instead of a clear failure. One explicit
+# check right before launch (reusing the same marker-file test already used
+# above to decide whether to fall back) catches both that case and an
+# npm-install failure inside the fallback branch itself.
+if (-not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
+  throw "Shop OS Dashboard install failed: bin\shop-os-dashboard-setup.js not found after both npm and GitHub fallback installs."
+}
 & $nodeBin (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js") @args
 ```
 
