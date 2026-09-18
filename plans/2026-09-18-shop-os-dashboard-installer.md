@@ -965,15 +965,18 @@ export async function installMarketplaces({ claudeRoot, fetchImpl = fetch }) {
   const failed = [];
   for (const mp of MARKETPLACES) {
     const installLocation = join(claudeRoot, "plugins", "marketplaces", mp.name);
-    if (!known[mp.name]) added.push(mp.name);
+    const wasKnown = !!known[mp.name];
     const result = await fetchMarketplaceTarball({ repo: mp.repo, destDir: installLocation, fetchImpl });
     if (!result.ok) { failed.push({ name: mp.name, error: result.error }); continue; }
+    if (!wasKnown) added.push(mp.name);
     known[mp.name] = { source: { source: "tarball", repo: mp.repo }, installLocation, lastUpdated: new Date().toISOString() };
   }
   writeJSON(path, known);
   return { added, failed };
 }
 ```
+
+**Note found during review (2026-09-18):** the version of this function originally in this plan pushed to `added` unconditionally before checking whether the fetch actually succeeded, so a marketplace that both wasn't already known *and* failed to fetch landed in both `added` and `failed` at once — misleading for anything that reports `added` to a user (Task 8's CLI, eventually). The version above checks `wasKnown` before the fetch but only records the name as `added` after confirming success.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
