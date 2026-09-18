@@ -17,6 +17,14 @@ import { usersRoutes } from "./routes/users-routes.js";
 import { notesRoutes } from "./routes/notes-routes.js";
 import { chatRoutes } from "./routes/chat-routes.js";
 import { pageRoutes } from "./routes/pages.js";
+import { LayoutStore } from "./layout.js";
+import { layoutRoutes } from "./routes/layout-routes.js";
+import { artifactsRoutes } from "./routes/artifacts-routes.js";
+import { snapshotsRoutes } from "./routes/snapshots-routes.js";
+import { SettingsStore } from "./settings.js";
+import { settingsRoutes } from "./routes/settings-routes.js";
+import { assetsRoutes } from "./routes/assets-routes.js";
+import { runsRoutes } from "./routes/runs-routes.js";
 
 export const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup"]);
@@ -31,15 +39,17 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
   const index = new LinkIndex(vaultPath); index.build(); index.watch();
   const guard = new SessionsGuard({ max: guardMax });
   const chatSessions = new SessionStore();
-  const ctx = { vaultPath, homeDir, users, auth, audit, index, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR };
+  const layoutStore = new LayoutStore(homeDir);
+  const settingsStore = new SettingsStore(homeDir);
+  const ctx = { vaultPath, homeDir, users, auth, audit, index, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore };
 
-  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx)];
+  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx)];
   const gc = setInterval(() => { auth.gc(); chatSessions.gc(); }, 10 * 60 * 1000); gc.unref?.();
 
   const server = createHttpServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://localhost");
-      if ((req.method === "POST" || req.method === "PATCH") && !sameOriginOk(req)) {
+      if ((req.method === "POST" || req.method === "PATCH" || req.method === "PUT") && !sameOriginOk(req)) {
         return sendJson(res, 403, { error: "cross-origin" });
       }
       if (url.pathname.startsWith("/api/") && !LICENSE_EXEMPT.has(url.pathname)) {

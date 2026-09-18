@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" class="__THEME_CLASS__">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shop OS — __SHOP_NAME__</title>
+  <link rel="stylesheet" href="/static/css/base.css" />
+  <link rel="stylesheet" href="/static/css/owner.css" />
+</head>
+<body data-role="__ROLE__">
+  <header id="owner-header">
+    <span id="owner-shop-name"></span>
+    <a id="users-link" href="/users">Users</a>
+    <button id="searchBtn" title="Search (or press /)">⌕</button>
+    <button id="editBtn" title="Edit layout">✎</button>
+    <button id="infoBtn" title="Tour">i</button>
+    <button id="theme-btn" aria-label="Toggle theme"></button>
+    <button id="logout-btn">Logout</button>
+  </header>
+  <main id="ring-root"></main>
+  <div id="widgets-root"></div>
+  <div id="chat-root" data-tab-panel="chat" hidden></div>
+  <div id="notes-root" data-tab-panel="notes" hidden></div>
+  <script src="/static/vendor/marked.min.js"></script>
+  <script type="module" src="/static/js/owner/theme.js"></script>
+  <script type="module" src="/static/js/chat.js"></script>
+  <script type="module" src="/static/js/notes.js"></script>
+  <script type="module" src="/static/js/owner/boot.js"></script>
+</body>
+</html>

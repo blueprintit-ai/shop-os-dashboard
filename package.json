@@ -10,6 +10,7 @@
     "bin",
     "src",
     "public",
+    "LICENSE",
     "NOTICE.md",
     "README.md"
   ],
@@ -17,7 +18,8 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "playwright test",
     "start": "node bin/shop-os-dashboard.js"
   },
   "author": "Blueprint IT <info@blueprintit.ai>",
@@ -31,6 +33,8 @@
     "marked": "18.0.11"
   },
   "devDependencies": {
-    "jsdom": "^30.0.1"
+    "@playwright/test": "^1.63.0",
+    "jsdom": "^30.0.1",
+    "playwright": "^1.48.0"
   }
 }
