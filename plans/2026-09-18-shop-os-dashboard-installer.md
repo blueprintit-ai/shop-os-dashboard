@@ -1658,8 +1658,16 @@ test("runSetup scaffolds the vault and reports each step, tolerating a failed au
   assert.equal(autostartStep.ok, false); // reported, not thrown
   assert.ok(!existsSync(join(homedir(), "Library", "LaunchAgents", "ai.blueprintit.shop-os-dashboard.plist")),
     "must never write into the real machine's home directory");
-  assert.ok(!existsSync(join(homedir(), ".claude", "plugins", "marketplaces", "blueprint-skills", ".claude-plugin")),
-    "must never touch the real ~/.claude/plugins/marketplaces directory");
+  // A negative check ("the real ~/.claude/plugins/marketplaces/blueprint-skills
+  // was never touched") is unreliable here: that path legitimately already
+  // exists on any machine with Claude Code + the real blueprint-skills
+  // marketplace installed (true for whoever is actually developing this
+  // plan), so its mere existence proves nothing either way. Check instead
+  // that the fake tarball content landed in the ISOLATED claudeRoot — proof
+  // installMarketplaces used the passed-in claudeRoot rather than falling
+  // back to the real one, without depending on the test machine's own state.
+  assert.ok(existsSync(join(claudeRoot, "plugins", "marketplaces", "blueprint-skills", ".claude-plugin", "marketplace.json")),
+    "marketplace content must land in the isolated claudeRoot");
   // saveLicenseFile appends ".shopos" itself, so passing homeOverride (not
   // homeDir, which is already "~/.shopos"-shaped) must land the file at
   // <homeOverride>/.shopos/license.json, matching where the running server's
