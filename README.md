@@ -1,7 +1,7 @@
 ---
 type: project-index
 project: shop-os-dashboard
-status: planning
+status: in-progress
 tags: [shop-os, dashboard, foundation, agentic-os, auth, note-viewer, installer]
 ---
 
@@ -11,15 +11,18 @@ Shop OS Dashboard: one local Node server that becomes the center access point fo
 
 ## Status
 
-> [!success] Design spec approved 2026-09-05. Plan 1 of 3 (Foundation) written 2026-09-05, ready to execute. Plans 2 (owner dashboard port) and 3 (installer) follow after Plan 1 lands.
+> [!success] Design spec approved 2026-09-05. Plan 1 of 3 (Foundation) merged to `main` via PR #1 (109 tests, 108 pass, 1 gated). Plan 2 of 3 (owner dashboard port, the Robonuggets-derived UI) is implemented and open for review as PR #2 (153 tests, 152 pass, 1 gated); not yet merged. Plan 3 (installer integration) has no plan doc yet and starts once Plan 2 lands.
 > Built in a new repo and package alongside the current system. No shipped repo is modified until cutover.
+
+> [!warning] Before this replaces [[Projects/shop-os-chat|Shop OS Chat]] in production: a manual run against a real customer-shaped vault, and confirming Shop OS Chat keeps working on port 7777 against the same vault while this runs on 50000. Neither has been done yet, regardless of what's merged.
 
 ## Links
 
 - [[Projects/shop-os-dashboard/specs/2026-09-05-shop-os-dashboard-design|Design spec]]
-- [[Projects/shop-os-dashboard/plans/2026-09-05-shop-os-dashboard-foundation|Plan 1: Foundation]] (server, auth, notes, chat, employee page, Users screen)
+- [[Projects/shop-os-dashboard/plans/2026-09-05-shop-os-dashboard-foundation|Plan 1: Foundation]] (server, auth, notes, chat, employee page, Users screen) — merged via PR #1
+- [[Projects/shop-os-dashboard/plans/2026-09-05-shop-os-dashboard-owner-dashboard|Plan 2: Owner Dashboard]] (ring, widgets, skills deck, artifacts, snapshots, business assets, tour, theme) — PR #2, open
 - [[Projects/shop-os-chat|Shop OS Chat]] (engine source)
-- [[Projects/shop-os-installer|Shop OS installer]] (install logic source)
+- [[Projects/shop-os-installer|Shop OS installer]] (install logic source; Plan 2 does not touch it, confirmed by both PRs' isolation checks)
 - [[Projects/shop-os-license-server|License server]] (reused unchanged)
 - Reference kits: `Dropbox/Robonuggets/agentic-os`, `Dropbox/Robonuggets/second-brain` (CC BY 4.0, NOTICE.md in each)
 
