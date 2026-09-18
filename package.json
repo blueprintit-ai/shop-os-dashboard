@@ -4,7 +4,8 @@
   "description": "Shop OS Dashboard: the center access point for Shop OS. Owner cockpit, employee door, note viewer.",
   "type": "module",
   "bin": {
-    "shop-os-dashboard": "./bin/shop-os-dashboard.js"
+    "shop-os-dashboard": "./bin/shop-os-dashboard.js",
+    "shop-os-dashboard-setup": "./bin/shop-os-dashboard-setup.js"
   },
   "files": [
     "bin",

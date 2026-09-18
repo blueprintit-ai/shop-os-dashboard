@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { resolve, join } from "node:path";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, readFileSync } from "node:fs";
 import { exec } from "node:child_process";
 import { platform } from "node:os";
 import { createServer } from "../src/server.js";
+import { checkForUpdate } from "../src/updater.js";
 import { findFreePort, lanAddresses } from "../src/lib/net.js";
 import { dashboardHome } from "../src/lib/paths.js";
 import { UserStore } from "../src/users.js";
@@ -134,7 +135,22 @@ async function main() {
     }
   }
 
-  const server = createServer({ vaultPath, homeDir: home });
+  const updateInfo = { updateAvailable: false, latest: null };
+  async function refreshUpdateInfo() {
+    const result = await checkForUpdate({ currentVersion: JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version });
+    Object.assign(updateInfo, result);
+  }
+  refreshUpdateInfo();
+  setInterval(refreshUpdateInfo, 24 * 60 * 60 * 1000).unref?.();
+
+  const server = createServer({
+    vaultPath, homeDir: home,
+    port, // the resolved listening port (from parseArgs/findFreePort above) — so /api/status reports the real port, not the default null
+    appDir: join(home, "app"),
+    npmBin: process.env.SHOPOS_NPM_BIN || "npm",
+    updateInfo, // same object refreshUpdateInfo mutates — see Task 7's server.js wiring
+    restart: () => process.exit(0), // the registered auto-start task/agent relaunches it
+  });
   server.on("error", (e) => die(`Could not start: ${e.message}`));
   server.listen(port, "0.0.0.0", () => {
     console.log(c.green("v ") + `Listening on port ${port}`);
