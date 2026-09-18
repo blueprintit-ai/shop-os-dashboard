@@ -5,7 +5,7 @@ import { buildStaffPrompt, buildOwnerPrompt } from "../chat/system-prompt.js";
 import { writeTranscript } from "../chat/transcript.js";
 
 export function chatRoutes(ctx) {
-  const { vaultPath, auth, audit, guard, chatSessions, runTurn } = ctx;
+  const { vaultPath, auth, audit, guard, chatSessions, runTurn, statusStore } = ctx;
   return async (req, res, url) => {
     const p = url.pathname;
     if (!p.startsWith("/api/chat/")) return false;
@@ -46,10 +46,13 @@ export function chatRoutes(ctx) {
           abortController.abort();
         }, 5 * 60 * 1000);
         try {
+          let observedThisTurn = false;
           for await (const ev of runTurn({ prompt: b.prompt, options })) {
             if (ev.type === "session" && ev.claudeSessionId) chatSessions.setClaudeSessionId(session.id, ev.claudeSessionId);
             if (ev.type === "text") assistantText += ev.delta;
             write(ev);
+            if (ev.type === "text" && !observedThisTurn) { observedThisTurn = true; ctx.statusStore?.recordClaudeObservation(true); }
+            if (ev.type === "error") ctx.statusStore?.observeChatError(ev.message);
           }
           if (assistantText) chatSessions.recordTurn(session.id, { role: "assistant", content: assistantText });
         } finally {
