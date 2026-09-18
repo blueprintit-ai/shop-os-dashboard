@@ -25,13 +25,20 @@ import { SettingsStore } from "./settings.js";
 import { settingsRoutes } from "./routes/settings-routes.js";
 import { assetsRoutes } from "./routes/assets-routes.js";
 import { runsRoutes } from "./routes/runs-routes.js";
+import { StatusStore } from "./status.js";
+import { statusRoutes } from "./routes/status-routes.js";
+import { updateRoutes } from "./routes/update-routes.js";
 
 export const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
-const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup"]);
+// /api/status is exempt because reporting a BROKEN license is part of what the
+// status widget exists for — gating it behind the license check meant the
+// owner's "License" card could never render the failure it was built to show.
+// It is still behind requireUser, so nothing is exposed to anonymous callers.
+const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup", "/api/status"]);
 
 export function defaultLicenseCheck() { return validateLicense(readLicense()); }
 
-export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = defaultRunTurn, licenseCheck = defaultLicenseCheck, guardMax = 3 }) {
+export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = defaultRunTurn, licenseCheck = defaultLicenseCheck, guardMax = 3, port = null, appDir = null, npmBin = null, restart = () => {}, updateInfo = { updateAvailable: false }, applyUpdateImpl = undefined }) {
   mkdirSync(homeDir, { recursive: true });
   const audit = new Audit(join(homeDir, "activity.jsonl"));
   const users = new UserStore(join(homeDir, "users.json"));
@@ -41,9 +48,10 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
   const chatSessions = new SessionStore();
   const layoutStore = new LayoutStore(homeDir);
   const settingsStore = new SettingsStore(homeDir);
-  const ctx = { vaultPath, homeDir, users, auth, audit, index, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore };
+  const statusStore = new StatusStore(homeDir);
+  const ctx = { vaultPath, homeDir, users, auth, audit, index, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore, statusStore, port, appDir, npmBin, restart, updateInfo, applyUpdateImpl };
 
-  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx)];
+  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx), statusRoutes(ctx), updateRoutes(ctx)];
   const gc = setInterval(() => { auth.gc(); chatSessions.gc(); }, 10 * 60 * 1000); gc.unref?.();
 
   const server = createHttpServer(async (req, res) => {

@@ -19,6 +19,7 @@ export function defaultLayout() {
       { id: "w-recent", name: "RECENT CHANGES", kind: "recent", c: 8, r: 16, cs: 8, rs: 5 },
       { id: "w-team", name: "TEAM ACTIVITY", kind: "team-activity", c: 16, r: 16, cs: 8, rs: 5 },
       { id: "w-roster", name: "TEAM ROSTER", kind: "team-roster", c: 24, r: 16, cs: 8, rs: 5 },
+      { id: "w-status", name: "SYSTEM STATUS", kind: "status", c: 0, r: 21, cs: 16, rs: 7 },
     ],
   };
 }
