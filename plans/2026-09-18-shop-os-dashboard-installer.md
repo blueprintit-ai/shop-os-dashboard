@@ -1002,7 +1002,9 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Produces (Windows): `registerAutoStart({nodeBin, dashboardBin, vaultPath, spawnSyncImpl?}) -> {ok: boolean, error?: string}` (wraps `schtasks /create` with a login trigger, per-user, no admin), `createDesktopShortcut({nodeBin, dashboardBin, vaultPath, desktopDir, spawnSyncImpl?}) -> {ok: boolean, path?: string, error?: string}` (writes and runs a `.vbs` via `cscript` to create a `.lnk` — no COM library needed, `WScript.Shell` is built into Windows).
-- Produces (macOS): `registerAutoStart({nodeBin, dashboardBin, vaultPath, homeOverride?, spawnSyncImpl?}) -> {ok: boolean, error?: string}` (writes a `launchd` user-agent plist to `~/Library/LaunchAgents/` and loads it with `launchctl`), `createDesktopApp({nodeBin, dashboardBin, vaultPath, desktopDir}) -> {ok: boolean, path?: string}` (hand-builds a minimal `.app` bundle: `Contents/Info.plist` + a shell-script `Contents/MacOS/Shop OS`).
+- Produces (macOS): `registerAutoStart({nodeBin, dashboardBin, vaultPath, homeOverride?, spawnSyncImpl?}) -> {ok: boolean, error?: string}` (writes a `launchd` user-agent plist to `~/Library/LaunchAgents/` and loads it with `launchctl`), `createDesktopApp({nodeBin, dashboardBin, vaultPath, desktopDir}) -> {ok: boolean, path?: string, error?: string}` (hand-builds a minimal `.app` bundle: `Contents/Info.plist` + a shell-script `Contents/MacOS/Shop OS`).
+
+All four functions wrap their filesystem/spawn work in a try/catch and return `{ok: false, error}` on any thrown exception, not just a non-zero spawn exit code — the plan's Global Constraints require auto-start/shortcut failures to be best-effort and never abort the overall setup, which a thrown filesystem error (locked-down folder, full disk) would otherwise do.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1117,12 +1119,18 @@ oShortcut.WorkingDirectory = "${vaultPath.replace(/\\/g, "\\\\")}"
 oShortcut.Description = "Shop OS"
 oShortcut.Save
 `.trim();
-  const scriptDir = mkdtempSync(join(tmpdir(), "shopos-shortcut-"));
-  const vbsPath = join(scriptDir, "shortcut.vbs");
-  writeFileSync(vbsPath, vbs, "utf8");
-  const result = spawnSyncImpl("cscript", ["//nologo", vbsPath], { encoding: "utf8" });
-  if (result.status !== 0) return { ok: false, error: result.stderr || `cscript exited ${result.status}` };
-  return { ok: true, path: shortcutPath };
+  // Best-effort per the plan's Global Constraints: a locked-down desktopDir,
+  // a full temp volume, etc. must report {ok:false}, not throw and abort setup.
+  try {
+    const scriptDir = mkdtempSync(join(tmpdir(), "shopos-shortcut-"));
+    const vbsPath = join(scriptDir, "shortcut.vbs");
+    writeFileSync(vbsPath, vbs, "utf8");
+    const result = spawnSyncImpl("cscript", ["//nologo", vbsPath], { encoding: "utf8" });
+    if (result.status !== 0) return { ok: false, error: result.stderr || `cscript exited ${result.status}` };
+    return { ok: true, path: shortcutPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 ```
 
@@ -1140,7 +1148,6 @@ const LABEL = "ai.blueprintit.shop-os-dashboard";
 export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, homeOverride, spawnSyncImpl = defaultSpawnSync }) {
   const home = homeOverride ?? homedir();
   const dir = join(home, "Library", "LaunchAgents");
-  mkdirSync(dir, { recursive: true });
   const plistPath = join(dir, `${LABEL}.plist`);
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1159,10 +1166,17 @@ export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, homeOverri
 </dict>
 </plist>
 `;
-  writeFileSync(plistPath, plist, "utf8");
-  const result = spawnSyncImpl("launchctl", ["load", plistPath], { encoding: "utf8" });
-  if (result.status !== 0) return { ok: false, error: result.stderr || `launchctl exited ${result.status}` };
-  return { ok: true };
+  // Best-effort per the plan's Global Constraints: a read-only home directory
+  // or a launchctl that refuses to load must report {ok:false}, not throw.
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(plistPath, plist, "utf8");
+    const result = spawnSyncImpl("launchctl", ["load", plistPath], { encoding: "utf8" });
+    if (result.status !== 0) return { ok: false, error: result.stderr || `launchctl exited ${result.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 // A minimal double-clickable .app: no Xcode, no bundler — just the three
@@ -1170,7 +1184,6 @@ export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, homeOverri
 export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir }) {
   const appPath = join(desktopDir, "Shop OS.app");
   const macosDir = join(appPath, "Contents", "MacOS");
-  mkdirSync(macosDir, { recursive: true });
   const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -1182,12 +1195,20 @@ export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir 
 </dict>
 </plist>
 `;
-  writeFileSync(join(appPath, "Contents", "Info.plist"), infoPlist, "utf8");
   const launcher = `#!/bin/bash\nopen "http://localhost:50000" 2>/dev/null\nexec "${nodeBin}" "${dashboardBin}" "${vaultPath}"\n`;
-  const exePath = join(macosDir, "Shop OS");
-  writeFileSync(exePath, launcher, "utf8");
-  chmodSync(exePath, 0o755);
-  return { ok: true, path: appPath };
+  // Best-effort per the plan's Global Constraints: this function previously had
+  // no failure path at all despite three fallible fs calls — a locked-down
+  // Desktop folder must report {ok:false}, not throw and abort the whole setup.
+  try {
+    mkdirSync(macosDir, { recursive: true });
+    writeFileSync(join(appPath, "Contents", "Info.plist"), infoPlist, "utf8");
+    const exePath = join(macosDir, "Shop OS");
+    writeFileSync(exePath, launcher, "utf8");
+    chmodSync(exePath, 0o755);
+    return { ok: true, path: appPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 ```
 

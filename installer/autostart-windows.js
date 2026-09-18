@@ -30,10 +30,16 @@ oShortcut.WorkingDirectory = "${vaultPath.replace(/\\/g, "\\\\")}"
 oShortcut.Description = "Shop OS"
 oShortcut.Save
 `.trim();
-  const scriptDir = mkdtempSync(join(tmpdir(), "shopos-shortcut-"));
-  const vbsPath = join(scriptDir, "shortcut.vbs");
-  writeFileSync(vbsPath, vbs, "utf8");
-  const result = spawnSyncImpl("cscript", ["//nologo", vbsPath], { encoding: "utf8" });
-  if (result.status !== 0) return { ok: false, error: result.stderr || `cscript exited ${result.status}` };
-  return { ok: true, path: shortcutPath };
+  // Best-effort per the plan's Global Constraints: a locked-down desktopDir,
+  // a full temp volume, etc. must report {ok:false}, not throw and abort setup.
+  try {
+    const scriptDir = mkdtempSync(join(tmpdir(), "shopos-shortcut-"));
+    const vbsPath = join(scriptDir, "shortcut.vbs");
+    writeFileSync(vbsPath, vbs, "utf8");
+    const result = spawnSyncImpl("cscript", ["//nologo", vbsPath], { encoding: "utf8" });
+    if (result.status !== 0) return { ok: false, error: result.stderr || `cscript exited ${result.status}` };
+    return { ok: true, path: shortcutPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }

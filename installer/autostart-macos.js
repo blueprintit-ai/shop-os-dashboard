@@ -9,7 +9,6 @@ const LABEL = "ai.blueprintit.shop-os-dashboard";
 export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, homeOverride, spawnSyncImpl = defaultSpawnSync }) {
   const home = homeOverride ?? homedir();
   const dir = join(home, "Library", "LaunchAgents");
-  mkdirSync(dir, { recursive: true });
   const plistPath = join(dir, `${LABEL}.plist`);
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -28,10 +27,17 @@ export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, homeOverri
 </dict>
 </plist>
 `;
-  writeFileSync(plistPath, plist, "utf8");
-  const result = spawnSyncImpl("launchctl", ["load", plistPath], { encoding: "utf8" });
-  if (result.status !== 0) return { ok: false, error: result.stderr || `launchctl exited ${result.status}` };
-  return { ok: true };
+  // Best-effort per the plan's Global Constraints: a read-only home directory
+  // or a launchctl that refuses to load must report {ok:false}, not throw.
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(plistPath, plist, "utf8");
+    const result = spawnSyncImpl("launchctl", ["load", plistPath], { encoding: "utf8" });
+    if (result.status !== 0) return { ok: false, error: result.stderr || `launchctl exited ${result.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 // A minimal double-clickable .app: no Xcode, no bundler — just the three
@@ -39,7 +45,6 @@ export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, homeOverri
 export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir }) {
   const appPath = join(desktopDir, "Shop OS.app");
   const macosDir = join(appPath, "Contents", "MacOS");
-  mkdirSync(macosDir, { recursive: true });
   const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -51,10 +56,18 @@ export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir 
 </dict>
 </plist>
 `;
-  writeFileSync(join(appPath, "Contents", "Info.plist"), infoPlist, "utf8");
   const launcher = `#!/bin/bash\nopen "http://localhost:50000" 2>/dev/null\nexec "${nodeBin}" "${dashboardBin}" "${vaultPath}"\n`;
-  const exePath = join(macosDir, "Shop OS");
-  writeFileSync(exePath, launcher, "utf8");
-  chmodSync(exePath, 0o755);
-  return { ok: true, path: appPath };
+  // Best-effort per the plan's Global Constraints: this function previously had
+  // no failure path at all despite three fallible fs calls — a locked-down
+  // Desktop folder must report {ok:false}, not throw and abort the whole setup.
+  try {
+    mkdirSync(macosDir, { recursive: true });
+    writeFileSync(join(appPath, "Contents", "Info.plist"), infoPlist, "utf8");
+    const exePath = join(macosDir, "Shop OS");
+    writeFileSync(exePath, launcher, "utf8");
+    chmodSync(exePath, 0o755);
+    return { ok: true, path: appPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
