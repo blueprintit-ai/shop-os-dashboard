@@ -2121,113 +2121,163 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ### Task 10: LAN QR code and status cards on the owner dashboard
 
+**Coordinator pre-flight note:** this task's Files/Interfaces/code below have been rewritten against the actual shipped Plan 2 code, not the original brief sketch. The original sketch assumed a `widgets.js` `WIDGET_TYPES` map, a `(container, { fetchJSON }) => teardownFn` renderer contract, and a `[data-widget-add="status"]` edit-mode affordance — **none of these exist** in the real codebase. The real architecture (see `public/js/owner/widgets.js`, `data-widgets.js`, and `boot.js`): widgets come from a server-persisted `layout.widgets` array (`src/layout.js`'s `defaultLayout()` for a fresh install), `boot.js` merges every kind's renderer into one `allKinds` object and passes it to `mountGrid(root, layout, allKinds)`, and `mountGrid` calls `allKinds[w.kind]?.(el.querySelector(".wb"))` — one argument (the widget's body element), return value ignored (no teardown mechanism exists anywhere in the grid engine). Every real data-widget renderer already follows this: `(el) => Promise<void>`, using the shared `api()`/`escapeHtml()` helpers from `/static/js/api.js`, not an injected `fetchJSON`. Rewritten below to match.
+
 **Files:**
-- Modify: `public/owner.html` (add a "System" widget slot), `public/js/owner/widgets.js` (register the new widget in the library)
+- Modify: `src/layout.js` (add the `status` widget to `defaultLayout()`'s `widgets` array — this is the only way a new widget kind actually appears for a real install; there is no client-side "add widget" UI anywhere in the shipped code)
+- Modify: `public/js/owner/boot.js` (merge `status: renderStatusWidget` into its `allKinds` object — the real registration point, not a `WIDGET_TYPES` map)
+- Modify: `public/owner.html` (add the vendored script tag), `public/css/owner.css` (styles for the new elements not already covered by the `.rows`/`.rowi`/`.hbtn` classes every other widget reuses)
 - Create: `public/js/owner/status-widget.js`, `public/vendor/qrcode.min.js` (vendored)
 - Modify: `NOTICE.md` (record the new vendored file)
 - Test: `test/e2e/owner.spec.js` (extend the existing Playwright suite with one assertion)
 
 **Interfaces:**
-- Consumes: `GET /api/status` from Task 6 (`{claude, license, vault, port, lan, update}`).
-- Produces: a `status` widget type recognized by `widgets.js`'s existing widget-registry pattern (same shape as the `stats`/`routines` data widgets added in Plan 2), rendering: a QR code of `http://<first LAN address>:<port>`, the address as text (for typing manually), and pass/fail cards for `claude.present`, `claude.signedIn !== "no"`, `license.ok`, `vault.reachable`, plus an "Update available" banner when `update.updateAvailable` is true with an owner-only "Update now" button posting to `/api/update`.
+- Consumes: `GET /api/status` from Task 6/7 (verified against the actual merged `src/status.js`/`src/routes/status-routes.js`: `{claude: {present, signedIn}, license: {ok}, vault: {reachable}, port, lan: string[], update: {updateAvailable}}` — matches the shape below exactly).
+- Produces: a `status` entry in `boot.js`'s `allKinds` map (real registration point), rendering: a QR code of `http://<first LAN address>:<port>`, the address as text (for typing manually), and pass/fail cards for `claude.present`, `claude.signedIn !== "no"`, `license.ok`, `vault.reachable`, plus an "Update available" banner when `update.updateAvailable` is true with an owner-only "Update now" button posting to `/api/update`.
 
 - [ ] **Step 1: Vendor the QR encoder**
 
-Download `qrcode.min.js` from `kazuhikoarase/qrcode-generator` (MIT license, single dependency-free file, the same library already widely vendored for exactly this "no bundler, no CDN, LAN-only" constraint) into `public/vendor/qrcode.min.js`, unmodified. Add to `NOTICE.md`'s "Other vendored code" section:
+Download `qrcode.min.js` from `kazuhikoarase/qrcode-generator` (MIT license, single dependency-free file, the same library already widely vendored for exactly this "no bundler, no CDN, LAN-only" constraint) into `public/vendor/qrcode.min.js`, unmodified — same directory as the existing `public/vendor/marked.min.js`/`three.module.min.js`/`thinking-orbs.js`, served at `/static/vendor/qrcode.min.js` (this project's static root maps `public/` to `/static/`, confirmed against `public/owner.html`'s existing `<script src="/static/vendor/marked.min.js">` tag — not `/vendor/...`). Add to `NOTICE.md`'s "Other vendored code" section:
 
 ```markdown
 `vendor/qrcode.min.js` is MIT-licensed (c) Kazuhiko Arase, used unmodified — https://github.com/kazuhikoarase/qrcode-generator.
 ```
 
-- [ ] **Step 2: Write the failing browser test**
+- [ ] **Step 2: Add the widget to the default layout**
+
+`src/layout.js`'s `defaultLayout()` is the only place a new widget kind actually reaches a real (fresh) install — add one entry to its `widgets` array, placed below the existing bottom row (nothing else occupies row 21+):
+
+```javascript
+{ id: "w-status", name: "SYSTEM STATUS", kind: "status", c: 0, r: 21, cs: 16, rs: 7 },
+```
+
+- [ ] **Step 3: Write the failing browser test**
 
 ```javascript
 // test/e2e/owner.spec.js — append to the existing Playwright suite
+import { test, expect } from "@playwright/test"; // already imported at the top of this file
+import { bootAsOwner } from "../helpers/boot.js"; // already imported at the top of this file
+
 test("owner dashboard shows a status widget with the LAN address", async ({ page }) => {
-  // ...existing login-as-owner setup from earlier tests in this file...
-  await page.goto("/owner");
-  await page.click('[data-widget-add="status"]'); // uses the existing edit-mode widget-add affordance from Plan 2
-  await expect(page.locator('[data-widget="status"] .lan-address')).toBeVisible();
-  await expect(page.locator('[data-widget="status"] canvas.qr-code')).toBeVisible();
+  const { url, username, password, cleanup } = await bootAsOwner();
+  try {
+    await page.goto(`${url}/login`);
+    await page.fill("input[name=username]", username);
+    await page.fill("input[name=password]", password);
+    await page.click("button[type=submit]");
+    await expect(page).toHaveURL(/\/owner$/);
+    // w-status ships in defaultLayout() (Step 2 above), so it's already
+    // present for a freshly-provisioned owner -- no "add widget" UI exists
+    // to click first (see this task's header note).
+    await expect(page.locator("#w-status .lan-address")).toBeVisible();
+    await expect(page.locator("#w-status canvas.qr-code")).toBeVisible();
+  } finally {
+    cleanup();
+  }
 });
 ```
 
-- [ ] **Step 3: Implement `public/js/owner/status-widget.js`**
+- [ ] **Step 4: Implement `public/js/owner/status-widget.js`**
 
 ```javascript
 // public/js/owner/status-widget.js
-// Registered into the widget library the same way Plan 2's data widgets are
-// (see widgets.js's WIDGET_TYPES map) — this file exports one render function
-// matching that existing contract: (container, api) => void.
-export function renderStatusWidget(container, { fetchJSON }) {
-  container.innerHTML = `
-    <div class="status-cards"></div>
+// Registered into boot.js's `allKinds` map -- there is no "WIDGET_TYPES"
+// map in widgets.js; kinds are plain entries merged from data-widgets.js's
+// kindRenderers plus skills/assets/status (see boot.js). Renderer contract
+// matches every other kind in data-widgets.js: (el) => Promise<void>,
+// called once by widgets.js's mountGrid with only the widget's .wb body
+// element -- no injected `{ fetchJSON }` argument and no teardown-function
+// contract exist anywhere in the shipped grid engine (widgets.js:
+// `allKinds[w.kind]?.(el.querySelector(".wb"))`, return value ignored, so a
+// setInterval refresh loop would leak after the widget is removed via its
+// ✕ button). Consistent with every other data widget here (none of which
+// poll), this renders once per page load -- a manual reload is already how
+// every other widget in this dashboard picks up new data.
+import { api, escapeHtml } from "/static/js/api.js";
+
+export async function renderStatusWidget(el) {
+  el.innerHTML = `
+    <div class="rows status-cards"></div>
     <div class="lan-address"></div>
     <canvas class="qr-code" width="160" height="160"></canvas>
     <div class="update-banner" hidden>
       <span>Update available</span>
-      <button class="update-now">Update now</button>
+      <button class="hbtn solid update-now" type="button">Update now</button>
     </div>
   `;
-  const cardsEl = container.querySelector(".status-cards");
-  const addrEl = container.querySelector(".lan-address");
-  const canvas = container.querySelector("canvas.qr-code");
-  const banner = container.querySelector(".update-banner");
+  const cardsEl = el.querySelector(".status-cards");
+  const addrEl = el.querySelector(".lan-address");
+  const canvas = el.querySelector("canvas.qr-code");
+  const banner = el.querySelector(".update-banner");
 
-  async function refresh() {
-    const status = await fetchJSON("/api/status");
-    cardsEl.innerHTML = [
-      ["Claude Code", status.claude.present],
-      ["Claude signed in", status.claude.signedIn !== "no"],
-      ["License", status.license.ok],
-      ["Vault reachable", status.vault.reachable],
-    ].map(([label, ok]) => `<div class="status-card ${ok ? "ok" : "fail"}">${label}</div>`).join("");
+  const res = await api("GET", "/api/status");
+  if (!res.ok) { el.innerHTML = `<p class="muted">Status not available.</p>`; return; }
+  const status = await res.json();
 
-    const addr = status.lan[0];
-    const url = addr ? `http://${addr}:${status.port}` : null;
-    addrEl.textContent = url ?? "No LAN address detected — this computer only";
-    if (url && window.qrcode) {
-      const qr = window.qrcode(0, "M");
-      qr.addData(url);
-      qr.make();
-      const ctx = canvas.getContext("2d");
-      const size = qr.getModuleCount();
-      const cell = canvas.width / size;
-      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#000";
-      for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (qr.isDark(r, c)) ctx.fillRect(c * cell, r * cell, cell, cell);
-    }
+  cardsEl.innerHTML = [
+    ["Claude Code", status.claude.present],
+    ["Claude signed in", status.claude.signedIn !== "no"],
+    ["License", status.license.ok],
+    ["Vault reachable", status.vault.reachable],
+  ].map(([label, ok]) => `<div class="rowi"><span class="dot${ok ? " hot" : ""}"></span>${escapeHtml(label)}</div>`).join("");
 
-    banner.hidden = !status.update?.updateAvailable;
+  const addr = status.lan[0];
+  const url = addr ? `http://${addr}:${status.port}` : null;
+  addrEl.textContent = url ?? "No LAN address detected — this computer only";
+  if (url && window.qrcode) {
+    const qr = window.qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    const ctx = canvas.getContext("2d");
+    const size = qr.getModuleCount();
+    const cell = canvas.width / size;
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000";
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (qr.isDark(r, c)) ctx.fillRect(c * cell, r * cell, cell, cell);
   }
 
-  banner.querySelector(".update-now").addEventListener("click", async () => {
-    await fetch("/api/update", { method: "POST" });
-    banner.querySelector(".update-now").textContent = "Restarting…";
+  banner.hidden = !status.update?.updateAvailable;
+  banner.querySelector(".update-now").addEventListener("click", async (e) => {
+    await api("POST", "/api/update"); // api() also gets us the 401-redirect-to-login handling every other button here relies on; a raw fetch would not
+    e.target.textContent = "Restarting…";
   });
-
-  refresh();
-  const timer = setInterval(refresh, 30000);
-  return () => clearInterval(timer); // widgets.js's teardown contract from Plan 2
 }
 ```
 
-Add `<script src="/vendor/qrcode.min.js"></script>` to `public/owner.html` alongside the existing `three.module.min.js`/`thinking-orbs.js` script tags, and register `"status": renderStatusWidget` in `widgets.js`'s `WIDGET_TYPES` map next to the Plan 2 data widgets, importing from `./status-widget.js`.
+- [ ] **Step 5: Wire it in**
 
-- [ ] **Step 4: Run the browser test**
+Add `<script src="/static/vendor/qrcode.min.js"></script>` to `public/owner.html`, directly after the existing `<script src="/static/vendor/marked.min.js"></script>` line (same non-module, global-exposing pattern — `qrcode-generator` exposes `window.qrcode`, just like `marked` exposes `window.marked`).
+
+In `public/js/owner/boot.js`, add `import { renderStatusWidget } from "./status-widget.js";` alongside its existing imports, and extend its `allKinds` line:
+
+```javascript
+const allKinds = { ...kindRenderers, skills: mountSkillsDeck, assets: mountAssetsFavorites, status: renderStatusWidget };
+```
+
+In `public/css/owner.css`, append (the status-card list itself reuses the file's existing `.rows`/`.rowi`/`.dot` and `.hbtn`/`.hbtn.solid` classes already defined for every other widget — only these three elements are new):
+
+```css
+/* ---- system status widget (w-status: LAN QR + health cards) ---- */
+.lan-address { font-size: 11px; color: var(--mute); letter-spacing: .3px; margin: 8px 0 4px; word-break: break-all; }
+canvas.qr-code { display: block; margin: 4px auto; background: #fff; border-radius: 4px; }
+.update-banner { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent); font-size: 11.5px; }
+.update-banner[hidden] { display: none; }
+```
+
+- [ ] **Step 6: Run the browser test**
 
 Run: `npx playwright test test/e2e/owner.spec.js`
 Expected: PASS
 
-- [ ] **Step 5: Run the full suite**
+- [ ] **Step 7: Run the full suite**
 
 Run: `npm test`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add public/vendor/qrcode.min.js public/js/owner/status-widget.js public/js/owner/widgets.js public/owner.html NOTICE.md test/e2e/owner.spec.js
+git add public/vendor/qrcode.min.js public/js/owner/status-widget.js public/js/owner/boot.js public/owner.html public/css/owner.css src/layout.js NOTICE.md test/e2e/owner.spec.js
 git commit -m "feat: LAN QR code and system status widget on the owner dashboard
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
