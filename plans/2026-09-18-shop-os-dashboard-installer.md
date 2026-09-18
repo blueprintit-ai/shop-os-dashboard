@@ -1234,6 +1234,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Create: `src/status.js`, `src/routes/status-routes.js`
 - Modify: `src/server.js` (register the new router, wire a status callback through `ctx`), `src/chat/run-turn.js` is **not** modified — the auth-signal hook lives in `chat-routes.js` instead
 - Modify: `src/routes/chat-routes.js` (report a `claudeSignedIn` observation to the status store after each turn)
+- Modify: `test/server.test.js` (add `/api/status` to the existing central role-matrix test — see Step 4a)
 - Test: `test/status.test.js`, `test/status-routes.test.js`
 
 **Interfaces:**
@@ -1398,6 +1399,14 @@ if (ev.type === "error") ctx.statusStore?.observeChatError(ev.message);
 
 Pass `statusStore` into `chatRoutes(ctx)`'s destructure alongside the existing fields (`const { vaultPath, auth, audit, guard, chatSessions, runTurn, statusStore } = ctx;`).
 
+- [ ] **Step 4a: Add `/api/status` to the existing role-matrix test**
+
+`test/server.test.js` has a central `[method, path, {anon, staff, owner}]` matrix (in the `"route-by-role matrix"` test) that every other authenticated-user-only route appears in — `/api/status` needs a row too, or there is no automated check that a real staff/owner session gets a 200 (the new `test/status-routes.test.js` only checks the anonymous 401 case). Add this line to the `cases` array, next to the similar `/api/chat/status`/`/api/me` rows:
+
+```javascript
+["GET", "/api/status", { anon: 401, staff: 200, owner: 200 }],
+```
+
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `node --test test/status.test.js test/status-routes.test.js`
@@ -1411,7 +1420,7 @@ Expected: PASS (existing chat and server route-matrix tests unaffected — the n
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/status.js src/routes/status-routes.js src/server.js src/routes/chat-routes.js test/status.test.js test/status-routes.test.js
+git add src/status.js src/routes/status-routes.js src/server.js src/routes/chat-routes.js test/status.test.js test/status-routes.test.js test/server.test.js
 git commit -m "feat: status module with best-effort Claude sign-in detection
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"

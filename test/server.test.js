@@ -74,6 +74,7 @@ test("route-by-role matrix", async () => {
       ["GET", "/api/notes/recent", { anon: 401, staff: 200, owner: 200 }],
       ["POST", "/api/notes/rescan", { anon: 401, staff: 403, owner: 204 }],
       ["GET", "/api/chat/status", { anon: 401, staff: 200, owner: 200 }],
+      ["GET", "/api/status", { anon: 401, staff: 200, owner: 200 }],
       ["GET", "/api/me", { anon: 401, staff: 200, owner: 200 }],
       ["GET", "/users", { anon: 302, staff: 302, owner: 200 }],
       ["GET", "/employee", { anon: 302, staff: 200, owner: 200 }],
