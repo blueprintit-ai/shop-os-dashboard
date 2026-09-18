@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import {
   createVaultClaudeMd, createRawInbox, buildPermissionAllowList,
-  enableForVault, saveLicenseFile, installMarketplaces,
+  enableForVault, enableForUser, saveLicenseFile, installMarketplaces,
   normalizeLicenseKey, looksLikeLicenseKey, validateLicense,
 } from "../installer/vault-setup.js";
 
@@ -57,10 +57,34 @@ test("enableForVault merges plugin ids into .claude/settings.json without clobbe
   const vault = mkdtempSync(join(tmpdir(), "vault-"));
   mkdirSync(join(vault, ".claude"), { recursive: true });
   writeFileSync(join(vault, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "other@mp": true } }));
-  const path = enableForVault(vault, ["obsidian@blueprint-skills"]);
+  const { path, warning } = enableForVault(vault, ["obsidian@blueprint-skills"]);
+  assert.equal(warning, null);
   const settings = JSON.parse(readFileSync(path, "utf8"));
   assert.equal(settings.enabledPlugins["other@mp"], true);
   assert.equal(settings.enabledPlugins["obsidian@blueprint-skills"], true);
+});
+
+test("a malformed settings.json is backed up to .bak and reported, not silently destroyed", () => {
+  // A real ~/.claude/settings.json carries hooks, permissions and MCP config.
+  // readJSON's swallow-and-return-{} behaviour meant a trailing comma (or a
+  // file caught mid-write) got rewritten with nothing but enabledPlugins.
+  const claudeRoot = mkdtempSync(join(tmpdir(), "claude-"));
+  const malformed = '{\n  "hooks": { "Stop": [] },\n  "permissions": { "allow": ["Read"] },\n}';
+  writeFileSync(join(claudeRoot, "settings.json"), malformed, "utf8");
+
+  const { path, warning } = enableForUser(claudeRoot, ["obsidian@blueprint-skills"]);
+  assert.ok(warning, "an unparseable settings.json must be reported, not silently succeed");
+  assert.match(warning, /not valid JSON/);
+  assert.equal(readFileSync(`${path}.bak`, "utf8"), malformed, "the original bytes must survive in the .bak");
+  const rewritten = JSON.parse(readFileSync(path, "utf8"));
+  assert.equal(rewritten.enabledPlugins["obsidian@blueprint-skills"], true);
+});
+
+test("a missing settings.json is NOT treated as a parse failure (no spurious .bak)", () => {
+  const claudeRoot = mkdtempSync(join(tmpdir(), "claude-"));
+  const { path, warning } = enableForUser(claudeRoot, ["obsidian@blueprint-skills"]);
+  assert.equal(warning, null);
+  assert.equal(existsSync(`${path}.bak`), false);
 });
 
 test("saveLicenseFile writes a chmod-600 record under the given home", () => {
@@ -79,6 +103,20 @@ test("installMarketplaces fetches both marketplaces via tarball, no git", async 
   const known = JSON.parse(readFileSync(join(claudeRoot, "plugins", "known_marketplaces.json"), "utf8"));
   assert.ok(known["blueprint-skills"]);
   assert.ok(known["claude-plugins-official"]);
+  // "github" is the source TYPE Claude Code understands (github|directory|path);
+  // "tarball" is only how this installer happened to fetch the bytes.
+  assert.equal(known["blueprint-skills"].source.source, "github");
+  assert.equal(known["blueprint-skills"].source.repo, "blueprintit-ai/blueprint-skills");
+  assert.equal(known["claude-plugins-official"].source.source, "github");
+});
+
+test("installMarketplaces does not create an empty known_marketplaces.json when every fetch fails", async () => {
+  const claudeRoot = mkdtempSync(join(tmpdir(), "claude-"));
+  const fetchImpl = async () => { throw new Error("offline"); };
+  const result = await installMarketplaces({ claudeRoot, fetchImpl });
+  assert.equal(result.added.length, 0);
+  assert.equal(result.failed.length, 2);
+  assert.equal(existsSync(join(claudeRoot, "plugins", "known_marketplaces.json")), false);
 });
 
 test("normalizeLicenseKey uppercases, trims, and strips internal whitespace", () => {

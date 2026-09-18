@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { resolveNode } from "../installer/node-runtime.js";
+import { JsonStore } from "../src/lib/store.js";
 import {
   installMarketplaces, createVaultClaudeMd, createRawInbox, enableForVault, enableForUser, saveLicenseFile, PLUGINS_TO_ENABLE,
   normalizeLicenseKey, looksLikeLicenseKey, validateLicense,
@@ -15,12 +16,30 @@ import * as mac from "../installer/autostart-macos.js";
 export async function runSetup({ vaultPath, license, homeDir = join(homedir(), ".shopos"), isWindows = process.platform === "win32", desktopDir, homeOverride, claudeRoot = join(homedir(), ".claude"), fetchImpl = fetch, spawnSyncImpl }) {
   const steps = [];
   const record = (name, fn) => {
-    try { const value = fn(); steps.push({ name, ok: true, value }); return value; }
-    catch (e) { steps.push({ name, ok: false, error: e.message }); return null; }
+    try {
+      const value = fn();
+      // A step may succeed structurally yet have something the owner must be
+      // told about (e.g. enableForUser had to back up an unparseable
+      // settings.json). That is reported as a failed step, not a silent pass.
+      if (value && typeof value === "object" && value.warning) {
+        steps.push({ name, ok: false, warning: true, error: value.warning, value });
+        return value;
+      }
+      steps.push({ name, ok: true, value });
+      return value;
+    } catch (e) { steps.push({ name, ok: false, error: e.message }); return null; }
   };
 
   const node = await resolveNode({ homeDir, fetchImpl, spawnSyncImpl });
   steps.push({ name: "node", ok: true, value: node });
+
+  // The running dashboard has no other way to find npm: on a portable-Node
+  // install there is no npm on PATH at all, so "Update now" would be an ENOENT.
+  // src/lib/paths.js's shoposRuntimeFile() is the read side of this file.
+  record("runtime", () => {
+    new JsonStore(join(homeDir, "runtime.json"), {}).save({ node: node.node, npm: node.npm, version: node.version, system: node.system });
+    return join(homeDir, "runtime.json");
+  });
 
   const mpResult = await installMarketplaces({ claudeRoot, fetchImpl });
   steps.push({ name: "marketplaces", ok: mpResult.failed.length === 0, error: mpResult.failed.map((f) => f.error).join("; ") || undefined });
@@ -54,7 +73,10 @@ export async function runSetup({ vaultPath, license, homeDir = join(homedir(), "
 
   // Blocking steps: vault scaffolding and marketplaces. Everything else
   // (autostart, shortcut) is best-effort and never flips the overall result.
-  const blocking = steps.filter((s) => ["marketplaces", "vault.claudeMd", "vault.rawInbox", "vault.settings", "user.settings", "license"].includes(s.name));
+  // `warning: true` steps (e.g. an unparseable settings.json that was backed up
+  // and rebuilt) are surfaced to the owner with a ⚠ but did not actually fail:
+  // the file is written and usable, so they must not fail the whole install.
+  const blocking = steps.filter((s) => !s.warning && ["marketplaces", "vault.claudeMd", "vault.rawInbox", "vault.settings", "user.settings", "license"].includes(s.name));
   return { ok: blocking.every((s) => s.ok), steps, node };
 }
 
@@ -72,6 +94,9 @@ export async function main(argv = process.argv.slice(2)) {
   let license;
   for (let attempt = 1; attempt <= 3; attempt++) {
     const rawKey = args.license || (await rl.question("Shop OS license key: "));
+    // Clear it immediately: otherwise a bad --license value is retried
+    // verbatim on every iteration and the loop never prompts interactively.
+    args.license = undefined;
     const key = normalizeLicenseKey(rawKey);
     if (!looksLikeLicenseKey(key)) {
       console.log(`That doesn't look like a Shop OS key. The format is SHOP-XXXX-XXXX-XXXX.`);

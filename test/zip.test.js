@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deflateRawSync } from "node:zlib";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractZip } from "../installer/zip.js";
@@ -76,4 +76,17 @@ test("extracts stored file names and deflated content", () => {
   const { files } = extractZip(zip, dest);
   assert.deepEqual(files, ["node.exe"]);
   assert.equal(readFileSync(join(dest, "node.exe"), "utf8"), "fake-binary-content");
+});
+
+test("refuses to extract an entry that escapes destDir via ..", () => {
+  const zip = buildZip([
+    { name: "foo/../../escaped.txt", content: "pwned" },
+    { name: "safe.txt", content: "fine" },
+  ]);
+  const dest = mkdtempSync(join(tmpdir(), "zip-slip-"));
+  const { files } = extractZip(zip, dest); // must not throw
+  assert.deepEqual(files, ["safe.txt"]); // the malicious entry is not reported
+  assert.equal(readFileSync(join(dest, "safe.txt"), "utf8"), "fine");
+  assert.equal(existsSync(join(dest, "..", "escaped.txt")), false);
+  assert.equal(existsSync(join(dest, "..", "..", "escaped.txt")), false);
 });

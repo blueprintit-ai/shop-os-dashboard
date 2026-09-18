@@ -56,6 +56,51 @@ test("downloads and extracts a portable Node when no system Node qualifies", asy
   assert.ok(calls.some((u) => u.endsWith("/index.json")));
 });
 
+test("a qualifying system Node is returned as an absolute path, not a bare command name", async () => {
+  // launchd's PATH is /usr/bin:/bin:/usr/sbin:/sbin and it sources no shell
+  // profile, so a bare "node" in the plist never finds a Homebrew/nvm install.
+  const home = mkdtempSync(join(tmpdir(), "node-runtime-"));
+  const spawnSyncImpl = (cmd, args) => {
+    if (cmd === "node" && args[0] === "--version") return { status: 0, stdout: "v22.20.0\n" };
+    if (cmd === "which" && args[0] === "node") return { status: 0, stdout: "/opt/homebrew/bin/node\n" };
+    if (cmd === "which" && args[0] === "npm") return { status: 0, stdout: "/opt/homebrew/bin/npm\n" };
+    return { status: 1, stdout: "" };
+  };
+  const result = await resolveNode({ homeDir: home, fetchImpl: async () => { throw new Error("must not fetch"); }, spawnSyncImpl, platformOverride: "darwin", archOverride: "arm64" });
+  assert.equal(result.system, true);
+  assert.equal(result.node, "/opt/homebrew/bin/node");
+  assert.equal(result.npm, "/opt/homebrew/bin/npm");
+  assert.notEqual(result.node, "node");
+  assert.ok(result.node.includes("/"), "node must be an absolute path");
+  assert.ok(result.npm.includes("/"), "npm must be an absolute path");
+});
+
+test("system Node on Windows picks npm.cmd out of `where`'s multi-line output", async () => {
+  const home = mkdtempSync(join(tmpdir(), "node-runtime-"));
+  const spawnSyncImpl = (cmd, args) => {
+    if (cmd === "node" && args[0] === "--version") return { status: 0, stdout: "v22.20.0\n" };
+    if (cmd === "where" && args[0] === "node") return { status: 0, stdout: "C:\\Program Files\\nodejs\\node.exe\r\n" };
+    // `where npm.cmd` lists the shell wrapper first, then the batch file we need
+    if (cmd === "where") return { status: 0, stdout: "C:\\Program Files\\nodejs\\npm\r\nC:\\Program Files\\nodejs\\npm.cmd\r\n" };
+    return { status: 1, stdout: "" };
+  };
+  const result = await resolveNode({ homeDir: home, fetchImpl: async () => { throw new Error("must not fetch"); }, spawnSyncImpl, platformOverride: "win32", archOverride: "x64" });
+  assert.equal(result.node, "C:\\Program Files\\nodejs\\node.exe");
+  assert.equal(result.npm, "C:\\Program Files\\nodejs\\npm.cmd");
+});
+
+test("system npm falls back to node's sibling when which/where finds no npm at all", async () => {
+  const home = mkdtempSync(join(tmpdir(), "node-runtime-"));
+  const spawnSyncImpl = (cmd, args) => {
+    if (cmd === "node" && args[0] === "--version") return { status: 0, stdout: "v22.20.0\n" };
+    if (cmd === "which" && args[0] === "node") return { status: 0, stdout: "/opt/homebrew/bin/node\n" };
+    return { status: 1, stdout: "" };
+  };
+  const result = await resolveNode({ homeDir: home, fetchImpl: async () => { throw new Error("must not fetch"); }, spawnSyncImpl, platformOverride: "darwin", archOverride: "arm64" });
+  // path.join normalizes separators per host OS, so match either form
+  assert.match(result.npm, /[\\/]opt[\\/]homebrew[\\/]bin[\\/]npm$/);
+});
+
 test("reuses an already-downloaded portable Node without fetching again", async () => {
   const home = mkdtempSync(join(tmpdir(), "node-runtime-"));
   let fetchCalls = 0;

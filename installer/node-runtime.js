@@ -1,6 +1,6 @@
 import { spawnSync as defaultSpawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { platform as osPlatform, arch as osArch } from "node:os";
 import { extractTarGz } from "./tar.js";
 import { extractZip } from "./zip.js";
@@ -22,6 +22,27 @@ function checkSystemNode(spawnSyncImpl) {
     const version = result.stdout.trim();
     if (parseMajor(version) < MIN_MAJOR) return null;
     return version;
+  } catch {
+    return null;
+  }
+}
+
+// launchd runs with a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin) and does not
+// source shell profiles, so a bare "node" written into the plist never resolves
+// for a Homebrew/nvm/fnm install — the common case on a real Mac. Everything we
+// hand to launchd/schtasks/the .lnk has to be an absolute path.
+function resolveBinPath(spawnSyncImpl, command, isWin, { preferExt } = {}) {
+  try {
+    const result = spawnSyncImpl(isWin ? "where" : "which", [command], { encoding: "utf8" });
+    if (result.status !== 0 || !result.stdout) return null;
+    const lines = String(result.stdout).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return null;
+    // `where npm` lists both the shell wrapper and npm.cmd; we want the .cmd.
+    if (preferExt) {
+      const match = lines.find((l) => l.toLowerCase().endsWith(preferExt));
+      if (match) return match;
+    }
+    return lines[0];
   } catch {
     return null;
   }
@@ -69,13 +90,19 @@ function findCachedNode(runtimeDir, isWin) {
 }
 
 export async function resolveNode({ homeDir, fetchImpl = fetch, spawnSyncImpl = defaultSpawnSync, platformOverride, archOverride }) {
+  const isWin = (platformOverride ?? osPlatform()) === "win32";
   const systemVersion = checkSystemNode(spawnSyncImpl);
   if (systemVersion) {
-    return { node: "node", npm: (platformOverride ?? osPlatform()) === "win32" ? "npm.cmd" : "npm", system: true, version: systemVersion };
+    const bareNpm = isWin ? "npm.cmd" : "npm";
+    const nodePath = resolveBinPath(spawnSyncImpl, "node", isWin);
+    // npm always ships next to the node binary, so the sibling is a safer
+    // second choice than falling straight back to the bare command name.
+    const npmPath = resolveBinPath(spawnSyncImpl, bareNpm, isWin, { preferExt: ".cmd" })
+      ?? (nodePath ? join(dirname(nodePath), bareNpm) : null);
+    return { node: nodePath ?? "node", npm: npmPath ?? bareNpm, system: true, version: systemVersion };
   }
 
   const runtimeDir = join(homeDir, "runtime");
-  const isWin = (platformOverride ?? osPlatform()) === "win32";
 
   const cached = findCachedNode(runtimeDir, isWin);
   if (cached) return { node: cached.nodeBin, npm: cached.npmBin, system: false, version: cached.version };

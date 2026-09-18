@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -76,4 +76,56 @@ test("runSetup scaffolds the vault and reports each step, tolerating a failed au
   // this assertion would fail.
   assert.ok(existsSync(join(homeDir, "license.json")),
     "license must be saved where readLicense() will actually find it, not double-nested");
+});
+
+test("runSetup persists the resolved node/npm paths to runtime.json for the updater to read later", async () => {
+  // Nothing else ever tells the running dashboard where npm is: on a
+  // portable-Node install there is no npm on PATH at all, so "Update now"
+  // would be an ENOENT. src/lib/paths.js's shoposRuntimeFile() is the
+  // read side; bin/shop-os-dashboard.js's resolveNpmBin() consumes it.
+  const homeOverride = mkdtempSync(join(tmpdir(), "os-home-"));
+  const homeDir = join(homeOverride, ".shopos");
+  const claudeRoot = join(homeOverride, ".claude");
+  const vaultPath = mkdtempSync(join(tmpdir(), "vault-"));
+  const license = { key: "SHOP-AAAA-BBBB-CCCC", customer: "Acme", product: "foundation", entitlements: ["foundation"] };
+  const fetchImpl = async () => ({ ok: true, arrayBuffer: async () => tarGzWithManifest() });
+  const spawnSyncImpl = (cmd, args) => {
+    if (cmd === "node" && args[0] === "--version") return { status: 0, stdout: "v22.20.0\n" };
+    if (cmd === "which" || cmd === "where") return { status: 0, stdout: "/opt/homebrew/bin/" + args[0] + "\n" };
+    return { status: 1, stderr: "denied" };
+  };
+
+  const result = await runSetup({ vaultPath, license, homeDir, isWindows: false, homeOverride, claudeRoot, fetchImpl, spawnSyncImpl });
+
+  const runtimePath = join(homeDir, "runtime.json");
+  assert.ok(existsSync(runtimePath), "runtime.json must be written under ~/.shopos");
+  const record = JSON.parse(readFileSync(runtimePath, "utf8"));
+  assert.equal(record.node, "/opt/homebrew/bin/node");
+  // resolveNode asks for "npm.cmd" when the host is Windows, "npm" otherwise —
+  // either way what lands here is the absolute path, never a bare command name.
+  assert.match(record.npm, /^\/opt\/homebrew\/bin\/npm(\.cmd)?$/);
+  assert.ok(result.steps.some((s) => s.name === "runtime" && s.ok));
+});
+
+test("a malformed user settings.json is reported as a warning but does not fail the install", async () => {
+  const homeOverride = mkdtempSync(join(tmpdir(), "os-home-"));
+  const homeDir = join(homeOverride, ".shopos");
+  const claudeRoot = join(homeOverride, ".claude");
+  mkdirSync(claudeRoot, { recursive: true });
+  writeFileSync(join(claudeRoot, "settings.json"), '{ "hooks": {}, }', "utf8");
+  const vaultPath = mkdtempSync(join(tmpdir(), "vault-"));
+  const license = { key: "SHOP-AAAA-BBBB-CCCC", customer: "Acme", product: "foundation", entitlements: ["foundation"] };
+  const fetchImpl = async () => ({ ok: true, arrayBuffer: async () => tarGzWithManifest() });
+  const spawnSyncImpl = (cmd) => (/schtasks|launchctl|cscript/.test(cmd) ? { status: 1, stderr: "denied" } : { status: 0, stdout: "v22.0.0\n" });
+
+  const result = await runSetup({ vaultPath, license, homeDir, isWindows: false, homeOverride, claudeRoot, fetchImpl, spawnSyncImpl });
+
+  const step = result.steps.find((s) => s.name === "user.settings");
+  assert.equal(step.ok, false);
+  assert.equal(step.warning, true);
+  assert.match(step.error, /backed up/);
+  assert.ok(existsSync(join(claudeRoot, "settings.json.bak")));
+  // The settings file was still written and is usable, so the overall install
+  // must not be reported as failed over a backup.
+  assert.equal(result.ok, true);
 });

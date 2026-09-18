@@ -35,7 +35,11 @@ oShortcut.Save
   try {
     const scriptDir = mkdtempSync(join(tmpdir(), "shopos-shortcut-"));
     const vbsPath = join(scriptDir, "shortcut.vbs");
-    writeFileSync(vbsPath, vbs, "utf8");
+    // cscript decodes a BOM-less .vbs with the system ANSI codepage, which
+    // mangles the C:\Users\<name>\... paths embedded above for any non-ASCII
+    // username — the same bug class already fixed for this branch's PowerShell
+    // scripts (docs/windows-defender-false-positive.md / Task 9).
+    writeFileSync(vbsPath, Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(vbs, "utf8")]));
     const result = spawnSyncImpl("cscript", ["//nologo", vbsPath], { encoding: "utf8" });
     if (result.status !== 0) return { ok: false, error: result.stderr || `cscript exited ${result.status}` };
     return { ok: true, path: shortcutPath };

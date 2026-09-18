@@ -4,9 +4,10 @@ import { existsSync, statSync, readFileSync } from "node:fs";
 import { exec } from "node:child_process";
 import { platform } from "node:os";
 import { createServer } from "../src/server.js";
-import { checkForUpdate } from "../src/updater.js";
+import { checkForUpdate, makeRestart } from "../src/updater.js";
 import { findFreePort, lanAddresses } from "../src/lib/net.js";
-import { dashboardHome } from "../src/lib/paths.js";
+import { dashboardHome, shoposAppDir, shoposRuntimeFile } from "../src/lib/paths.js";
+import { JsonStore } from "../src/lib/store.js";
 import { UserStore } from "../src/users.js";
 import { readLicense } from "../src/license.js";
 import { Audit } from "../src/audit.js";
@@ -100,6 +101,16 @@ async function resetOwner({ home, newPassword }) {
   console.log(c.green("v ") + `Password updated for ${target.username}`);
 }
 
+// Setup (bin/shop-os-dashboard-setup.js) persists the absolute node/npm paths
+// resolveNode() picked into ~/.shopos/runtime.json, because on a portable-Node
+// install there is no npm on PATH at all — a bare "npm" would be ENOENT the
+// moment the owner clicks "Update now". The bare fallback is for a dev or
+// manual install where the file was never written.
+function resolveNpmBin() {
+  const record = new JsonStore(shoposRuntimeFile(), {}).load();
+  return process.env.SHOPOS_NPM_BIN || record?.npm || "npm";
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -140,16 +151,21 @@ async function main() {
     const result = await checkForUpdate({ currentVersion: JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version });
     Object.assign(updateInfo, result);
   }
-  refreshUpdateInfo();
-  setInterval(refreshUpdateInfo, 24 * 60 * 60 * 1000).unref?.();
+  // Unawaited on purpose (the server must not wait on the registry), but an
+  // unhandled rejection in here would take the whole process down on modern Node.
+  refreshUpdateInfo().catch(() => {});
+  setInterval(() => refreshUpdateInfo().catch(() => {}), 24 * 60 * 60 * 1000).unref?.();
 
   const server = createServer({
     vaultPath, homeDir: home,
     port, // the resolved listening port (from parseArgs/findFreePort above) — so /api/status reports the real port, not the default null
-    appDir: join(home, "app"),
-    npmBin: process.env.SHOPOS_NPM_BIN || "npm",
+    // NOT join(home, "app"): `home` is the app-DATA dir (~/.shopos/dashboard).
+    // The install lives at ~/.shopos/app, which is what every installer script
+    // and runSetup's own dashboardBin agree on. See src/lib/paths.js.
+    appDir: shoposAppDir(),
+    npmBin: resolveNpmBin(),
     updateInfo, // same object refreshUpdateInfo mutates — see Task 7's server.js wiring
-    restart: () => process.exit(0), // the registered auto-start task/agent relaunches it
+    restart: makeRestart(), // relaunches detached before exiting — autostart only fires at login
   });
   server.on("error", (e) => die(`Could not start: ${e.message}`));
   server.listen(port, "0.0.0.0", () => {

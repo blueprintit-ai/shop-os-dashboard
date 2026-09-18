@@ -35,3 +35,18 @@ test("createDesktopShortcut writes a .vbs script and runs it via cscript", () =>
   assert.ok(existsSync(vbsPath));
   assert.match(readFileSync(vbsPath, "utf8"), /CreateShortcut/);
 });
+
+test("the .vbs is written with a UTF-8 BOM so cscript doesn't decode it as ANSI", () => {
+  // Without the BOM, cscript uses the system codepage and mangles the
+  // C:\Users\<name>\... paths embedded in the script for any non-ASCII
+  // username — the same bug class already fixed for the PowerShell scripts.
+  const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
+  const calls = [];
+  const spawnSyncImpl = (cmd, args) => { calls.push([cmd, args]); return { status: 0 }; };
+  createDesktopShortcut({ nodeBin: "C:\\node.exe", dashboardBin: "C:\\dash.js", vaultPath: "C:\\Vault\\Ünïcøde", desktopDir, spawnSyncImpl });
+  const vbsPath = calls[0][1].find((a) => a.endsWith(".vbs"));
+  const bytes = readFileSync(vbsPath);
+  assert.deepEqual([...bytes.subarray(0, 3)], [0xEF, 0xBB, 0xBF]);
+  // and the content after the BOM is still the intended UTF-8 script
+  assert.match(bytes.subarray(3).toString("utf8"), /Ünïcøde/);
+});

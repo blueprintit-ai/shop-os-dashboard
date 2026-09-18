@@ -37,6 +37,11 @@ export function extractZip(buffer, destDir) {
 
     if (name.endsWith("/")) continue; // directory entry, nothing to write
 
+    // zip-slip: reject any entry that would escape destDir via a ".." segment
+    // before anything is written. Same check as installer/tar.js.
+    const parts = name.split("/").filter(Boolean);
+    if (parts.length === 0 || parts.some((p) => p === "..")) continue;
+
     // Re-read name/extra lengths from the LOCAL header: they can differ
     // slightly from the central directory copy (extra field padding tools add).
     if (buffer.readUInt32LE(localHeaderOffset) !== LOCAL_SIG) throw new Error(`Bad local header at ${localHeaderOffset}`);
@@ -46,7 +51,7 @@ export function extractZip(buffer, destDir) {
     const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
     const data = method === 0 ? compressed : inflateRawSync(compressed);
 
-    const outPath = join(destDir, ...name.split("/").filter(Boolean));
+    const outPath = join(destDir, ...parts);
     mkdirSync(join(outPath, ".."), { recursive: true });
     writeFileSync(outPath, data);
     files.push(name);

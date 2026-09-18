@@ -43,6 +43,33 @@ function readJSON(path, fallback) {
   if (!existsSync(path)) return fallback;
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return fallback; }
 }
+
+// Same as readJSON but distinguishes "no file" from "file exists and is
+// unparseable" — the difference between a fresh install and silently
+// obliterating a real ~/.claude/settings.json that had a trailing comma or was
+// caught mid-write. On a parse failure the original bytes are copied to
+// settings.json.bak first, and the caller reports a warning.
+function readSettingsForMerge(path) {
+  if (!existsSync(path)) return { settings: {}, warning: null };
+  const raw = readFileSync(path, "utf8");
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return { settings: parsed, warning: null };
+    return backupUnparseable(path, raw, "not a JSON object");
+  } catch (e) {
+    return backupUnparseable(path, raw, e.message);
+  }
+}
+
+function backupUnparseable(path, raw, reason) {
+  const backupPath = `${path}.bak`;
+  try {
+    writeFileSync(backupPath, raw, "utf8");
+    return { settings: {}, warning: `${path} was not valid JSON (${reason}); the original was backed up to ${backupPath} and replaced.` };
+  } catch (e) {
+    return { settings: {}, warning: `${path} was not valid JSON (${reason}) and could not be backed up: ${e.message}` };
+  }
+}
 function writeJSON(path, obj) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(obj, null, 2) + "\n", "utf8");
@@ -77,25 +104,27 @@ export function buildPermissionAllowList() {
   ];
 }
 
+// Returns { path, warning }: `warning` is non-null only when an existing
+// settings.json could not be parsed and was therefore backed up and replaced.
 export function enableForVault(vaultPath, pluginIds = PLUGINS_TO_ENABLE) {
   const settingsPath = join(vaultPath, ".claude", "settings.json");
-  const settings = readJSON(settingsPath, {});
+  const { settings, warning } = readSettingsForMerge(settingsPath);
   if (!settings.enabledPlugins) settings.enabledPlugins = {};
   for (const id of pluginIds) settings.enabledPlugins[id] = true;
   if (!settings.permissions) settings.permissions = {};
   const existing = Array.isArray(settings.permissions.allow) ? settings.permissions.allow : [];
   settings.permissions.allow = Array.from(new Set([...existing, ...buildPermissionAllowList()]));
   writeJSON(settingsPath, settings);
-  return settingsPath;
+  return { path: settingsPath, warning };
 }
 
 export function enableForUser(claudeRoot, pluginIds = PLUGINS_TO_ENABLE) {
   const settingsPath = join(claudeRoot, "settings.json");
-  const settings = readJSON(settingsPath, {});
+  const { settings, warning } = readSettingsForMerge(settingsPath);
   if (!settings.enabledPlugins) settings.enabledPlugins = {};
   for (const id of pluginIds) settings.enabledPlugins[id] = true;
   writeJSON(settingsPath, settings);
-  return settingsPath;
+  return { path: settingsPath, warning };
 }
 
 export function saveLicenseFile(license, homeOverride) {
@@ -119,14 +148,22 @@ export async function installMarketplaces({ claudeRoot, fetchImpl = fetch }) {
   const known = readJSON(path, {});
   const added = [];
   const failed = [];
+  let wrote = false;
   for (const mp of MARKETPLACES) {
     const installLocation = join(claudeRoot, "plugins", "marketplaces", mp.name);
     const wasKnown = !!known[mp.name];
     const result = await fetchMarketplaceTarball({ repo: mp.repo, destDir: installLocation, fetchImpl });
     if (!result.ok) { failed.push({ name: mp.name, error: result.error }); continue; }
     if (!wasKnown) added.push(mp.name);
-    known[mp.name] = { source: { source: "tarball", repo: mp.repo }, installLocation, lastUpdated: new Date().toISOString() };
+    // "github" — not "tarball": this field is the marketplace's SOURCE TYPE as
+    // Claude Code understands it (github | directory | path), not how this
+    // installer happened to fetch the bytes. An unrecognized type risks Claude
+    // Code refusing to load or refresh the entry.
+    known[mp.name] = { source: { source: "github", repo: mp.repo }, installLocation, lastUpdated: new Date().toISOString() };
+    wrote = true;
   }
-  writeJSON(path, known);
+  // Don't create an empty known_marketplaces.json where none existed just
+  // because every fetch failed (offline install, GitHub down).
+  if (wrote || Object.keys(known).length > 0) writeJSON(path, known);
   return { added, failed };
 }
