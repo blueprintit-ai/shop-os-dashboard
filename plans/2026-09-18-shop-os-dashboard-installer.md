@@ -1600,7 +1600,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `resolveNode` (Task 2), `installMarketplaces`/`createVaultClaudeMd`/`createRawInbox`/`enableForVault`/`enableForUser`/`saveLicenseFile`/`normalizeLicenseKey`/`looksLikeLicenseKey`/`validateLicense` (Task 4), `registerAutoStart`/`createDesktopShortcut`/`createDesktopApp` (Task 5).
 - Produces: `main(argv?) -> Promise<void>` — the interactive CLI: prompts for (or reads `--license`/`--vault` flags for) a license key and vault path, validates the key against the license server, then calls `runSetup` and prints each step's result. This is what actually runs when the file is invoked directly (`if (import.meta.url === ...) main();`); `run-setup.ps1`/`run-setup.sh` (Task 9) invoke this file exactly that way.
-- Produces: `runSetup({vaultPath, license, homeDir, isWindows, desktopDir, homeOverride?, fetchImpl?, spawnSyncImpl?}) -> Promise<{ok: boolean, steps: Array<{name, ok, error?}>}>` — the orchestration function the CLI's `main()` calls; every step is best-effort except vault scaffolding and marketplace install, matching `shop-os-install.js`'s existing fail/warn split (`fail()` for a blocking step, `warn()`/pending-list for a best-effort one). `homeOverride` exists solely so tests never touch the real machine's home directory — it flows straight through to `autostart-macos.js`'s `registerAutoStart`, the one step in this task that writes to a fixed `~/Library/...` path rather than a path built from `homeDir`/`vaultPath` (Task 5's Windows equivalent has no such path — `schtasks` is a registered OS task, not a file under `$HOME` — so `homeOverride` is a no-op there and safe to pass unconditionally).
+- Produces: `runSetup({vaultPath, license, homeDir, isWindows, desktopDir, homeOverride?, claudeRoot?, fetchImpl?, spawnSyncImpl?}) -> Promise<{ok: boolean, steps: Array<{name, ok, error?}>}>` — the orchestration function the CLI's `main()` calls; every step is best-effort except vault scaffolding and marketplace install, matching `shop-os-install.js`'s existing fail/warn split (`fail()` for a blocking step, `warn()`/pending-list for a best-effort one). `homeOverride` exists solely so tests never touch the real machine's home directory — it flows straight through to `autostart-macos.js`'s `registerAutoStart`, the one step in this task that writes to a fixed `~/Library/...` path rather than a path built from `homeDir`/`vaultPath` (Task 5's Windows equivalent has no such path — `schtasks` is a registered OS task, not a file under `$HOME` — so `homeOverride` is a no-op there and safe to pass unconditionally). `claudeRoot` defaults to the real `~/.claude` in production (that's genuinely where Claude Code's own plugin config lives, matching `shop-os-install.js`'s `getClaudeRoot()`), but is overridable for the same test-isolation reason: `installMarketplaces` (Task 4, via `fetchMarketplaceTarball` from Task 3) deletes and recreates `<claudeRoot>/plugins/marketplaces/<name>` — without an override, a test exercising `runSetup` would delete the real `~/.claude/plugins/marketplaces/` directories on whatever machine ran it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1640,10 +1640,16 @@ test("runSetup scaffolds the vault and reports each step, tolerating a failed au
   // Simulate: claude present, but schtasks/launchctl denied — setup must still report ok overall.
   const spawnSyncImpl = (cmd) => (/schtasks|launchctl|cscript/.test(cmd) ? { status: 1, stderr: "denied" } : { status: 0, stdout: "v22.0.0\n" });
 
-  // homeOverride reuses the same tmp dir: without it, autostart-macos.js's
-  // registerAutoStart falls back to the REAL os.homedir() and would write an
-  // actual LaunchAgents plist onto whatever machine runs this test.
-  const result = await runSetup({ vaultPath, license, homeDir, isWindows: false, desktopDir, homeOverride: homeDir, fetchImpl, spawnSyncImpl });
+  // homeOverride and claudeRoot both reuse the same tmp dir: without them,
+  // autostart-macos.js's registerAutoStart falls back to the REAL os.homedir()
+  // and would write an actual LaunchAgents plist onto whatever machine runs
+  // this test, and installMarketplaces would run against the REAL ~/.claude —
+  // fetchMarketplaceTarball (Task 3) calls rmSync(destDir, {recursive:true,
+  // force:true}) on it before extracting, which would delete the real
+  // ~/.claude/plugins/marketplaces/ directories on the machine running this
+  // test if claudeRoot were not overridden.
+  const claudeRoot = join(homeDir, ".claude");
+  const result = await runSetup({ vaultPath, license, homeDir, isWindows: false, desktopDir, homeOverride: homeDir, claudeRoot, fetchImpl, spawnSyncImpl });
 
   assert.equal(result.ok, true);
   assert.ok(existsSync(join(vaultPath, "CLAUDE.md")));
@@ -1652,10 +1658,18 @@ test("runSetup scaffolds the vault and reports each step, tolerating a failed au
   assert.equal(autostartStep.ok, false); // reported, not thrown
   assert.ok(!existsSync(join(homedir(), "Library", "LaunchAgents", "ai.blueprintit.shop-os-dashboard.plist")),
     "must never write into the real machine's home directory");
+  assert.ok(!existsSync(join(homedir(), ".claude", "plugins", "marketplaces", "blueprint-skills", ".claude-plugin")),
+    "must never touch the real ~/.claude/plugins/marketplaces directory");
+  // saveLicenseFile appends ".shopos" itself, so passing homeOverride (not
+  // homeDir, which is already "~/.shopos"-shaped) must land the file at
+  // <homeOverride>/.shopos/license.json, matching where the running server's
+  // readLicense() actually looks — not double-nested under homeDir/.shopos.
+  assert.ok(existsSync(join(homeDir, ".shopos", "license.json")),
+    "license must be saved where readLicense() will actually find it");
 });
 ```
 
-`homedir` must be imported from `node:os` alongside the other imports in this test file for the assertion above.
+`homedir` must be imported from `node:os` alongside the other imports in this test file for the assertions above.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1678,14 +1692,13 @@ import {
 import * as win from "../installer/autostart-windows.js";
 import * as mac from "../installer/autostart-macos.js";
 
-export async function runSetup({ vaultPath, license, homeDir = join(homedir(), ".shopos"), isWindows = process.platform === "win32", desktopDir, homeOverride, fetchImpl = fetch, spawnSyncImpl }) {
+export async function runSetup({ vaultPath, license, homeDir = join(homedir(), ".shopos"), isWindows = process.platform === "win32", desktopDir, homeOverride, claudeRoot = join(homedir(), ".claude"), fetchImpl = fetch, spawnSyncImpl }) {
   const steps = [];
   const record = (name, fn) => {
     try { const value = fn(); steps.push({ name, ok: true, value }); return value; }
     catch (e) { steps.push({ name, ok: false, error: e.message }); return null; }
   };
 
-  const claudeRoot = join(homedir(), ".claude");
   const node = await resolveNode({ homeDir, fetchImpl, spawnSyncImpl });
   steps.push({ name: "node", ok: true, value: node });
 
@@ -1696,7 +1709,16 @@ export async function runSetup({ vaultPath, license, homeDir = join(homedir(), "
   record("vault.rawInbox", () => createRawInbox(vaultPath));
   record("vault.settings", () => enableForVault(vaultPath, PLUGINS_TO_ENABLE));
   record("user.settings", () => enableForUser(claudeRoot, PLUGINS_TO_ENABLE));
-  record("license", () => saveLicenseFile(license, homeDir));
+  // NOT homeDir: homeDir is already "~/.shopos" (used for the portable-node
+  // cache and the installed app path below), but saveLicenseFile (Task 4)
+  // appends ".shopos" internally — it expects the plain OS home directory,
+  // the same thing homeOverride already stands in for everywhere else in
+  // this function. Passing homeDir here would write to "~/.shopos/.shopos/
+  // license.json", which the running server's readLicense() (its own
+  // hardcoded "~/.shopos/license.json") would never find — a fresh install
+  // would come up permanently unlicensed. Passing homeOverride keeps this
+  // test-isolated the same way the autostart step already is.
+  record("license", () => saveLicenseFile(license, homeOverride));
 
   const dashboardBin = join(homeDir, "app", "node_modules", "@blueprintitai", "shop-os-dashboard", "bin", "shop-os-dashboard.js");
   const autostartMod = isWindows ? win : mac;
@@ -1771,12 +1793,14 @@ In `package.json`, add `"shop-os-dashboard-setup": "./bin/shop-os-dashboard-setu
 
 In `bin/shop-os-dashboard.js`'s `main()`, add a daily update check whose result `status-routes.js` (Task 7) can read live on every request. This needs a **mutable object passed by reference**, not a reassigned local variable: `createServer` is called once, `ctx.updateInfo` is captured once, and `refreshUpdateInfo` runs on an interval afterward — reassigning a local `let updateInfo = ...` would leave `ctx.updateInfo` pointing at the original, now-stale object. Mutate the object's fields in place instead:
 
+`bin/shop-os-dashboard.js` currently imports only `{ existsSync, statSync }` from `"node:fs"` — add `readFileSync` to that same import line for the snippet below.
+
 ```javascript
 import { checkForUpdate } from "../src/updater.js";
 // ...
 const updateInfo = { updateAvailable: false, latest: null };
 async function refreshUpdateInfo() {
-  const result = await checkForUpdate({ currentVersion: JSON.parse(readFileSync(new URL("../package.json", import.meta.url))).version });
+  const result = await checkForUpdate({ currentVersion: JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version });
   Object.assign(updateInfo, result);
 }
 refreshUpdateInfo();
@@ -1784,12 +1808,15 @@ setInterval(refreshUpdateInfo, 24 * 60 * 60 * 1000).unref?.();
 
 const server = createServer({
   vaultPath, homeDir: home,
+  port, // the resolved listening port (from parseArgs/findFreePort above) — so /api/status reports the real port, not the default null
   appDir: join(home, "app"),
   npmBin: process.env.SHOPOS_NPM_BIN || "npm",
   updateInfo, // same object refreshUpdateInfo mutates — see Task 7's server.js wiring
   restart: () => process.exit(0), // the registered auto-start task/agent relaunches it
 });
 ```
+
+This `createServer({...})` call replaces the file's current `createServer({ vaultPath, homeDir: home })` — `port` is already computed a few lines earlier in this same function (`let port = args.port; if (!port) { port = await findFreePort(); }`), it was just never threaded through before this task.
 
 - [ ] **Step 6: Run the full suite**
 
