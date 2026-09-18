@@ -1496,7 +1496,14 @@ test("POST /api/update is owner-only", async () => {
   await users.create({ username: "staffer", password: "staffpassword1", role: "staff", displayName: "Staff" });
   await new Promise((r) => server.listen(0, r));
   const port = server.address().port;
-  const resp = await fetch(`http://127.0.0.1:${port}/api/update`, { method: "POST" });
+  const base = `http://127.0.0.1:${port}`;
+  // Must set Origin so the request clears server.js's global same-origin/CSRF
+  // guard (sameOriginOk in src/auth.js) and actually reaches the /api/update
+  // route — otherwise every POST here gets a 403 "cross-origin" before the
+  // owner check ever runs, the assertion below fails, and because it throws
+  // before server.close() runs, the open listening server keeps node --test's
+  // event loop alive and the whole test run hangs forever instead of failing.
+  const resp = await fetch(`${base}/api/update`, { method: "POST", headers: { origin: base } });
   assert.equal(resp.status, 401); // no session cookie at all
   server.close();
 });
