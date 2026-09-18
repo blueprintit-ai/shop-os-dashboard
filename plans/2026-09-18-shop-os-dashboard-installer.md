@@ -1967,8 +1967,12 @@ if (-not $nodeBin) {
   Remove-Item $zipPath -ErrorAction SilentlyContinue
   $nodeBin = Join-Path $runtimeDir "node-$version-win-x64\node.exe"
 }
-$npmBin = $nodeBin -replace "node\.exe$", "npm.cmd"
-if ($npmBin -eq "npm.cmd") { $npmBin = "npm.cmd" } # system Node case: npm.cmd is already on PATH
+# Find-QualifyingNode returns the literal "node" for the system-Node case
+# (no ".exe" to replace, so a bare -replace leaves it unchanged as "node" —
+# not a valid npm invocation). Only the portable/full-path case can use the
+# node.exe -> npm.cmd sibling substitution; the system case needs npm.cmd
+# directly, since it's already on PATH alongside node.
+$npmBin = if ($nodeBin -eq "node") { "npm.cmd" } else { $nodeBin -replace "node\.exe$", "npm.cmd" }
 
 if (-not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
   Write-Host "Installing Shop OS Dashboard..."
@@ -2017,7 +2021,6 @@ NODE_BIN="$(find_qualifying_node || true)"
 if [ -z "$NODE_BIN" ]; then
   echo "Downloading portable Node.js..."
   ARCH="$(uname -m)"; [ "$ARCH" = "arm64" ] && NODE_ARCH="arm64" || NODE_ARCH="x64"
-  VERSION="$(curl -fsSL https://nodejs.org/dist/index.json | node -e '' 2>/dev/null || true)"
   # No node yet to parse JSON with — grep the first "lts" entry's version instead.
   VERSION="$(curl -fsSL https://nodejs.org/dist/index.json | grep -o '"version":"v[0-9.]*","date":"[0-9-]*","files":\[[^]]*\],"npm":"[0-9.]*","lts":"[A-Za-z]' | head -n1 | grep -o 'v[0-9.]*' | head -n1)"
   [ -z "$VERSION" ] && VERSION="v22.20.0"
