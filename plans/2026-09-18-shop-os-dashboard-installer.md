@@ -1609,7 +1609,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, existsSync } from "node:fs";
-import { tmpdir, homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { runSetup } from "../bin/shop-os-dashboard-setup.js";
@@ -1632,7 +1632,20 @@ function tarGzWithManifest() {
 }
 
 test("runSetup scaffolds the vault and reports each step, tolerating a failed auto-start", async () => {
-  const homeDir = mkdtempSync(join(tmpdir(), "home-"));
+  // homeOverride stands in for the plain OS home (os.homedir()); homeDir and
+  // claudeRoot are DELIBERATELY DISTINCT tmp dirs derived from it, exactly
+  // mirroring production's real relationship (homeDir defaults to
+  // join(homedir(), ".shopos"), claudeRoot to join(homedir(), ".claude") —
+  // siblings under the OS home, not nested in each other). Reusing one tmp
+  // dir for all three (as an earlier draft of this test did) makes every
+  // isolation assertion below vacuous: a regression that passes the WRONG
+  // path to saveLicenseFile or registerAutoStart would produce the exact
+  // same on-disk result when homeDir === homeOverride, so the test could
+  // never catch it. With them distinct, a regression produces a visibly
+  // different (and asserted-against) path.
+  const homeOverride = mkdtempSync(join(tmpdir(), "os-home-"));
+  const homeDir = join(homeOverride, ".shopos");
+  const claudeRoot = join(homeOverride, ".claude");
   const vaultPath = mkdtempSync(join(tmpdir(), "vault-"));
   const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
   const license = { key: "SHOP-AAAA-BBBB-CCCC", customer: "Acme", product: "foundation", entitlements: ["foundation"] };
@@ -1640,44 +1653,41 @@ test("runSetup scaffolds the vault and reports each step, tolerating a failed au
   // Simulate: claude present, but schtasks/launchctl denied — setup must still report ok overall.
   const spawnSyncImpl = (cmd) => (/schtasks|launchctl|cscript/.test(cmd) ? { status: 1, stderr: "denied" } : { status: 0, stdout: "v22.0.0\n" });
 
-  // homeOverride and claudeRoot both reuse the same tmp dir: without them,
-  // autostart-macos.js's registerAutoStart falls back to the REAL os.homedir()
-  // and would write an actual LaunchAgents plist onto whatever machine runs
-  // this test, and installMarketplaces would run against the REAL ~/.claude —
-  // fetchMarketplaceTarball (Task 3) calls rmSync(destDir, {recursive:true,
-  // force:true}) on it before extracting, which would delete the real
-  // ~/.claude/plugins/marketplaces/ directories on the machine running this
-  // test if claudeRoot were not overridden.
-  const claudeRoot = join(homeDir, ".claude");
-  const result = await runSetup({ vaultPath, license, homeDir, isWindows: false, desktopDir, homeOverride: homeDir, claudeRoot, fetchImpl, spawnSyncImpl });
+  const result = await runSetup({ vaultPath, license, homeDir, isWindows: false, desktopDir, homeOverride, claudeRoot, fetchImpl, spawnSyncImpl });
 
   assert.equal(result.ok, true);
   assert.ok(existsSync(join(vaultPath, "CLAUDE.md")));
   assert.ok(existsSync(join(vaultPath, "Raw", "processed")));
   const autostartStep = result.steps.find((s) => s.name === "autostart");
-  assert.equal(autostartStep.ok, false); // reported, not thrown
-  assert.ok(!existsSync(join(homedir(), "Library", "LaunchAgents", "ai.blueprintit.shop-os-dashboard.plist")),
-    "must never write into the real machine's home directory");
-  // A negative check ("the real ~/.claude/plugins/marketplaces/blueprint-skills
-  // was never touched") is unreliable here: that path legitimately already
-  // exists on any machine with Claude Code + the real blueprint-skills
-  // marketplace installed (true for whoever is actually developing this
-  // plan), so its mere existence proves nothing either way. Check instead
-  // that the fake tarball content landed in the ISOLATED claudeRoot — proof
-  // installMarketplaces used the passed-in claudeRoot rather than falling
-  // back to the real one, without depending on the test machine's own state.
+  assert.equal(autostartStep.ok, false); // reported, not thrown (launchctl "denied" above)
+  // registerAutoStart writes the plist to disk before calling launchctl, so
+  // it's there even though the step's overall result is ok:false. A negative
+  // check against the REAL ~/Library/LaunchAgents/... would be unreliable —
+  // on any machine where Shop OS Dashboard has actually been installed, that
+  // exact path legitimately exists — so assert the isolated one positively
+  // instead, proving homeOverride was actually used.
+  assert.ok(existsSync(join(homeOverride, "Library", "LaunchAgents", "ai.blueprintit.shop-os-dashboard.plist")),
+    "LaunchAgents plist must land under the isolated homeOverride, not the real machine's home");
+  // Same reasoning for marketplaces: a negative check against the real
+  // ~/.claude/plugins/marketplaces/blueprint-skills is unreliable (it
+  // legitimately exists on any machine with Claude Code + that marketplace
+  // already installed — true for whoever develops this plan). Assert the
+  // fake tarball content landed in the isolated claudeRoot instead.
   assert.ok(existsSync(join(claudeRoot, "plugins", "marketplaces", "blueprint-skills", ".claude-plugin", "marketplace.json")),
     "marketplace content must land in the isolated claudeRoot");
   // saveLicenseFile appends ".shopos" itself, so passing homeOverride (not
   // homeDir, which is already "~/.shopos"-shaped) must land the file at
-  // <homeOverride>/.shopos/license.json, matching where the running server's
-  // readLicense() actually looks — not double-nested under homeDir/.shopos.
-  assert.ok(existsSync(join(homeDir, ".shopos", "license.json")),
-    "license must be saved where readLicense() will actually find it");
+  // exactly homeDir/license.json (== join(homeOverride, ".shopos",
+  // "license.json")) — matching where the running server's readLicense()
+  // actually looks. If runSetup regressed to passing homeDir instead, the
+  // file would land one level deeper, at homeDir/.shopos/license.json, and
+  // this assertion would fail.
+  assert.ok(existsSync(join(homeDir, "license.json")),
+    "license must be saved where readLicense() will actually find it, not double-nested");
 });
 ```
 
-`homedir` must be imported from `node:os` alongside the other imports in this test file for the assertions above.
+`homedir` is no longer needed as a separate import for this test's assertions (the real OS home is never referenced) — only `mkdtempSync`, `existsSync`, `tmpdir`, `join`, `gzipSync` are used, matching the imports already listed above.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1691,6 +1701,7 @@ Expected: FAIL — `bin/shop-os-dashboard-setup.js` doesn't exist
 // bin/shop-os-dashboard-setup.js
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { resolveNode } from "../installer/node-runtime.js";
 import {
@@ -1785,8 +1796,20 @@ export async function main(argv = process.argv.slice(2)) {
   console.log(`\nDone. Shop OS Dashboard will start automatically at login, or run it now with:\n  ${result.node.node} ${join(homeDir, "app", "node_modules", "@blueprintitai", "shop-os-dashboard", "bin", "shop-os-dashboard.js")} "${vaultPath}"`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+// NOT `import.meta.url === \`file://${process.argv[1]}\``: that string-built
+// comparison is silently false on Windows. import.meta.url for a file at
+// C:\Users\x\bin\shop-os-dashboard-setup.js is "file:///C:/Users/x/bin/..."
+// (forward slashes, a leading triple slash, percent-encoded special chars),
+// while the naive template produces "file://C:\Users\x\bin\..." (raw
+// backslashes) — the two never match, so main() would silently never run on
+// the platform this installer's schtasks/cscript code exists for in the
+// first place. pathToFileURL() produces the same normalized form
+// import.meta.url uses, on every platform, including percent-encoding a
+// path containing spaces (which the naive template also gets wrong on
+// POSIX). Also, unlike the brief's original bare `main();`, failures are
+// caught and reported instead of surfacing as a raw stack trace.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => { console.error(err.message || String(err)); process.exitCode = 1; });
 }
 ```
 
