@@ -27,13 +27,14 @@ import { mountGrid } from "./widgets.js";
 import { kindRenderers } from "./data-widgets.js";
 import { mountSkillsDeck } from "./skills-deck.js";
 import { mountAssetsFavorites } from "./assets-widget.js";
+import { renderStatusWidget } from "./status-widget.js";
 import { mountRing } from "./ring.js";
 import { mountSearch } from "./search.js";
 import { mountTour } from "./tour.js";
 import { openNotesPanel } from "./chat-toggle.js";
 
 const layout = await getLayout();
-const allKinds = { ...kindRenderers, skills: mountSkillsDeck, assets: mountAssetsFavorites };
+const allKinds = { ...kindRenderers, skills: mountSkillsDeck, assets: mountAssetsFavorites, status: renderStatusWidget };
 
 mountRing(document.getElementById("ring-root"));
 mountGrid(document.getElementById("widgets-root"), layout, allKinds);

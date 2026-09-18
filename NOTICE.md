@@ -55,3 +55,5 @@ original work under CC BY 4.0 does not imply any affiliation.
 ## Other vendored code
 
 `vendor/thinking-orbs.js` is MIT-licensed, (c) Jakub Antalik, used unmodified — see the file's own header.
+
+`vendor/qrcode.min.js` is MIT-licensed (c) Kazuhiko Arase, used unmodified — https://github.com/kazuhikoarase/qrcode-generator.

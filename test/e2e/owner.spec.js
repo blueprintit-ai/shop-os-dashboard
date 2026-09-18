@@ -81,3 +81,21 @@ test("theme toggle persists per user across a full reload (server-rendered, no f
     cleanup();
   }
 });
+
+test("owner dashboard shows a status widget with the LAN address", async ({ page }) => {
+  const { url, username, password, cleanup } = await bootAsOwner();
+  try {
+    await page.goto(`${url}/login`);
+    await page.fill("input[name=username]", username);
+    await page.fill("input[name=password]", password);
+    await page.click("button[type=submit]");
+    await expect(page).toHaveURL(/\/owner$/);
+    // w-status ships in defaultLayout() (Step 2 above), so it's already
+    // present for a freshly-provisioned owner -- no "add widget" UI exists
+    // to click first (see this task's header note).
+    await expect(page.locator("#w-status .lan-address")).toBeVisible();
+    await expect(page.locator("#w-status canvas.qr-code")).toBeVisible();
+  } finally {
+    cleanup();
+  }
+});
