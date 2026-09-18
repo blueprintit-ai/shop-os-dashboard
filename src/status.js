@@ -27,7 +27,7 @@ export class StatusStore {
   }
 }
 
-export function checkStatus({ vaultPath, statusStore, licenseCheck, port, spawnSyncImpl = defaultSpawnSync }) {
+export function checkStatus({ vaultPath, statusStore, licenseCheck, port, updateInfo, spawnSyncImpl = defaultSpawnSync }) {
   const probe = spawnSyncImpl(process.platform === "win32" ? "where" : "which", ["claude"], { encoding: "utf8" });
   const present = probe.status === 0;
   return {
@@ -36,5 +36,6 @@ export function checkStatus({ vaultPath, statusStore, licenseCheck, port, spawnS
     vault: { reachable: existsSync(vaultPath) },
     port,
     lan: lanAddresses(),
+    update: updateInfo ?? { updateAvailable: false },
   };
 }
