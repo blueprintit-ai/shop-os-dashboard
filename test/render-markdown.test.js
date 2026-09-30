@@ -75,7 +75,7 @@ test("a markdown image with a javascript: scheme is rendered inert", () => {
 });
 
 test("a normal https markdown link still works", () => {
-  const html = renderMarkdown("[Shop OS](https://blueprintit.ai)", parse, esc, doc);
+  const html = renderMarkdown("[Blueprint OS](https://blueprintit.ai)", parse, esc, doc);
   assert.match(html, /href="https:\/\/blueprintit\.ai"/);
 });
 

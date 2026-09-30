@@ -36,7 +36,7 @@ const TOUR_STEPS = [
   { el: () => document.getElementById("editBtn"), t: "Edit Mode", b: "Drag, resize, or remove any widget. It's saved per-person." },
   { el: () => document.getElementById("theme-btn"), t: "Theme", b: "Light or dark — your choice, saved to your login." },
   { el: () => document.getElementById("infoBtn"), t: "Credits",
-    b: 'Shop OS Dashboard is based on <b>Rubric Agentic OS</b> by Jay E | <a href="https://skool.com/robonuggets" target="_blank" rel="noopener">RoboNuggets</a>, used under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Modified by Blueprint IT. RoboNuggets does not endorse Shop OS.' },
+    b: 'Blueprint OS Dashboard is based on <b>Rubric Agentic OS</b> by Jay E | <a href="https://skool.com/robonuggets" target="_blank" rel="noopener">RoboNuggets</a>, used under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Modified by Blueprint IT. RoboNuggets does not endorse Blueprint OS.' },
 ];
 
 export function mountTour(layout) {

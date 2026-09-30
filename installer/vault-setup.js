@@ -78,7 +78,7 @@ function writeJSON(path, obj) {
 export function createVaultClaudeMd(vaultPath, license) {
   const claudeMd = join(vaultPath, "CLAUDE.md");
   if (existsSync(claudeMd)) return false;
-  const content = `---\nos-mode: business\nbp-setup-state: pending\nlicense-customer: ${license.customer}\nlicense-product: ${license.product}\ninstalled-at: ${new Date().toISOString()}\n---\n\n# Shop OS Vault\n\nWelcome to your Shop OS vault. This is the operating system Blueprint IT installed for ${license.customer}.\n\nTo finish onboarding, run the following slash command inside Claude Code:\n\n\`/bp-setup\`\n`;
+  const content = `---\nos-mode: business\nbp-setup-state: pending\nlicense-customer: ${license.customer}\nlicense-product: ${license.product}\ninstalled-at: ${new Date().toISOString()}\n---\n\n# Blueprint OS Vault\n\nWelcome to your Blueprint OS vault. This is the operating system Blueprint IT installed for ${license.customer}.\n\nTo finish onboarding, run the following slash command inside Claude Code:\n\n\`/bp-setup\`\n`;
   mkdirSync(vaultPath, { recursive: true });
   writeFileSync(claudeMd, content, "utf8");
   return true;

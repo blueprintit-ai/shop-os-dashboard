@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shop OS Dashboard — macOS Setup Bootstrap
+# Blueprint OS Dashboard — macOS Setup Bootstrap
 #
 # Downloads this package's setup script to a file and runs the file, rather
 # than piping curl straight into bash — same non-cradle principle as the

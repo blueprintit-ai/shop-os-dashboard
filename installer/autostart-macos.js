@@ -61,14 +61,14 @@ export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, homeOverri
 // A minimal double-clickable .app: no Xcode, no bundler — just the three
 // files Finder/LaunchServices require to treat a folder as an application.
 export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir }) {
-  const appPath = join(desktopDir, "Shop OS.app");
+  const appPath = join(desktopDir, "Blueprint OS.app");
   const macosDir = join(appPath, "Contents", "MacOS");
   const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Shop OS</string>
-  <key>CFBundleExecutable</key><string>Shop OS</string>
+  <key>CFBundleName</key><string>Blueprint OS</string>
+  <key>CFBundleExecutable</key><string>Blueprint OS</string>
   <key>CFBundleIdentifier</key><string>${xmlEscape(LABEL)}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
 </dict>
@@ -88,7 +88,7 @@ export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir 
   try {
     mkdirSync(macosDir, { recursive: true });
     writeFileSync(join(appPath, "Contents", "Info.plist"), infoPlist, "utf8");
-    const exePath = join(macosDir, "Shop OS");
+    const exePath = join(macosDir, "Blueprint OS");
     writeFileSync(exePath, launcher, "utf8");
     chmodSync(exePath, 0o755);
     return { ok: true, path: appPath };

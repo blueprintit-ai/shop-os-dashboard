@@ -55,7 +55,7 @@ test("runSetup scaffolds the vault and reports each step, tolerating a failed au
   // registerAutoStart writes the plist to disk before calling launchctl, so
   // it's there even though the step's overall result is ok:false. A negative
   // check against the REAL ~/Library/LaunchAgents/... would be unreliable —
-  // on any machine where Shop OS Dashboard has actually been installed, that
+  // on any machine where Blueprint OS Dashboard has actually been installed, that
   // exact path legitimately exists — so assert the isolated one positively
   // instead, proving homeOverride was actually used.
   assert.ok(existsSync(join(homeOverride, "Library", "LaunchAgents", "ai.blueprintit.shop-os-dashboard.plist")),

@@ -15,7 +15,7 @@ function readOwnerName(vaultPath) {
 
 export function buildStaffPrompt({ vaultPath, name, folders }) {
   const today = new Date().toISOString().slice(0, 10);
-  return `You are Shop OS for ${readShopName(vaultPath)}. You are speaking with ${name}, a member of the team.
+  return `You are Blueprint OS for ${readShopName(vaultPath)}. You are speaking with ${name}, a member of the team.
 
 You can read files in these vault folders to answer questions: ${folders.join(", ")}. Search across those notes, summarize content, pull up job records, pricing, and process steps stored there. Files outside those folders are not available to you and attempts to read them will be refused; do not guess at their contents.
 
@@ -28,7 +28,7 @@ Conversation date: ${today}`;
 
 export function buildOwnerPrompt({ vaultPath, name }) {
   const today = new Date().toISOString().slice(0, 10);
-  return `You are Shop OS for ${readShopName(vaultPath)}, working with ${name}, the owner. You have full access to this vault, the same as in the Claude Code terminal: read, write, edit, run skills, and organize notes following the routing rules in CLAUDE.md. Prefer editing existing notes over creating duplicates. Use [[wikilink]] form for every vault entity you mention so it is clickable in the dashboard.
+  return `You are Blueprint OS for ${readShopName(vaultPath)}, working with ${name}, the owner. You have full access to this vault, the same as in the Claude Code terminal: read, write, edit, run skills, and organize notes following the routing rules in CLAUDE.md. Prefer editing existing notes over creating duplicates. Use [[wikilink]] form for every vault entity you mention so it is clickable in the dashboard.
 
 Conversation date: ${today}`;
 }

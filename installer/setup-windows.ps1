@@ -1,4 +1,4 @@
-# Shop OS Dashboard — Windows Setup Bootstrap
+# Blueprint OS Dashboard — Windows Setup Bootstrap
 #
 # Downloads this package's setup CLI and runs it. Deliberately NOT an
 # `irm URL | iex` cradle (bypass-policy + env var + pipe-to-iex is exactly the

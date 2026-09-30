@@ -7,7 +7,7 @@ export function authRoutes(ctx) {
   return async (req, res, url) => {
     const p = url.pathname;
     if (req.method === "POST" && p === "/api/setup") {
-      if (!isLoopback(req)) return sendJson(res, 403, { error: "Set up Shop OS on the shop computer first" }), true;
+      if (!isLoopback(req)) return sendJson(res, 403, { error: "Set up Blueprint OS on the shop computer first" }), true;
       if (users.count() > 0) return sendJson(res, 409, { error: "Already set up" }), true;
       const b = await readJsonBody(req);
       let u;

@@ -43,7 +43,7 @@ function parseArgs(argv) {
 
 function help() {
   console.log(`
-Shop OS Dashboard
+Blueprint OS Dashboard
 
 Usage:  shop-os-dashboard <vault-path> [options]
 
@@ -131,7 +131,7 @@ async function main() {
   }
 
   const license = readLicense();
-  console.log(c.bold(c.cyan("Shop OS Dashboard")));
+  console.log(c.bold(c.cyan("Blueprint OS Dashboard")));
   console.log(c.dim(`  vault: ${vaultPath}`));
   console.log(c.dim(`  data:  ${home}`));
   console.log(c.dim(`  customer: ${license?.customer ?? "unknown (license check happens per request)"}`));

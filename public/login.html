@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shop OS — Sign in</title><link rel="stylesheet" href="/static/css/base.css"></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Blueprint OS — Sign in</title><link rel="stylesheet" href="/static/css/base.css"></head>
 <body>
 <form class="card" id="login-form">
   <h1>Sign in</h1>
@@ -40,7 +40,7 @@ form.addEventListener("submit", async (e) => {
   }
   const me = await (await api("GET", "/api/me")).json();
   if (me.license && me.license.ok === false) {
-    errorEl.textContent = "Shop OS needs attention on this license. Contact support to continue.";
+    errorEl.textContent = "Blueprint OS needs attention on this license. Contact support to continue.";
     return;
   }
   location.href = "/";

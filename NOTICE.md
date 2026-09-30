@@ -1,6 +1,6 @@
 # NOTICE
 
-Shop OS Dashboard (this package) includes, starting with Plan 2, a modified version of **Rubric Agentic OS**.
+Blueprint OS Dashboard (this package) includes, starting with Plan 2, a modified version of **Rubric Agentic OS**.
 
 - Original work: Rubric Agentic OS
 - Original author: Jay E | RoboNuggets, https://skool.com/robonuggets
@@ -17,7 +17,7 @@ limited to:
   page (`public/owner.html`, `public/css/owner.css`, `public/js/owner/*`)
   inside this project's own module structure instead of the kit's single
   inline-script file, and rebranding the title widget and theme colors to
-  Blueprint IT / Shop OS.
+  Blueprint IT / Blueprint OS.
 - Google Calendar and email-triage widgets removed entirely — not carried
   over, not disabled behind a flag.
 - Layout and theme moved server-side: widget positions and the light/dark
@@ -49,7 +49,7 @@ file; both are required to stay in compliance with CC BY 4.0.
 
 ## No endorsement
 
-RoboNuggets and Jay E do not endorse Blueprint IT or Shop OS. Use of the
+RoboNuggets and Jay E do not endorse Blueprint IT or Blueprint OS. Use of the
 original work under CC BY 4.0 does not imply any affiliation.
 
 ## Other vendored code

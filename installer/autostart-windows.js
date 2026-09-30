@@ -20,14 +20,14 @@ export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, spawnSyncI
 // WScript.Shell's CreateShortcut is the standard dependency-free way to make a
 // .lnk on Windows; cscript ships with every Windows install, no admin needed.
 export function createDesktopShortcut({ nodeBin, dashboardBin, vaultPath, desktopDir, spawnSyncImpl = defaultSpawnSync }) {
-  const shortcutPath = join(desktopDir, "Shop OS.lnk");
+  const shortcutPath = join(desktopDir, "Blueprint OS.lnk");
   const vbs = `
 Set oShell = CreateObject("WScript.Shell")
 Set oShortcut = oShell.CreateShortcut("${shortcutPath.replace(/\\/g, "\\\\")}")
 oShortcut.TargetPath = "${nodeBin.replace(/\\/g, "\\\\")}"
 oShortcut.Arguments = """${dashboardBin.replace(/\\/g, "\\\\")}"" ""${vaultPath.replace(/\\/g, "\\\\")}"""
 oShortcut.WorkingDirectory = "${vaultPath.replace(/\\/g, "\\\\")}"
-oShortcut.Description = "Shop OS"
+oShortcut.Description = "Blueprint OS"
 oShortcut.Save
 `.trim();
   // Best-effort per the plan's Global Constraints: a locked-down desktopDir,

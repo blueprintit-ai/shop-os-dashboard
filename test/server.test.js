@@ -115,7 +115,7 @@ test("staff search and recent never include out-of-scope notes; view returns bac
   } finally { t.cleanup(); }
 });
 
-test("chat: session, SSE turn, end writes a Shop OS Chat compatible transcript with the user's display name", async () => {
+test("chat: session, SSE turn, end writes a Blueprint OS Chat compatible transcript with the user's display name", async () => {
   const t = await boot();
   try {
     const { sessionId } = await (await t.http("POST", "/api/chat/session", { as: "staff", body: {} })).json();

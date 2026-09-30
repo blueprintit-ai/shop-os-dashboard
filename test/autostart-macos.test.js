@@ -22,7 +22,7 @@ test("createDesktopApp writes a launchable .app bundle", () => {
   const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
   const result = createDesktopApp({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath: "/Vault", desktopDir });
   assert.equal(result.ok, true);
-  const exe = join(result.path, "Contents", "MacOS", "Shop OS");
+  const exe = join(result.path, "Contents", "MacOS", "Blueprint OS");
   assert.ok(existsSync(exe));
   assert.ok(existsSync(join(result.path, "Contents", "Info.plist")));
   const script = readFileSync(exe, "utf8");
@@ -50,7 +50,7 @@ test(".app launcher single-quotes interpolated paths so $ and \" cannot expand o
   const vaultPath = '/Users/glenn/$HOME "quoted" `backtick`';
   const result = createDesktopApp({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath, desktopDir });
   assert.equal(result.ok, true);
-  const script = readFileSync(join(result.path, "Contents", "MacOS", "Shop OS"), "utf8");
+  const script = readFileSync(join(result.path, "Contents", "MacOS", "Blueprint OS"), "utf8");
   assert.ok(script.includes(`'${vaultPath}'`), "the vault path must appear inside single quotes");
   assert.ok(!script.includes(`"${vaultPath}"`), "must not be left in an expanding double-quoted string");
 });
@@ -58,6 +58,6 @@ test(".app launcher single-quotes interpolated paths so $ and \" cannot expand o
 test(".app launcher escapes an embedded single quote", () => {
   const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
   const result = createDesktopApp({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath: "/Users/glenn/Bob's Vault", desktopDir });
-  const script = readFileSync(join(result.path, "Contents", "MacOS", "Shop OS"), "utf8");
+  const script = readFileSync(join(result.path, "Contents", "MacOS", "Blueprint OS"), "utf8");
   assert.ok(script.includes(`'/Users/glenn/Bob'"'"'s Vault'`), `unexpected launcher: ${script}`);
 });

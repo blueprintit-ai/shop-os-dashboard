@@ -93,13 +93,13 @@ export async function main(argv = process.argv.slice(2)) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   let license;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const rawKey = args.license || (await rl.question("Shop OS license key: "));
+    const rawKey = args.license || (await rl.question("Blueprint OS license key: "));
     // Clear it immediately: otherwise a bad --license value is retried
     // verbatim on every iteration and the loop never prompts interactively.
     args.license = undefined;
     const key = normalizeLicenseKey(rawKey);
     if (!looksLikeLicenseKey(key)) {
-      console.log(`That doesn't look like a Shop OS key. The format is SHOP-XXXX-XXXX-XXXX.`);
+      console.log(`That doesn't look like a Blueprint OS key. The format is SHOP-XXXX-XXXX-XXXX.`);
       if (attempt === 3) { rl.close(); console.error("No valid license key entered."); process.exitCode = 1; return; }
       continue;
     }
@@ -114,12 +114,12 @@ export async function main(argv = process.argv.slice(2)) {
 
   const homeDir = join(homedir(), ".shopos");
   const desktopDir = join(homedir(), "Desktop");
-  console.log(`Installing Shop OS Dashboard for ${license.customer} into ${vaultPath}...`);
+  console.log(`Installing Blueprint OS Dashboard for ${license.customer} into ${vaultPath}...`);
   const result = await runSetup({ vaultPath, license, homeDir, desktopDir });
 
   for (const step of result.steps) console.log(`  ${step.ok ? "✓" : "⚠"} ${step.name}${step.error ? `: ${step.error}` : ""}`);
   if (!result.ok) { console.error("Setup did not complete — see the failed step above."); process.exitCode = 1; return; }
-  console.log(`\nDone. Shop OS Dashboard will start automatically at login, or run it now with:\n  ${result.node.node} ${join(homeDir, "app", "node_modules", "@blueprintitai", "shop-os-dashboard", "bin", "shop-os-dashboard.js")} "${vaultPath}"`);
+  console.log(`\nDone. Blueprint OS Dashboard will start automatically at login, or run it now with:\n  ${result.node.node} ${join(homeDir, "app", "node_modules", "@blueprintitai", "shop-os-dashboard", "bin", "shop-os-dashboard.js")} "${vaultPath}"`);
 }
 
 // NOT `import.meta.url === \`file://${process.argv[1]}\``: that string-built

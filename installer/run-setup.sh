@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shop OS Dashboard — run-setup.sh
+# Blueprint OS Dashboard — run-setup.sh
 # Fetched and run by setup-macos.sh. Same reasoning as run-setup.ps1's header
 # comment: no Node exists yet, so this uses only native shell tools (curl,
 # tar — both preinstalled on macOS).
@@ -37,7 +37,7 @@ NPM_BIN="$(dirname "$NODE_BIN")/npm"
 [ -x "$NPM_BIN" ] || NPM_BIN="npm"
 
 if [ ! -f "$PKG_DIR/bin/shop-os-dashboard-setup.js" ]; then
-  echo "Installing Shop OS Dashboard..."
+  echo "Installing Blueprint OS Dashboard..."
   if ! "$NPM_BIN" install --prefix "$APP_DIR" "@blueprintitai/shop-os-dashboard@latest" >/dev/null 2>&1 || [ ! -f "$PKG_DIR/bin/shop-os-dashboard-setup.js" ]; then
     echo "npm registry unavailable for this package, fetching from GitHub instead..."
     mkdir -p "$PKG_DIR"

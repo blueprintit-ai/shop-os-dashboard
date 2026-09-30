@@ -77,7 +77,7 @@ async function sendPrompt(prompt) {
     appendMessage("user", STATE.name || "You", prompt);
     STATE.turns.push({ role: "user", content: prompt });
 
-    const assistantNode = appendMessage("assistant", "Shop OS", "");
+    const assistantNode = appendMessage("assistant", "Blueprint OS", "");
     const toolLines = assistantNode.querySelector(".tool-lines");
     const body = assistantNode.querySelector(".body");
     let queueLine = null;

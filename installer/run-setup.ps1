@@ -1,4 +1,4 @@
-# Shop OS Dashboard — run-setup.ps1
+# Blueprint OS Dashboard — run-setup.ps1
 # Fetched and run by setup-windows.ps1. No Node exists on this machine yet
 # when this runs, so it uses only native PowerShell (Expand-Archive, tar.exe
 # — bundled since Windows 10 1803) rather than installer/node-runtime.js,
@@ -41,7 +41,7 @@ if (-not $nodeBin) {
 $npmBin = if ($nodeBin -eq "node") { "npm.cmd" } else { $nodeBin -replace "node\.exe$", "npm.cmd" }
 
 if (-not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
-  Write-Host "Installing Shop OS Dashboard..."
+  Write-Host "Installing Blueprint OS Dashboard..."
   & $npmBin install --prefix $appDir "@blueprintitai/shop-os-dashboard@latest" 2>$null
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
     Write-Host "npm registry unavailable for this package, fetching from GitHub instead..."
@@ -66,6 +66,6 @@ if (-not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
 # above to decide whether to fall back) catches both that case and an
 # npm-install failure inside the fallback branch itself.
 if (-not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
-  throw "Shop OS Dashboard install failed: bin\shop-os-dashboard-setup.js not found after both npm and GitHub fallback installs."
+  throw "Blueprint OS Dashboard install failed: bin\shop-os-dashboard-setup.js not found after both npm and GitHub fallback installs."
 }
 & $nodeBin (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js") @args
