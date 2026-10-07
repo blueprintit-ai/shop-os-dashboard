@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "shop-os-dashboard": "./bin/shop-os-dashboard.js",
-    "shop-os-dashboard-setup": "./bin/shop-os-dashboard-setup.js"
+    "shop-os-dashboard-setup": "./bin/shop-os-dashboard-setup.js",
+    "blueprint-os-install": "./bin/blueprint-os-install.js"
   },
   "files": [
     "bin",
