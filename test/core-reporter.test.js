@@ -40,12 +40,43 @@ test("a synchronously throwing fetch never throws", async () => {
   await r.flush();
 });
 
-test("a hanging fetch is abandoned at the timeout and flush returns promptly", async () => {
-  const r = mk({ fetchImpl: (url, init) => new Promise((_, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))) });
-  r.send({ status: "progress", step: "a" });
+test("a hanging fetch is aborted at the timeout; send settles near timeoutMs and flush is prompt", async () => {
+  let aborted = false;
+  const r = mk({ fetchImpl: (url, init) => new Promise((_, rej) => init.signal.addEventListener("abort", () => { aborted = true; rej(new Error("aborted")); })) });
   const t0 = Date.now();
+  await r.send({ status: "progress", step: "a" });
+  assert.equal(aborted, true);
+  assert.ok(Date.now() - t0 < 300);
+  const t1 = Date.now();
   await r.flush();
-  assert.ok(Date.now() - t0 < 1500);
+  assert.ok(Date.now() - t1 < 300);
+});
+
+test("event fields cannot override the reporter identity fields", async () => {
+  let body;
+  const r = mk({ fetchImpl: async (u, init) => { body = JSON.parse(init.body); return { ok: true }; } });
+  await r.send({ status: "progress", license_key: "x", run_id: "evil", support_code: "BP-EVIL" });
+  assert.equal(body.license_key, KEY);
+  assert.equal(body.run_id, "run-1");
+  assert.equal(body.support_code, "BP-AAAA");
+});
+
+test("a rejecting fetch leaves one report_failed line in the local log", async () => {
+  const r = mk({ fetchImpl: async () => { throw new Error("offline"); } });
+  await r.send({ status: "progress", step: "a" });
+  await r.flush();
+  const lines = readFileSync(r.logPath, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  const failed = lines.filter((l) => l.report_failed);
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0].reason, "offline");
+});
+
+test("a non-ok response leaves a report_failed line with the HTTP status", async () => {
+  const r = mk({ fetchImpl: async () => ({ ok: false, status: 503 }) });
+  await r.send({ status: "progress", step: "a" });
+  await r.flush();
+  const lines = readFileSync(r.logPath, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.equal(lines.filter((l) => l.report_failed && l.reason === "HTTP 503").length, 1);
 });
 
 test("writes a redacted local log line per event", async () => {

@@ -26,17 +26,21 @@ export function createReporter({
         logLocal(clean);
         // license_key stays FULL (the server keys by it); every other string was redacted above.
         const payload = capReport({
-          license_key: licenseKey, run_id: runId, support_code: supportCode, installer_version: installerVersion,
           ...clean,
+          license_key: licenseKey, run_id: runId, support_code: supportCode, installer_version: installerVersion,
           machine: { os: clean.snapshot?.os, source: "installer-v2" },
         });
         const ctl = new AbortController();
         timer = setTimeout(() => ctl.abort(), timeoutMs);
         timer.unref?.();
-        await fetchImpl(`${serverBase}/install-log`, {
+        const resp = await fetchImpl(`${serverBase}/install-log`, {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: ctl.signal,
         });
-      } catch { /* reporting is best-effort */ } finally { if (timer) clearTimeout(timer); }
+        if (resp && resp.ok === false) logLocal({ report_failed: true, reason: `HTTP ${resp.status}` });
+      } catch (err) {
+        // reporting is best-effort; leave a trace so support can tell a lost report from a missing one
+        logLocal({ report_failed: true, reason: String(err?.message ?? err) });
+      } finally { if (timer) clearTimeout(timer); }
     })();
     pending.add(p);
     p.finally(() => pending.delete(p));
