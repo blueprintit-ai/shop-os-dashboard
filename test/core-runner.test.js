@@ -116,3 +116,52 @@ test("durationMs uses the injected now", async () => {
   const r = await runSteps([{ id: "a", title: "A", severity: "stop", action: async () => {} }], {}, opts(fakeReporter()));
   assert.equal(r.timeline[0].durationMs, 10);
 });
+
+test("retry-then-success is marked retried but stays ok, not a warning", async () => {
+  let n = 0;
+  const step = { id: "net", title: "Net", severity: "stop", retries: 2, action: async () => { if (++n < 3) throw new Error("ETIMEDOUT"); } };
+  const r = await runSteps([step], {}, opts(fakeReporter()));
+  const e = r.timeline[0];
+  assert.equal(e.status, "ok");
+  assert.equal(e.attempts, 3);
+  assert.equal(e.retried, true);
+  assert.deepEqual(r.retried, [e]);
+  assert.equal(r.warnings.length, 0);
+});
+
+test("first-try success has no retried key; failed after retries is not retried", async () => {
+  const r1 = await runSteps([{ id: "a", title: "A", severity: "stop", action: async () => {} }], {}, opts(fakeReporter()));
+  assert.equal("retried" in r1.timeline[0], false);
+  assert.deepEqual(r1.retried, []);
+  const r2 = await runSteps([{ id: "a", title: "A", severity: "stop", retries: 2, action: async () => { throw new Error("x"); } }], {}, opts(fakeReporter()));
+  assert.equal(r2.failed.status, "failed");
+  assert.equal("retried" in r2.failed, false);
+  assert.deepEqual(r2.retried, []);
+});
+
+test("empty or non-string verify results give the generic message", async () => {
+  for (const v of ["", false, 0]) {
+    const r = await runSteps([{ id: "a", title: "A", severity: "stop", action: async () => {}, verify: async () => v }], {}, opts(fakeReporter()));
+    assert.equal(r.failed.error, "Could not confirm this step worked.");
+  }
+});
+
+test("odd thrown values never crash the runner and always give a string error", async () => {
+  const cases = ["x", undefined, null, { message: 5 }, Object.create(null)];
+  for (const thrown of cases) {
+    const r = await runSteps([{ id: "a", title: "A", severity: "stop", action: async () => { throw thrown; } }], {}, opts(fakeReporter()));
+    assert.equal(typeof r.failed.error, "string");
+    assert.ok(r.failed.error.length > 0);
+  }
+  const r = await runSteps([{ id: "a", title: "A", severity: "stop", action: async () => { throw "x"; } }], {}, opts(fakeReporter()));
+  assert.equal(r.failed.error, "x");
+});
+
+test("warn step with failing verify is a warn with error and hint", async () => {
+  const step = { id: "a", title: "A", severity: "warn", action: async () => {}, verify: async () => "getaddrinfo ENOTFOUND codeload.github.com" };
+  const r = await runSteps([step], {}, opts(fakeReporter()));
+  assert.equal(r.ok, true);
+  assert.equal(r.timeline[0].status, "warn");
+  assert.equal(r.timeline[0].error, "getaddrinfo ENOTFOUND codeload.github.com");
+  assert.match(r.timeline[0].hint, /GitHub unreachable/);
+});
