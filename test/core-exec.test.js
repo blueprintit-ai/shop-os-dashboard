@@ -48,3 +48,29 @@ test("failFromResult throws a StepError carrying the command details", async () 
     return true;
   });
 });
+
+test("stdout holds only the child's stdout; stderr goes to outTail", async () => {
+  const r = await runCommand(node, ["-e", "console.error('warn here'); console.log(JSON.stringify({a:1}))"]);
+  assert.deepEqual(JSON.parse(r.stdout), { a: 1 });
+  assert.match(r.outTail, /warn here/);
+});
+
+test("large stdout keeps the head and sets truncated", async () => {
+  const r = await runCommand(node, ["-e", "process.stdout.write('START'+'x'.repeat(2*1024*1024))"]);
+  assert.equal(r.truncated, true);
+  assert.ok(r.stdout.startsWith("START"));
+  assert.ok(r.stdout.length <= 1024 * 1024);
+});
+
+test("multibyte character split across chunks decodes intact", async () => {
+  const script = "const b=Buffer.from('\\u00e9');process.stdout.write(b.subarray(0,1));setTimeout(()=>process.stdout.write(b.subarray(1)),100)";
+  const r = await runCommand(node, ["-e", script]);
+  assert.equal(r.stdout, "é");
+});
+
+test("failFromResult message mentions timeout and ENOENT", async () => {
+  const t = await runCommand(node, ["-e", "setInterval(()=>{},1000)"], { timeoutMs: 200 });
+  assert.throws(() => failFromResult("Slow", t), /Slow \(timed out\)/);
+  const m = await runCommand("definitely-not-a-real-command-xyz", []);
+  assert.throws(() => failFromResult("Missing", m), /Missing \(ENOENT\)/);
+});

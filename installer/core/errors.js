@@ -10,5 +10,6 @@ export class StepError extends Error {
 }
 
 export function failFromResult(message, result) {
-  throw new StepError(message, { command: result.cmdline, exitCode: result.code ?? undefined, outTail: result.outTail });
+  const suffix = result.timedOut ? " (timed out)" : result.errorCode ? ` (${result.errorCode})` : "";
+  throw new StepError(message + suffix, { command: result.cmdline, exitCode: result.code ?? undefined, outTail: result.outTail });
 }

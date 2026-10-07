@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 const MAX_STDOUT = 1024 * 1024;
+const MAX_MERGED = 64 * 1024;
 
 // The ONLY way the installer runs an outside command. No shell, so a path with
 // spaces or non-ASCII characters is never re-parsed. Never rejects: failures
@@ -12,6 +14,8 @@ export function runCommand(command, args = [], { timeoutMs = 120000, cwd, env, s
     let settled = false;
     let timedOut = false;
     let out = "";
+    let stdout = "";
+    let truncated = false;
     let child;
     const finish = (extra) => {
       if (settled) return;
@@ -21,7 +25,7 @@ export function runCommand(command, args = [], { timeoutMs = 120000, cwd, env, s
       while (lines.length && lines[lines.length - 1] === "") lines.pop();
       resolve({
         ok: false, code: null, signal: null, timedOut, durationMs: Date.now() - started, cmdline,
-        outTail: lines.slice(-tailLines).join("\n"), stdout: out.slice(0, MAX_STDOUT), ...extra,
+        outTail: lines.slice(-tailLines).join("\n"), stdout, truncated, ...extra,
       });
     };
     const timer = setTimeout(() => { timedOut = true; try { child?.kill("SIGKILL"); } catch {} finish({ ok: false }); }, timeoutMs);
@@ -30,10 +34,17 @@ export function runCommand(command, args = [], { timeoutMs = 120000, cwd, env, s
     } catch (e) {
       return finish({ errorCode: e.code ?? "SPAWN" });
     }
-    const onData = (buf) => { out += buf.toString("utf8"); if (out.length > MAX_STDOUT * 2) out = out.slice(-MAX_STDOUT); };
-    child.stdout?.on("data", onData);
-    child.stderr?.on("data", onData);
+    const addMerged = (text) => { out += text; if (out.length > MAX_MERGED) out = out.slice(-MAX_MERGED); };
+    const addStdout = (text) => {
+      if (truncated) return;
+      const room = MAX_STDOUT - stdout.length;
+      if (text.length > room) { stdout += text.slice(0, room); truncated = true; } else stdout += text;
+    };
+    const outDec = new StringDecoder("utf8");
+    const errDec = new StringDecoder("utf8");
+    child.stdout?.on("data", (buf) => { const t = outDec.write(buf); addStdout(t); addMerged(t); });
+    child.stderr?.on("data", (buf) => { addMerged(errDec.write(buf)); });
     child.on("error", (e) => finish({ errorCode: e.code ?? "SPAWN", outTail: String(e.message) }));
-    child.on("close", (code, signal) => finish({ ok: code === 0 && !timedOut, code, signal }));
+    child.on("close", (code, signal) => { const a = outDec.end(); addStdout(a); addMerged(a); addMerged(errDec.end()); finish({ ok: code === 0 && !timedOut, code, signal }); });
   });
 }
