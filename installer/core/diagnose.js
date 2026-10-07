@@ -1,5 +1,5 @@
 const RULES = [
-  [/(ENOTFOUND|EAI_AGAIN|getaddrinfo)[^\n]*github|github[^\n]*(ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET)/i, "GitHub unreachable, likely a firewall or proxy."],
+  [/(ENOTFOUND|EAI_AGAIN|getaddrinfo|ETIMEDOUT|ECONNRESET|ECONNREFUSED)[^\n]*github|github[^\n]*(ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET)/i, "GitHub unreachable, likely a firewall or proxy."],
   [/UNABLE_TO_VERIFY_LEAF_SIGNATURE|self[- ]signed certificate|CERT_HAS_EXPIRED|CERT_UNTRUSTED|CERT_NOT_YET_VALID|UNABLE_TO_GET_ISSUER_CERT_LOCALLY|DEPTH_ZERO_SELF_SIGNED_CERT/i, "TLS certificate not trusted: likely a corporate proxy that inspects traffic."],
   [/ENOTFOUND|EAI_AGAIN|getaddrinfo/i, "DNS lookup failed: no internet, or a firewall/DNS filter is blocking a site."],
   [/ETIMEDOUT|ECONNRESET|ECONNREFUSED|ESOCKETTIMEDOUT|socket hang up|network (is )?unreachable/i, "Network connection timed out or was reset: likely a firewall, proxy or unstable connection."],
