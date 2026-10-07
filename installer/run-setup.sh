@@ -36,16 +36,18 @@ fi
 NPM_BIN="$(dirname "$NODE_BIN")/npm"
 [ -x "$NPM_BIN" ] || NPM_BIN="npm"
 
-if [ ! -f "$PKG_DIR/bin/shop-os-dashboard-setup.js" ]; then
-  echo "Installing Blueprint OS Dashboard..."
-  if ! "$NPM_BIN" install --prefix "$APP_DIR" "@blueprintitai/shop-os-dashboard@latest" >/dev/null 2>&1 || [ ! -f "$PKG_DIR/bin/shop-os-dashboard-setup.js" ]; then
-    echo "npm registry unavailable for this package, fetching from GitHub instead..."
-    mkdir -p "$PKG_DIR"
-    curl -fsSL "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -o "$SHOPOS_HOME/shop-os-dashboard.tar.gz"
-    tar -xzf "$SHOPOS_HOME/shop-os-dashboard.tar.gz" -C "$PKG_DIR" --strip-components=1
-    rm -f "$SHOPOS_HOME/shop-os-dashboard.tar.gz"
-    (cd "$PKG_DIR" && "$NPM_BIN" install --production >/dev/null 2>&1) || true
-  fi
+# Always refresh, never skip because a copy is already installed — see the
+# matching note in run-setup.ps1 (a skip-if-present guard pins a customer to
+# whatever GitHub main looked like on their first run).
+echo "Installing Blueprint OS Dashboard..."
+if ! "$NPM_BIN" install --prefix "$APP_DIR" "@blueprintitai/shop-os-dashboard@latest" >/dev/null 2>&1; then
+  echo "npm registry unavailable for this package, fetching from GitHub instead..."
+  mkdir -p "$PKG_DIR"
+  curl -fsSL "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -o "$SHOPOS_HOME/shop-os-dashboard.tar.gz"
+  # Extracts over any existing copy (overwrites same-named files).
+  tar -xzf "$SHOPOS_HOME/shop-os-dashboard.tar.gz" -C "$PKG_DIR" --strip-components=1
+  rm -f "$SHOPOS_HOME/shop-os-dashboard.tar.gz"
+  (cd "$PKG_DIR" && "$NPM_BIN" install --production >/dev/null 2>&1) || true
 fi
 
 # Same explicit pre-launch check as run-setup.ps1: a failed fallback install
