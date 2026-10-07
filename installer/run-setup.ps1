@@ -40,33 +40,38 @@ if (-not $nodeBin) {
 # directly, since it's already on PATH alongside node.
 $npmBin = if ($nodeBin -eq "node") { "npm.cmd" } else { $nodeBin -replace "node\.exe$", "npm.cmd" }
 
-if (-not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
-  Write-Host "Installing Blueprint OS Dashboard..."
-  # Windows PowerShell 5.1 gotcha: under $ErrorActionPreference = "Stop", a
-  # native command whose stderr is redirected (2>$null, 2>&1) has each stderr
-  # line converted into a terminating NativeCommandError. npm's "npm error
-  # code E404" (package not yet on the registry) therefore killed the script
-  # at this line — "npm.cmd : npm error code E404 ... NativeCommandError" —
-  # and the GitHub fallback below never ran. Native exes are allowed to fail
-  # here; $LASTEXITCODE and the marker-file checks decide what happens next.
-  $savedEap = $ErrorActionPreference
-  $ErrorActionPreference = "Continue"
-  try {
-    & $npmBin install --prefix $appDir "@blueprintitai/shop-os-dashboard@latest" 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
-      Write-Host "npm registry unavailable for this package, fetching from GitHub instead..."
-      New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
-      $tarPath = Join-Path $env:TEMP "shop-os-dashboard.tar.gz"
-      Invoke-WebRequest -Uri "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -OutFile $tarPath -UseBasicParsing -ErrorAction Stop
-      & tar -xzf $tarPath -C $pkgDir --strip-components=1
-      Remove-Item $tarPath -ErrorAction SilentlyContinue
-      Push-Location $pkgDir
-      & $npmBin install --production 2>$null
-      Pop-Location
-    }
-  } finally {
-    $ErrorActionPreference = $savedEap
+# Always refresh, never skip because a copy is already installed: until the
+# package is on npm, the install is a GitHub-main snapshot, so a skip-if-present
+# guard pins a customer to whatever main looked like on their first run. Seen
+# live: a re-run after two installer fixes still executed the first run's stale
+# autostart-windows.js and hit the same shortcut error.
+Write-Host "Installing Blueprint OS Dashboard..."
+# Windows PowerShell 5.1 gotcha: under $ErrorActionPreference = "Stop", a
+# native command whose stderr is redirected (2>$null, 2>&1) has each stderr
+# line converted into a terminating NativeCommandError. npm's "npm error
+# code E404" (package not yet on the registry) therefore killed the script
+# at this line — "npm.cmd : npm error code E404 ... NativeCommandError" —
+# and the GitHub fallback below never ran. Native exes are allowed to fail
+# here; $LASTEXITCODE decides what happens next. (Not the marker file: an
+# older copy already on disk would make that look like success.)
+$savedEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+  & $npmBin install --prefix $appDir "@blueprintitai/shop-os-dashboard@latest" 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "npm registry unavailable for this package, fetching from GitHub instead..."
+    New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
+    $tarPath = Join-Path $env:TEMP "shop-os-dashboard.tar.gz"
+    Invoke-WebRequest -Uri "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -OutFile $tarPath -UseBasicParsing -ErrorAction Stop
+    # Extracts over any existing copy (overwrites same-named files).
+    & tar -xzf $tarPath -C $pkgDir --strip-components=1
+    Remove-Item $tarPath -ErrorAction SilentlyContinue
+    Push-Location $pkgDir
+    & $npmBin install --production 2>$null
+    Pop-Location
   }
+} finally {
+  $ErrorActionPreference = $savedEap
 }
 
 # $ErrorActionPreference = "Stop" only catches terminating exceptions and
