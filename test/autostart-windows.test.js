@@ -33,20 +33,24 @@ test("createDesktopShortcut writes a .vbs script and runs it via cscript", () =>
   assert.equal(calls[0][0], "cscript");
   const vbsPath = calls[0][1].find((a) => a.endsWith(".vbs"));
   assert.ok(existsSync(vbsPath));
-  assert.match(readFileSync(vbsPath, "utf8"), /CreateShortcut/);
+  assert.match(readFileSync(vbsPath).subarray(2).toString("utf16le"), /CreateShortcut/);
 });
 
-test("the .vbs is written with a UTF-8 BOM so cscript doesn't decode it as ANSI", () => {
-  // Without the BOM, cscript uses the system codepage and mangles the
-  // C:\Users\<name>\... paths embedded in the script for any non-ASCII
-  // username — the same bug class already fixed for the PowerShell scripts.
+test("the .vbs is UTF-16 LE with a BOM: cscript can't parse a UTF-8 BOM, and ANSI mangles non-ASCII paths", () => {
+  // A UTF-8 BOM makes cscript fail with "VBScript compilation error: Invalid
+  // character" at (1, 1) (seen live on a customer install). Without any BOM it
+  // decodes as the system ANSI codepage and mangles C:\Users\<name>\... for a
+  // non-ASCII username. UTF-16 LE + BOM (FF FE) is what VBScript honours.
   const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
   const calls = [];
   const spawnSyncImpl = (cmd, args) => { calls.push([cmd, args]); return { status: 0 }; };
   createDesktopShortcut({ nodeBin: "C:\\node.exe", dashboardBin: "C:\\dash.js", vaultPath: "C:\\Vault\\Ünïcøde", desktopDir, spawnSyncImpl });
   const vbsPath = calls[0][1].find((a) => a.endsWith(".vbs"));
   const bytes = readFileSync(vbsPath);
-  assert.deepEqual([...bytes.subarray(0, 3)], [0xEF, 0xBB, 0xBF]);
-  // and the content after the BOM is still the intended UTF-8 script
-  assert.match(bytes.subarray(3).toString("utf8"), /Ünïcøde/);
+  assert.deepEqual([...bytes.subarray(0, 2)], [0xFF, 0xFE]);
+  assert.notDeepEqual([...bytes.subarray(0, 3)], [0xEF, 0xBB, 0xBF]);
+  // and the content after the BOM is still the intended script
+  const text = bytes.subarray(2).toString("utf16le");
+  assert.match(text, /^Set oShell/);
+  assert.match(text, /Ünïcøde/);
 });
