@@ -8,6 +8,7 @@ on:
   pull_request:
   push:
     branches: [main]
+# Note: hiding Git on Windows also degrades the actions/checkout post-step (git cleanup) to a warning; that is expected.
 permissions:
   contents: read
 jobs:
@@ -80,7 +81,7 @@ jobs:
           SHOPOS_VAULT_PATH: ${{ env.VAULT }}
         run: |
           $ErrorActionPreference = "Continue"
-          if ($IsWindows) { & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 }
+          if ($IsWindows) { Remove-Item Env:PSModulePath -ErrorAction SilentlyContinue; & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 }
           else { & bash installer/start-macos.sh }
           if ($LASTEXITCODE -ne 0) { throw "starter exited $LASTEXITCODE" }
 
@@ -93,7 +94,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           Set-Content -Path $env:REPORTS -Value "" -NoNewline
-          if ($IsWindows) { & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 }
+          if ($IsWindows) { Remove-Item Env:PSModulePath -ErrorAction SilentlyContinue; & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 }
           else { & bash installer/start-macos.sh }
           if ($LASTEXITCODE -ne 0) { throw "starter exited $LASTEXITCODE on the second run" }
           node test/e2e/assert-install.mjs "$env:VAULT" "$env:REPORTS" ok
@@ -107,7 +108,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           Set-Content -Path $env:REPORTS -Value "" -NoNewline
-          if ($IsWindows) { $lines = & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 2>&1 }
+          if ($IsWindows) { Remove-Item Env:PSModulePath -ErrorAction SilentlyContinue; $lines = & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 2>&1 }
           else { $lines = & bash installer/start-macos.sh 2>&1 }
           $code = $LASTEXITCODE
           $out = ($lines | ForEach-Object { "$_" }) -join "`n"
@@ -118,18 +119,21 @@ jobs:
           node test/e2e/assert-install.mjs "$env:VAULT" "$env:REPORTS" fail-github
           if ($LASTEXITCODE -ne 0) { throw "failure-report assertions failed" }
 
-      - name: Collect the local install logs
+      - name: Collect the local install logs and received reports into one folder
         if: always()
         run: |
+          # upload-artifact v4 needs one shared root; the logs (home drive) and reports (temp drive) can differ on Windows.
+          $dest = Join-Path $env:RUNNER_TEMP "install-artifacts"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Write-Host "logs at $env:SHOPOS_LOGS"
-          if (Test-Path -LiteralPath $env:SHOPOS_LOGS) { Get-ChildItem -LiteralPath $env:SHOPOS_LOGS | ForEach-Object { Write-Host $_.FullName } }
+          if ($env:SHOPOS_LOGS -and (Test-Path -LiteralPath $env:SHOPOS_LOGS)) { Copy-Item -LiteralPath $env:SHOPOS_LOGS -Destination (Join-Path $dest "logs") -Recurse -Force }
+          if ($env:REPORTS -and (Test-Path -LiteralPath $env:REPORTS)) { Copy-Item -LiteralPath $env:REPORTS -Destination (Join-Path $dest "reports.jsonl") -Force }
+          Get-ChildItem -LiteralPath $dest -Recurse | ForEach-Object { Write-Host $_.FullName }
 
       - name: Upload the local install logs and received reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: install-logs-${{ matrix.os }}
-          path: |
-            ${{ env.SHOPOS_LOGS }}
-            ${{ env.REPORTS }}
+          path: ${{ runner.temp }}/install-artifacts
           if-no-files-found: warn

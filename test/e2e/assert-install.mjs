@@ -33,7 +33,7 @@ function checkCommon(reports, home) {
   assert.ok(Array.isArray(last.notes) && last.notes.every((n) => typeof n === "string"), "notes is an array of strings");
   assert.ok(Number.isFinite(last.duration_ms), "duration_ms is a number");
   assert.ok(last.snapshot && typeof last.snapshot === "object", "snapshot is present");
-  assert.ok(!homeLeaks(JSON.stringify(reports), home) && !reports.some((r) => homeLeaks(JSON.stringify(r), home)), "home directory leaked into a report");
+  assert.ok(!homeLeaks(JSON.stringify(reports), home), "home directory leaked into a report");
   return last;
 }
 
@@ -45,7 +45,7 @@ export function checkOkReports(reports, { home = homedir(), strictSteps = [] } =
   assert.equal(reports.filter((r) => r.status === "success").length, 1, "exactly one success report");
   assert.ok(!reports.some((r) => r.status === "error"), "no error report in a successful run");
   assert.ok(reports.some((r) => r.status === "progress" && r.step === "claude-code"), "progress reports were sent per step (claude-code)");
-  assert.ok(!reports.some((r) => r.step === "launch"), "no launch report (SHOPOS_NO_LAUNCH=1)");
+  assert.ok(!reports.some((r) => r.step === "launch"), "no report after the success report: launch runs in phase two without a reporter");
   assert.ok(!last.timeline.some((t) => t.status === "failed"), "a timeline entry is failed");
   for (const id of strictSteps) {
     const t = last.timeline.find((e) => e.id === id);
@@ -66,8 +66,10 @@ export function checkFailGithubReports(reports, { home = homedir() } = {}) {
   assert.ok(last.timeline.some((t) => t.id === "machine-check" && t.status === "failed"), "timeline marks machine-check failed");
 }
 
+// Mirrors installer/core/claude.js claudePath: ~/.local/bin first, PATH fallback.
 function claudeBin() {
-  return join(homedir(), ".local", "bin", process.platform === "win32" ? "claude.exe" : "claude");
+  const p = join(homedir(), ".local", "bin", process.platform === "win32" ? "claude.exe" : "claude");
+  return existsSync(p) ? p : "claude";
 }
 
 function checkMachine(vault) {

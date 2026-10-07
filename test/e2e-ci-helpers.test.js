@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createFakeLicenseServer } from "./helpers/fake-license-server.js";
 import { homeLeaks, checkOkReports, checkFailGithubReports } from "./e2e/assert-install.mjs";
 
@@ -126,15 +127,14 @@ test("the CLI reads a reports file and exits 0/1 for fail-github", async () => {
   const { writeFileSync } = await import("node:fs");
   writeFileSync(good, failReports().map((r) => JSON.stringify(r)).join("\n") + "\n");
   writeFileSync(bad, okReports().map((r) => JSON.stringify(r)).join("\n") + "\n");
-  const script = new URL("./e2e/assert-install.mjs", import.meta.url).pathname;
+  const script = fileURLToPath(new URL("./e2e/assert-install.mjs", import.meta.url));
   assert.equal(spawnSync(process.execPath, [script, dir, good, "fail-github"]).status, 0);
   assert.notEqual(spawnSync(process.execPath, [script, dir, bad, "fail-github"]).status, 0);
 });
 
 // ---- workflow guard rails (the real proof is a run on GitHub Actions) ----
-import { readFileSync as readWf } from "node:fs";
 test("installer-e2e workflow: ASCII only, majors pinned, no unexpanded ~ paths, Git is hidden on Windows", () => {
-  const raw = readWf(new URL("../.github/workflows/installer-e2e.yml", import.meta.url));
+  const raw = readFileSync(new URL("../.github/workflows/installer-e2e.yml", import.meta.url));
   for (const [i, b] of raw.entries()) assert.ok(b < 128, `non-ASCII byte at ${i}`);
   const t = raw.toString("utf8");
   for (const m of t.matchAll(/uses:\s*(\S+)/g)) assert.match(m[1], /@v\d+$/, `${m[1]} must be pinned to a major`);
@@ -144,4 +144,8 @@ test("installer-e2e workflow: ASCII only, majors pinned, no unexpanded ~ paths, 
   assert.match(t, /SHOPOS_NO_LAUNCH/);
   assert.match(t, /SHOPOS_VAULT_PATH/);
   assert.match(t, /fail-github/);
+  assert.match(t, /Remove-Item Env:PSModulePath/);
+  // one shared root for the artifact: only the collected folder is uploaded
+  assert.match(t, /path: \$\{\{ runner\.temp \}\}\/install-artifacts/);
+  assert.doesNotMatch(t, /path:\s*\|/, "multi-path uploads break on Windows (two drives)");
 });
