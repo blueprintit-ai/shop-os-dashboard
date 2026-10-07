@@ -44,8 +44,15 @@ if [ ! -f "$PKG_DIR/bin/shop-os-dashboard-setup.js" ]; then
     curl -fsSL "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -o "$SHOPOS_HOME/shop-os-dashboard.tar.gz"
     tar -xzf "$SHOPOS_HOME/shop-os-dashboard.tar.gz" -C "$PKG_DIR" --strip-components=1
     rm -f "$SHOPOS_HOME/shop-os-dashboard.tar.gz"
-    (cd "$PKG_DIR" && "$NPM_BIN" install --production >/dev/null 2>&1)
+    (cd "$PKG_DIR" && "$NPM_BIN" install --production >/dev/null 2>&1) || true
   fi
+fi
+
+# Same explicit pre-launch check as run-setup.ps1: a failed fallback install
+# should say so, not surface as a raw Node "module not found" from exec below.
+if [ ! -f "$PKG_DIR/bin/shop-os-dashboard-setup.js" ]; then
+  echo "Blueprint OS Dashboard install failed: bin/shop-os-dashboard-setup.js not found after both npm and GitHub fallback installs." >&2
+  exit 1
 fi
 
 exec "$NODE_BIN" "$PKG_DIR/bin/shop-os-dashboard-setup.js" "$@"

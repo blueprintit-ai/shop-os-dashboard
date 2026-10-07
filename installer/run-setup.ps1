@@ -42,17 +42,30 @@ $npmBin = if ($nodeBin -eq "node") { "npm.cmd" } else { $nodeBin -replace "node\
 
 if (-not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
   Write-Host "Installing Blueprint OS Dashboard..."
-  & $npmBin install --prefix $appDir "@blueprintitai/shop-os-dashboard@latest" 2>$null
-  if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
-    Write-Host "npm registry unavailable for this package, fetching from GitHub instead..."
-    New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
-    $tarPath = Join-Path $env:TEMP "shop-os-dashboard.tar.gz"
-    Invoke-WebRequest -Uri "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -OutFile $tarPath -UseBasicParsing
-    & tar -xzf $tarPath -C $pkgDir --strip-components=1
-    Remove-Item $tarPath -ErrorAction SilentlyContinue
-    Push-Location $pkgDir
-    & $npmBin install --production 2>$null
-    Pop-Location
+  # Windows PowerShell 5.1 gotcha: under $ErrorActionPreference = "Stop", a
+  # native command whose stderr is redirected (2>$null, 2>&1) has each stderr
+  # line converted into a terminating NativeCommandError. npm's "npm error
+  # code E404" (package not yet on the registry) therefore killed the script
+  # at this line — "npm.cmd : npm error code E404 ... NativeCommandError" —
+  # and the GitHub fallback below never ran. Native exes are allowed to fail
+  # here; $LASTEXITCODE and the marker-file checks decide what happens next.
+  $savedEap = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $npmBin install --prefix $appDir "@blueprintitai/shop-os-dashboard@latest" 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $pkgDir "bin\shop-os-dashboard-setup.js"))) {
+      Write-Host "npm registry unavailable for this package, fetching from GitHub instead..."
+      New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
+      $tarPath = Join-Path $env:TEMP "shop-os-dashboard.tar.gz"
+      Invoke-WebRequest -Uri "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -OutFile $tarPath -UseBasicParsing -ErrorAction Stop
+      & tar -xzf $tarPath -C $pkgDir --strip-components=1
+      Remove-Item $tarPath -ErrorAction SilentlyContinue
+      Push-Location $pkgDir
+      & $npmBin install --production 2>$null
+      Pop-Location
+    }
+  } finally {
+    $ErrorActionPreference = $savedEap
   }
 }
 
