@@ -27,3 +27,24 @@ test("success message mentions Desktop only as the spec allows", () => {
   assert.doesNotMatch(no, /Cowork/);
   assert.match(no, /Obsidian: x/);
 });
+
+test("hintFor never throws on null/undefined", () => {
+  assert.equal(hintFor(null), null);
+  assert.equal(hintFor(undefined), null);
+  assert.equal(hintFor({ message: null, outTail: null }), null);
+});
+test("non-github ENOTFOUND gives the DNS hint", () => {
+  assert.match(hintFor({ message: "getaddrinfo ENOTFOUND registry.npmjs.org" }), /DNS lookup failed/);
+});
+test("ETIMEDOUT mentioning github gives the GitHub hint", () => {
+  assert.match(hintFor({ message: "connect ETIMEDOUT github.com:443" }), /GitHub unreachable/);
+});
+test("local timeout is not reported as a network problem", () => {
+  const h = hintFor({ message: "The Obsidian installer did not finish. (timed out)" });
+  assert.match(h, /took too long/);
+  assert.doesNotMatch(h, /Network connection/);
+});
+test("xcode rule", () => assert.match(hintFor({ outTail: "xcode-select: error" }), /xcode-select --install/));
+test("success with no warnings has no Note line", () => {
+  assert.doesNotMatch(renderSuccess({ desktopInstalled: false, vaultPath: "V", warnings: [] }), /Note:/);
+});
