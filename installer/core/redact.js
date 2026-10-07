@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+
 const LICENSE_RE = /SHOP-([A-Z0-9]{4})-[A-Z0-9]{4}-([A-Z0-9]{4})/g;
 const SECRET_RES = [
   /\bsk-[A-Za-z0-9_-]{16,}/g,
@@ -7,7 +9,7 @@ const SECRET_RES = [
   /\bxox[baprs]-[A-Za-z0-9-]{10,}/g,
 ];
 const BEARER_RE = /Bearer\s+[^\s"']+/g;
-const OTHER_USER_RE = /([\\/]Users[\\/])[^\\/\s"'<]+/g;
+const OTHER_USER_RE = /([\\/]Users(?:\\\\|\\|\/))[^\\/\s"'<]+/gi;
 
 export function shortenLicenseKey(key) {
   return String(key).replace(LICENSE_RE, "SHOP-$1-...-$2");
@@ -15,11 +17,16 @@ export function shortenLicenseKey(key) {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export function redactText(text, { homeDir, homeToken = "~" } = {}) {
+export function redactText(text, opts = {}) {
+  const homeDir = opts.homeDir === undefined ? safeHome() : opts.homeDir;
+  const homeToken = opts.homeToken ?? (process.platform === "win32" ? "%USERPROFILE%" : "~");
   let t = String(text ?? "");
-  if (homeDir) {
-    for (const variant of new Set([homeDir, homeDir.replace(/\\/g, "/"), homeDir.replace(/\//g, "\\")])) {
-      t = t.replace(new RegExp(escapeRe(variant), "gi"), homeToken);
+  const home = typeof homeDir === "string" ? homeDir.replace(/[\\/]+$/, "") : "";
+  if (home.length >= 3 && !/^([A-Za-z]:)?[\\/]*$/.test(home)) {
+    const back = home.replace(/\//g, "\\");
+    const variants = new Set([home, home.replace(/\\/g, "/"), back, back.replace(/\\/g, "\\\\")]);
+    for (const variant of [...variants].sort((x, y) => y.length - x.length)) {
+      t = t.replace(new RegExp(escapeRe(variant) + "(?=[\\\\/\\s\"']|$)", "gi"), () => homeToken);
     }
   }
   t = t.replace(LICENSE_RE, "SHOP-$1-...-$2");
@@ -27,6 +34,10 @@ export function redactText(text, { homeDir, homeToken = "~" } = {}) {
   t = t.replace(BEARER_RE, "Bearer [masked]");
   t = t.replace(OTHER_USER_RE, "$1<user>");
   return t;
+}
+
+function safeHome() {
+  try { return homedir(); } catch { return null; }
 }
 
 export function redactDeep(value, opts) {
@@ -53,5 +64,16 @@ export function capReport(report, maxBytes = 20000) {
   if (r.error_message) r.error_message = String(r.error_message).slice(0, 2000);
   if (size(r) <= maxBytes) return r;
   delete r.timeline;
-  return r;
+  if (size(r) <= maxBytes) return r;
+  for (const [k, v] of Object.entries(r)) {
+    if (typeof v === "string" && v.length > 1024) r[k] = v.slice(0, 1024);
+  }
+  if (size(r) <= maxBytes) return r;
+  const out = {};
+  for (const k of ["status", "step", "support_code", "run_id", "license_key", "error_message"]) {
+    if (r[k] === undefined) continue;
+    out[k] = typeof r[k] === "string" ? r[k].slice(0, k === "error_message" ? 500 : 200) : r[k];
+  }
+  out.truncated = true;
+  return out;
 }

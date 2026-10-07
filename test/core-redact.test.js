@@ -45,3 +45,42 @@ test("ids", () => {
   assert.match(newRunId(), /^[0-9a-f-]{36}$/);
   assert.match(newSupportCode(), /^BP-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/);
 });
+
+import { homedir } from "node:os";
+
+test("fix: lowercase and JSON-escaped user paths are generalised", () => {
+  assert.equal(redactText("c:\\users\\carol\\x", { homeDir: null }), "c:\\users\\<user>\\x");
+  const j = JSON.stringify({ p: "C:\\Users\\carol\\x" });
+  assert.doesNotMatch(redactText(j, { homeDir: null }), /carol/);
+});
+
+test("fix: home with a space, plain and JSON-escaped", () => {
+  const home = "C:\\Users\\Jos\u00e9 Garc\u00eda";
+  const o = { homeDir: home, homeToken: "%USERPROFILE%" };
+  assert.equal(redactText(`${home}\\x`, o), "%USERPROFILE%\\x");
+  const j = JSON.stringify({ p: `${home}\\x` });
+  assert.doesNotMatch(redactText(j, o), /Jos/);
+});
+
+test("fix: default homeDir is os.homedir()", () => {
+  const r = redactText(`at ${homedir()}/foo`);
+  assert.ok(!r.includes(homedir()));
+});
+
+test("fix: prefix collision both directions", () => {
+  const o = { homeDir: "C:\\Users\\bob", homeToken: "H" };
+  assert.equal(redactText("C:\\Users\\bobby\\z", o), "C:\\Users\\<user>\\z");
+  assert.equal(redactText("C:\\Users\\bob\\z", o), "H\\z");
+  assert.equal(redactText("C:\\Users\\bob", o), "H");
+});
+
+test("fix: homeDir / is a no-op; token with $& is literal", () => {
+  assert.equal(redactText("a/b/c", { homeDir: "/", homeToken: "H" }), "a/b/c");
+  assert.equal(redactText("/h/me/x", { homeDir: "/h/me", homeToken: "$&" }), "$&/x");
+});
+
+test("fix: capReport enforces the cap on large identity-ish fields", () => {
+  const r = capReport({ status: "error", step: "x", run_id: "r".repeat(30000), error_message: "e".repeat(30000), extra: "k".repeat(30000) }, 20000);
+  assert.ok(Buffer.byteLength(JSON.stringify(r)) <= 20000);
+  assert.equal(r.status, "error");
+});
