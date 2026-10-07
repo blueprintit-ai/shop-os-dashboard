@@ -37,9 +37,11 @@ oShortcut.Save
     const vbsPath = join(scriptDir, "shortcut.vbs");
     // cscript decodes a BOM-less .vbs with the system ANSI codepage, which
     // mangles the C:\Users\<name>\... paths embedded above for any non-ASCII
-    // username — the same bug class already fixed for this branch's PowerShell
-    // scripts (docs/windows-defender-false-positive.md / Task 9).
-    writeFileSync(vbsPath, Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(vbs, "utf8")]));
+    // username. The fix is NOT a UTF-8 BOM (that works for PowerShell, but
+    // VBScript doesn't recognise it: the three BOM bytes become junk at line 1,
+    // column 1 -> "Microsoft VBScript compilation error: Invalid character",
+    // seen live on a customer install). VBScript does honour a UTF-16 LE BOM.
+    writeFileSync(vbsPath, Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(vbs, "utf16le")]));
     const result = spawnSyncImpl("cscript", ["//nologo", vbsPath], { encoding: "utf8" });
     if (result.status !== 0) return { ok: false, error: result.stderr || `cscript exited ${result.status}` };
     return { ok: true, path: shortcutPath };
