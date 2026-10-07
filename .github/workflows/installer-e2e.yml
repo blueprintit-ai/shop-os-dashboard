@@ -1,0 +1,135 @@
+# Real-machine installer runs: the real starter (PowerShell 5.1 on Windows, bash on macOS) against a fake
+# license server, then assertions on the machine and on the reports the installer sent.
+# Every cross-platform step uses `shell: pwsh` (present on both runner images) so that hiding Git on the
+# Windows runner cannot break the shell the job runs in (Git for Windows also ships the runner's bash).
+# Keep the PowerShell ASCII-only: build non-ASCII characters from [char] codes.
+name: installer-e2e
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: node --test test/*.test.js
+  install:
+    needs: unit
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      SHOPOS_LICENSE_KEY: SHOP-CI12-TEST-0001
+      SHOPOS_LICENSE_SERVER: http://127.0.0.1:8787
+      SHOPOS_PACKAGE_DIR: ${{ github.workspace }}
+      SHOPOS_NO_LAUNCH: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - name: Windows - hide Git so "no Git needed" (the pinned MinGit) is really tested
+        if: runner.os == 'Windows'
+        run: |
+          # Drop every Git folder from PATH (not "GitHub CLI"), then rename the install folders.
+          $clean = ($env:PATH -split ';' | Where-Object { $_ -and ($_ -notmatch '(?i)\\Git(\\|$)') }) -join ';'
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV, "PATH=$clean`n")
+          foreach ($d in @('C:\Program Files\Git', 'C:\Program Files (x86)\Git')) {
+            if (Test-Path -LiteralPath $d) { Rename-Item -LiteralPath $d -NewName ((Split-Path $d -Leaf) + '.disabled') }
+          }
+          $env:PATH = $clean
+          if (Get-Command git -ErrorAction SilentlyContinue) { throw "git is still on PATH: $((Get-Command git).Source)" }
+          Write-Host "git is hidden"
+
+      - name: Prepare paths (vault with a space and accents, log folder)
+        run: |
+          # A vault parent folder with a space and non-ASCII letters, like a real customer path.
+          $parent = Join-Path $env:RUNNER_TEMP ("Jos" + [char]0xE9 + " Garc" + [char]0xED + "a")
+          New-Item -ItemType Directory -Force -Path $parent | Out-Null
+          $vault = Join-Path $parent "Blueprint OS"
+          $logs = Join-Path (Join-Path $HOME ".shopos") "logs"
+          $reports = Join-Path $env:RUNNER_TEMP "reports.jsonl"
+          [System.IO.File]::AppendAllText($env:GITHUB_ENV, "VAULT=$vault`nSHOPOS_LOGS=$logs`nREPORTS=$reports`n")
+
+      - name: Start the fake license server
+        run: |
+          $serverArgs = @("test/helpers/fake-license-server.js", "8787", $env:REPORTS)
+          if ($IsWindows) { $proc = Start-Process -FilePath node -ArgumentList $serverArgs -PassThru -WindowStyle Hidden }
+          else { $proc = Start-Process -FilePath node -ArgumentList $serverArgs -PassThru }
+          $up = $false
+          for ($i = 0; $i -lt 30 -and -not $up; $i++) {
+            try { $up = (Invoke-WebRequest -Uri "http://127.0.0.1:8787/validate" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $up) { throw "fake license server did not start" }
+          Write-Host "fake license server is up (pid $($proc.Id))"
+
+      - name: Install (real starter)
+        env:
+          SHOPOS_VAULT_PATH: ${{ env.VAULT }}
+        run: |
+          $ErrorActionPreference = "Continue"
+          if ($IsWindows) { & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 }
+          else { & bash installer/start-macos.sh }
+          if ($LASTEXITCODE -ne 0) { throw "starter exited $LASTEXITCODE" }
+
+      - name: Assert the install
+        run: node test/e2e/assert-install.mjs "$env:VAULT" "$env:REPORTS" ok
+
+      - name: Install a second time (must be safe to re-run)
+        env:
+          SHOPOS_VAULT_PATH: ${{ env.VAULT }}
+        run: |
+          $ErrorActionPreference = "Continue"
+          Set-Content -Path $env:REPORTS -Value "" -NoNewline
+          if ($IsWindows) { & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 }
+          else { & bash installer/start-macos.sh }
+          if ($LASTEXITCODE -ne 0) { throw "starter exited $LASTEXITCODE on the second run" }
+          node test/e2e/assert-install.mjs "$env:VAULT" "$env:REPORTS" ok
+          if ($LASTEXITCODE -ne 0) { throw "assertions failed after the second run" }
+
+      - name: Deliberate failure - GitHub blocked (customer message, hint, report)
+        env:
+          SHOPOS_TEST_MODE: "1"
+          SHOPOS_TEST_FAIL_HOSTS: github.com,codeload.github.com,api.github.com
+          SHOPOS_VAULT_PATH: ${{ env.VAULT }}
+        run: |
+          $ErrorActionPreference = "Continue"
+          Set-Content -Path $env:REPORTS -Value "" -NoNewline
+          if ($IsWindows) { $lines = & powershell -NoProfile -ExecutionPolicy Bypass -File installer\start-windows.ps1 2>&1 }
+          else { $lines = & bash installer/start-macos.sh 2>&1 }
+          $code = $LASTEXITCODE
+          $out = ($lines | ForEach-Object { "$_" }) -join "`n"
+          Write-Host $out
+          if ($code -eq 0) { throw "expected a non-zero exit" }
+          if ($out -notmatch 'Setup hit a problem at ".+"\. We''ve been notified and will email you shortly\. If you contact us, quote support code BP-[A-HJ-NP-Z2-9]{4}\.') { throw "customer message missing or malformed" }
+          $global:LASTEXITCODE = 0
+          node test/e2e/assert-install.mjs "$env:VAULT" "$env:REPORTS" fail-github
+          if ($LASTEXITCODE -ne 0) { throw "failure-report assertions failed" }
+
+      - name: Collect the local install logs
+        if: always()
+        run: |
+          Write-Host "logs at $env:SHOPOS_LOGS"
+          if (Test-Path -LiteralPath $env:SHOPOS_LOGS) { Get-ChildItem -LiteralPath $env:SHOPOS_LOGS | ForEach-Object { Write-Host $_.FullName } }
+
+      - name: Upload the local install logs and received reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-logs-${{ matrix.os }}
+          path: |
+            ${{ env.SHOPOS_LOGS }}
+            ${{ env.REPORTS }}
+          if-no-files-found: warn

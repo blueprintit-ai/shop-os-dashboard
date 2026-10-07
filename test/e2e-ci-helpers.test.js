@@ -130,3 +130,18 @@ test("the CLI reads a reports file and exits 0/1 for fail-github", async () => {
   assert.equal(spawnSync(process.execPath, [script, dir, good, "fail-github"]).status, 0);
   assert.notEqual(spawnSync(process.execPath, [script, dir, bad, "fail-github"]).status, 0);
 });
+
+// ---- workflow guard rails (the real proof is a run on GitHub Actions) ----
+import { readFileSync as readWf } from "node:fs";
+test("installer-e2e workflow: ASCII only, majors pinned, no unexpanded ~ paths, Git is hidden on Windows", () => {
+  const raw = readWf(new URL("../.github/workflows/installer-e2e.yml", import.meta.url));
+  for (const [i, b] of raw.entries()) assert.ok(b < 128, `non-ASCII byte at ${i}`);
+  const t = raw.toString("utf8");
+  for (const m of t.matchAll(/uses:\s*(\S+)/g)) assert.match(m[1], /@v\d+$/, `${m[1]} must be pinned to a major`);
+  assert.doesNotMatch(t, /path:\s*"?~/, "actions do not expand ~");
+  assert.doesNotMatch(t, /shell:\s*bash/, "bash is Git's bash on Windows; the job uses pwsh");
+  assert.match(t, /Program Files\\Git/);
+  assert.match(t, /SHOPOS_NO_LAUNCH/);
+  assert.match(t, /SHOPOS_VAULT_PATH/);
+  assert.match(t, /fail-github/);
+});
