@@ -58,7 +58,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 const P = ps1.toString("utf8");
 
@@ -113,10 +113,10 @@ test("macOS starter behaves: package-extract failure prints the exact message an
     req.on("end", () => { body = b; url = req.url; res.end("{}"); });
   });
   await new Promise((r) => srv.listen(0, "127.0.0.1", r));
-  const env = { PATH: process.env.PATH, HOME: home, SHOPOS_PACKAGE_DIR: pkg, SHOPOS_LICENSE_KEY: "LIC-TEST-1234",
+  const env = { PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, SHOPOS_PACKAGE_DIR: pkg, SHOPOS_LICENSE_KEY: `${home}/k\\"q`,
     SHOPOS_LICENSE_SERVER: `http://127.0.0.1:${srv.address().port}` };
   const r = await new Promise((resolve) => {
-    const c = spawn("bash", [new URL("../installer/start-macos.sh", import.meta.url).pathname], { env });
+    const c = spawn("bash", [process.env.STARTER_SH ?? new URL("../installer/start-macos.sh", import.meta.url).pathname], { env });
     let out = ""; c.stdout.on("data", (d) => (out += d)); c.stderr.on("data", () => {});
     c.on("close", (code) => resolve({ code, out }));
   });
@@ -127,5 +127,6 @@ test("macOS starter behaves: package-extract failure prints the exact message an
   assert.equal(parsed.step, "starter:package-extract");
   assert.match(parsed.support_code, /^BP-[A-HJ-NP-Z2-9]{4}$/);
   assert.ok(r.out.includes(`Setup hit a problem at "package-extract". We've been notified and will email you shortly. If you contact us, quote support code ${parsed.support_code}.`));
+  assert.equal(parsed.license_key, '~/k\\"q');
   assert.ok(!body.includes(home));
 });

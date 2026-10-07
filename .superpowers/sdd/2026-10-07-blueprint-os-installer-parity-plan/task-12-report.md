@@ -37,3 +37,11 @@ Sizes: ps1 85 lines (<90), sh 63 lines (<80); limits unchanged.
 Checks: `bash -n` clean; shellcheck warnings clean (two SC2015 info notes on intentional `A && B || fail`); ps1 verified pure ASCII; full suite results are in the final reply.
 Deviation: the temp dir for the Node download lives under ~/.shopos (not %TEMP%) so the final move is a same-volume rename. The ps1 cannot be run here; PS 5.1 behavior of `$global:LASTEXITCODE` assignment and tar.exe on zip is unverified until Windows CI.
 Full suite: 377 tests, 376 pass, 0 fail, 1 skipped.
+
+## Fix round 2
+
+- Behavioral test now uses SHOPOS_LICENSE_KEY = `${home}/k\"q` and asserts JSON.parse(body).license_key === `~/k\"q` plus no home path in the raw body. The test accepts an optional STARTER_SH env var (script path override) so it can be pointed at a scratch copy. PATH for the spawned bash starts with dirname(process.execPath), so Node can never be downloaded.
+- Mutation verified: in a scratchpad copy (/private/tmp/claude-501/scratch-mut.sh, never the repo file) I removed the json_str wrapper around the license key in fail(); with STARTER_SH pointing at it the behavioral test FAILED (12 pass, 1 fail). The real script passes 13/13.
+- ps1: Remove-Item -LiteralPath $dest ... -ErrorAction Stop; tar.exe is called as "$env:SystemRoot\System32\tar.exe" in both extractions; the Node temp folder is removed before Fail on checksum, tar and catch (move) failures. ps1 stays pure ASCII, 85 lines.
+- sh: the Node temp folder is removed before fail on download, checksum list, checksum, extract and move failures (exit codes captured via rc=$? first). 63 lines.
+- Checks: bash -n clean, shellcheck -S warning clean. Full suite: 377 tests, 376 pass, 0 fail, 1 skipped.

@@ -37,13 +37,13 @@ if [ -z "$NODE_BIN" ]; then
   [[ "$VER" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || VER="v22.20.0"
   NAME="node-$VER-darwin-$NA"; BASE="https://nodejs.org/dist/$VER"
   TMP="$(mktemp -d "$SHOPOS/tmp.XXXXXX")" || fail node-download "could not create a temp folder"
-  curl -fsSL "$BASE/$NAME.tar.gz" -o "$TMP/node.tar.gz" || fail node-download "download failed (curl exit $?)"
-  curl -fsSL -m 60 "$BASE/SHASUMS256.txt" -o "$TMP/sums" || fail node-download "checksum list download failed (curl exit $?)"
+  curl -fsSL "$BASE/$NAME.tar.gz" -o "$TMP/node.tar.gz" || { rc=$?; rm -rf "$TMP"; fail node-download "download failed (curl exit $rc)"; }
+  curl -fsSL -m 60 "$BASE/SHASUMS256.txt" -o "$TMP/sums" || { rc=$?; rm -rf "$TMP"; fail node-download "checksum list download failed (curl exit $rc)"; }
   WANT="$(grep " $NAME.tar.gz\$" "$TMP/sums" | awk '{print $1}' | head -n1)"
   GOT="$(shasum -a 256 "$TMP/node.tar.gz" | awk '{print $1}')"
-  { [ -n "$WANT" ] && [ "$WANT" = "$GOT" ]; } || fail node-download "Node checksum did not match"
-  mkdir "$TMP/x" && tar -xzf "$TMP/node.tar.gz" -C "$TMP/x" || fail node-download "extract failed (tar exit $?)"
-  mkdir -p "$SHOPOS/runtime" && rm -rf "$SHOPOS/runtime/$NAME" && mv "$TMP/x/$NAME" "$SHOPOS/runtime/$NAME" || fail node-download "could not move Node into place"
+  { [ -n "$WANT" ] && [ "$WANT" = "$GOT" ]; } || { rm -rf "$TMP"; fail node-download "Node checksum did not match"; }
+  mkdir "$TMP/x" && tar -xzf "$TMP/node.tar.gz" -C "$TMP/x" || { rm -rf "$TMP"; fail node-download "extract failed"; }
+  mkdir -p "$SHOPOS/runtime" && rm -rf "$SHOPOS/runtime/$NAME" && mv "$TMP/x/$NAME" "$SHOPOS/runtime/$NAME" || { rm -rf "$TMP"; fail node-download "could not move Node into place"; }
   rm -rf "$TMP"
   NODE_BIN="$SHOPOS/runtime/$NAME/bin/node"
   node_ok "$NODE_BIN" || fail node-download "Node did not run after download."

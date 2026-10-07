@@ -53,15 +53,15 @@ if (-not $nodeBin) {
     $line = Get-Content -LiteralPath $sums | Where-Object { $_ -match ("^[0-9a-fA-F]{64}\s+" + [regex]::Escape("$name.zip") + "$") } | Select-Object -First 1
     $want = if ($line) { ($line -split '\s+')[0] } else { "" }
     $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
-    if (-not $want -or $want -ne $got) { Fail "node-download" "Node checksum did not match" }
-    $global:LASTEXITCODE = -1; & tar.exe -xf $zip -C $tmp
-    if ($LASTEXITCODE -ne 0) { Fail "node-download" "tar.exe exited $LASTEXITCODE" }
+    if (-not $want -or $want -ne $got) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; Fail "node-download" "Node checksum did not match" }
+    $global:LASTEXITCODE = -1; & "$env:SystemRoot\System32\tar.exe" -xf $zip -C $tmp
+    if ($LASTEXITCODE -ne 0) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue; Fail "node-download" "tar.exe exited $LASTEXITCODE" }
     New-Item -ItemType Directory -Force -Path $rt | Out-Null; $dest = Join-Path $rt $name
-    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction Stop }
     Move-Item -LiteralPath (Join-Path $tmp $name) -Destination $dest -ErrorAction Stop
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
     $nodeBin = Join-Path $dest "node.exe"
-  } catch { Fail "node-download" $_.Exception.Message }
+  } catch { if ($tmp) { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }; Fail "node-download" $_.Exception.Message }
   if (-not (Test-Node $nodeBin)) { Fail "node-download" "Node did not run after download." }
 }
 
@@ -73,7 +73,7 @@ if ($env:SHOPOS_PACKAGE_DIR) { $pkgDir = $env:SHOPOS_PACKAGE_DIR } else {
     New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
     Invoke-WebRequest -Uri "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -OutFile $tgz -UseBasicParsing -ErrorAction Stop
   } catch { Fail "package-download" $_.Exception.Message }
-  $global:LASTEXITCODE = -1; & tar.exe -xzf $tgz -C $pkgDir --strip-components=1
+  $global:LASTEXITCODE = -1; & "$env:SystemRoot\System32\tar.exe" -xzf $tgz -C $pkgDir --strip-components=1
   if ($LASTEXITCODE -ne 0) { Fail "package-extract" "tar.exe exited $LASTEXITCODE" }
   Remove-Item $tgz -ErrorAction SilentlyContinue
 }
