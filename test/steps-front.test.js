@@ -5,7 +5,7 @@ import { createContext } from "../installer/core/context.js";
 import { runSteps } from "../installer/core/runner.js";
 import { machineCheckStep } from "../installer/steps/machine-check.js";
 import { licenseStep } from "../installer/steps/license.js";
-import { vaultLocationStep, findExistingVault } from "../installer/steps/vault-location.js";
+import { vaultLocationStep, findExistingVault, validateVaultName, PICKER_PS1 } from "../installer/steps/vault-location.js";
 
 const quiet = { sleep: async () => {} };
 const okSnap = { os: "x", free_disk_mb: 50000, reach: { github: true, npm: true, claude_ai: true } };
@@ -100,4 +100,46 @@ test("findExistingVault prefers Blueprint OS, then Shop OS, else null", () => {
   assert.equal(findExistingVault("Dropbox", has()), null);
   assert.equal(findExistingVault("Dropbox", has("Shop OS")), "Shop OS");
   assert.equal(findExistingVault("Dropbox", has("Shop OS", "Blueprint OS")), "Blueprint OS");
+});
+
+test("validateVaultName rejects unusable names and accepts good ones", () => {
+  for (const bad of ["", "  ", ".", "..", "..\\x", "a/b", "bad:name", "name.", "a\u0001b", 'q"x', "a|b", "a?b"]) {
+    assert.throws(() => validateVaultName(bad), /can't be used/, JSON.stringify(bad));
+  }
+  assert.equal(validateVaultName("  Caf\u00e9 OS "), "Caf\u00e9 OS");
+  assert.equal(validateVaultName("Blueprint OS"), "Blueprint OS");
+});
+const pickCtx = (prompts, extra = {}) => {
+  const printed = [];
+  const ctx = withSnap(okSnap, { run: async () => ({ ok: true, stdout: "/Users/a/Dropbox\n" }), exists: () => false, print: (m) => printed.push(m), prompt: async () => prompts.shift(), ...extra });
+  return { ctx, printed };
+};
+test("vault location: re-prompts after a bad name", async () => {
+  const { ctx, printed } = pickCtx(["..", "Caf\u00e9 OS"]);
+  const r = await runSteps([vaultLocationStep()], ctx, quiet);
+  assert.equal(r.ok, true);
+  assert.equal(ctx.vaultPath, join("/Users/a/Dropbox", "Caf\u00e9 OS"));
+  assert.ok(printed.some((m) => /can't be used/.test(m)));
+});
+test("vault location: three bad names stop the step", async () => {
+  const { ctx } = pickCtx(["", "a/b", "x:"]);
+  const r = await runSteps([vaultLocationStep()], ctx, quiet);
+  assert.equal(r.ok, false);
+  assert.match(r.failed.error, /can't be used/);
+  assert.equal(ctx.vaultPath, null);
+});
+test("picker script is ASCII-only and uses a TopMost owner form", () => {
+  assert.ok(/^[\x00-\x7f]*$/.test(PICKER_PS1));
+  assert.match(PICKER_PS1, /TopMost = \$true/);
+  assert.match(PICKER_PS1, /ShowDialog\(\$f\)/);
+});
+test("vault location: timed-out picker has its own message", async () => {
+  const ctx = withSnap(okSnap, { run: async () => ({ ok: false, timedOut: true, stdout: "" }) });
+  const r = await runSteps([vaultLocationStep()], ctx, quiet);
+  assert.match(r.failed.error, /left open too long/);
+});
+test("vault location: a Mac pick of / stays /", async () => {
+  const { ctx } = pickCtx(["Blueprint OS"], { platform: "darwin", run: async () => ({ ok: true, stdout: "/\n" }) });
+  await runSteps([vaultLocationStep()], ctx, quiet);
+  assert.equal(ctx.vaultPath, join("/", "Blueprint OS"));
 });
