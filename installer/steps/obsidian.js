@@ -1,5 +1,5 @@
 // installer/steps/obsidian.js
-import { writeFileSync, mkdtempSync, mkdirSync, createWriteStream } from "node:fs";
+import { writeFileSync, mkdtempSync, mkdirSync, createWriteStream, rmSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -52,27 +52,37 @@ export function obsidianStep() {
       }
       if (!resp.ok) throw new StepError(`Could not download ${asset.name}: HTTP ${resp.status}`);
       const dir = mkdtempSync(join(ctx.tmpDir(), "obs-"));
-      const file = join(dir, asset.name);
-      await saveResponse(resp, file);
-      if (win) {
-        // Per-user silent install (no UAC). Start-Process -Wait, not a direct pipe: the app the
-        // installer launches at the end inherits the output pipe and would hang runCommand (CI spike).
-        const q = file.replace(/'/g, "''");
-        const script = `$p = Start-Process -FilePath '${q}' -ArgumentList '/S' -Wait -PassThru; exit $p.ExitCode`;
-        const r = await ctx.run("powershell", ["-NoProfile", "-Command", script], { timeoutMs: 5 * 60 * 1000 });
-        if (!r.ok) failFromResult("The Obsidian installer did not finish.", r);
-        return;
-      }
-      const mnt = join(dir, "mnt");
-      mkdirSync(mnt, { recursive: true });
-      const attach = await ctx.run("hdiutil", ["attach", "-nobrowse", "-quiet", "-mountpoint", mnt, file], { timeoutMs: 120000 });
-      if (!attach.ok) failFromResult("Could not open the Obsidian disk image.", attach);
       try {
-        mkdirSync(join(ctx.homeDir, "Applications"), { recursive: true });
-        const copy = await ctx.run("ditto", [join(mnt, "Obsidian.app"), join(ctx.homeDir, "Applications", "Obsidian.app")], { timeoutMs: 120000 });
-        if (!copy.ok) failFromResult("Could not copy Obsidian into your Applications folder.", copy);
+        const file = join(dir, asset.name);
+        await saveResponse(resp, file);
+        if (win) {
+          // Per-user silent install (no UAC). Start-Process -Wait, not a direct pipe: the app the
+          // installer launches at the end inherits the output pipe and would hang runCommand (CI spike).
+          // The path travels in an environment variable, so no quoting problem is possible.
+          const script = "$ErrorActionPreference = 'Stop'; $p = Start-Process -FilePath $env:BP_OBS_EXE -ArgumentList '/S' -Wait -PassThru; exit $p.ExitCode";
+          const r = await ctx.run("powershell", ["-NoProfile", "-Command", script], { timeoutMs: 5 * 60 * 1000, env: { ...ctx.childEnv(), BP_OBS_EXE: file } });
+          if (!r.ok) failFromResult("The Obsidian installer did not finish.", r);
+          return;
+        }
+        const mnt = join(dir, "mnt");
+        mkdirSync(mnt, { recursive: true });
+        const attach = await ctx.run("hdiutil", ["attach", "-nobrowse", "-quiet", "-mountpoint", mnt, file], { timeoutMs: 120000 });
+        if (!attach.ok) failFromResult("Could not open the Obsidian disk image.", attach);
+        const appsDir = join(ctx.homeDir, "Applications");
+        const finalApp = join(appsDir, "Obsidian.app");
+        const partial = join(appsDir, "Obsidian.app.partial");
+        try {
+          mkdirSync(appsDir, { recursive: true });
+          rmSync(partial, { recursive: true, force: true });
+          const copy = await ctx.run("ditto", [join(mnt, "Obsidian.app"), partial], { timeoutMs: 120000 });
+          if (!copy.ok) failFromResult("Could not copy Obsidian into your Applications folder.", copy);
+          renameSync(partial, finalApp);
+        } finally {
+          try { rmSync(partial, { recursive: true, force: true }); } catch { /* best effort */ }
+          await ctx.run("hdiutil", ["detach", mnt, "-quiet"], { timeoutMs: 60000 });
+        }
       } finally {
-        await ctx.run("hdiutil", ["detach", mnt, "-quiet"], { timeoutMs: 60000 });
+        try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
       }
     },
     verify: async (ctx) => (installed(ctx) ? true : "Obsidian was installed but its app could not be found afterwards."),
