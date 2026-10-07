@@ -18,16 +18,27 @@ import { launchStep } from "./steps/launch.js";
 
 export function parseArgs(argv, env) {
   const a = { licenseKey: env.SHOPOS_LICENSE_KEY, vaultPath: env.SHOPOS_VAULT_PATH, noLaunch: env.SHOPOS_NO_LAUNCH === "1", licenseServer: env.SHOPOS_LICENSE_SERVER, testMode: env.SHOPOS_TEST_MODE === "1" };
+  const takes = { "--license": "licenseKey", "--vault": "vaultPath" };
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--license") a.licenseKey = argv[++i];
-    else if (argv[i] === "--vault") a.vaultPath = argv[++i];
-    else if (argv[i] === "--no-launch") a.noLaunch = true;
+    const [flag, ...rest] = String(argv[i]).split("=");
+    if (flag === "--no-launch") { a.noLaunch = true; continue; }
+    const key = takes[flag];
+    if (!key) continue;
+    if (rest.length) { const v = rest.join("="); if (v) a[key] = v; continue; }
+    const next = argv[i + 1];
+    if (next !== undefined && !String(next).startsWith("--")) { a[key] = next; i++; }
   }
   for (const k of Object.keys(a)) if (a[k] === undefined) delete a[k];
   return { noLaunch: false, testMode: false, ...a };
 }
 
 export const buildSteps = () => [machineCheckStep(), licenseStep(), vaultLocationStep(), claudeCodeStep(), pluginsStep(), obsidianStep(), vaultStep(), dashboardStep(), healthStep(), launchStep()];
+
+// Split the launch step off: it can run for hours and must not delay or follow the final report.
+export function splitSteps(steps) {
+  const list = [...steps];
+  return { main: list.filter((s) => s.id !== "launch"), launch: list.find((s) => s.id === "launch") ?? null };
+}
 
 // CI-only fault injection: SHOPOS_TEST_MODE=1 plus SHOPOS_TEST_FAIL_HOSTS=github.com,codeload.github.com
 // makes fetches to those hosts fail like a blocked network. Inert unless both are set.
@@ -63,6 +74,7 @@ export async function runInstall({ argv = process.argv.slice(2), env = process.e
   let ctx = null;
   let print = ctxOverrides.print ?? ((m) => console.log(m));
   let stage = "orchestrator";
+  let reportSent = false;
   try {
     ctx = createContext({
       env, licenseKey: args.licenseKey ?? null, vaultPath: args.vaultPath ?? null, flags: { noLaunch: args.noLaunch },
@@ -73,31 +85,45 @@ export async function runInstall({ argv = process.argv.slice(2), env = process.e
     ctx.fetchImpl = withTestFaults(ctx.fetchImpl, env);
     ctx.runId = runId;
     ctx.supportCode = supportCode;
+    ctx.print(`Blueprint OS setup. Support code (quote this if you need help): ${supportCode}`);
     const key = await resolveLicenseKey(ctx, args.licenseKey);
     ctx.licenseKey = key;
     ctx.reporter = createReporter({
       licenseKey: key ?? "unknown", runId, supportCode, serverBase: ctx.licenseServer,
       fetchImpl: ctx.fetchImpl, logDir: join(ctx.shoposHome, "logs"), homeDir: ctx.homeDir, homeToken: ctx.platform === "win32" ? "%USERPROFILE%" : "~",
     });
-    ctx.print(`Blueprint OS setup. Support code (quote this if you need help): ${supportCode}`);
-    const result = await runSteps(steps ?? buildSteps(), ctx, {
+    const { main, launch } = splitSteps(steps ?? buildSteps());
+    const result = await runSteps(main, ctx, {
       reporter: ctx.reporter,
       onStepDone: (e) => ctx.print(`  ${e.status === "failed" ? "x" : e.status === "warn" ? "!" : e.status === "skipped" ? "-" : "ok"} ${e.title}`),
     });
     const snapshot = await ctx.snapshot().catch(() => undefined);
     const base = { timeline: result.timeline, notes: ctx.notes ?? [], snapshot, duration_ms: result.timeline.reduce((n, t) => n + (t.durationMs ?? 0), 0) };
     if (result.ok) {
+      reportSent = true;
       await ctx.reporter.send({ status: "success", step: "complete", ...base });
       ctx.print(renderSuccess({
         desktopInstalled: !!snapshot?.desktop, vaultPath: ctx.vaultPath,
         warnings: [...(ctx.notes ?? []), ...result.warnings.map((w) => `${w.title}: ${w.error}`)],
       }));
+      await ctx.reporter.flush();
+      if (launch) {
+        // Phase 2: no reporter, so the server's last entry stays "success"; outcome is logged locally only.
+        try {
+          const r = await runSteps([launch], ctx, { reporter: null });
+          const e = r.timeline[0];
+          ctx.reporter.logLocal({ step: "launch", status: e.status, error: e.error });
+        } catch (err) {
+          try { ctx.reporter.logLocal({ step: "launch", status: "warn", error: String(err?.message ?? err) }); } catch { /* ignore */ }
+        }
+      }
     } else {
       const f = result.failed;
+      reportSent = true;
       await ctx.reporter.send({ status: "error", step: f.id, step_title: f.title, error_message: f.error, command: f.command, exit_code: f.exitCode, output_tail: f.outTail, hint: f.hint, ...base });
       ctx.print(renderFailure({ stepTitle: f.title, supportCode, logPath: ctx.reporter.logPath }));
+      await ctx.reporter.flush();
     }
-    await ctx.reporter.flush();
     return { exitCode: result.ok ? 0 : 1, result };
   } catch (e) {
     // The orchestrator itself broke (not a step). Still tell the customer, report best-effort, never throw.
@@ -106,7 +132,7 @@ export async function runInstall({ argv = process.argv.slice(2), env = process.e
       print(renderFailure({ stepTitle: "Starting setup", supportCode, logPath: ctx?.reporter?.logPath ?? "(not available)" }));
     } catch { /* ignore */ }
     try {
-      if (ctx?.reporter) {
+      if (ctx?.reporter && !reportSent) {
         await ctx.reporter.send({ status: "error", step: stage, step_title: "Starting setup", error_message: message, timeline: [], notes: ctx.notes ?? [], duration_ms: Date.now() - started });
         await ctx.reporter.flush();
       }

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { StepError } from "../core/errors.js";
 import { claudeVersion, listPlugins } from "../core/claude.js";
 import { PLUGIN_IDS } from "./plugins.js";
@@ -8,6 +9,9 @@ import { findFreePort } from "../../src/lib/net.js";
 
 const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Limitation: bin/shop-os-dashboard.js has no host/bind option, so the throwaway dashboard listens on all
+// interfaces for the few seconds it runs. We only reach it via 127.0.0.1, use a temp --home so the real
+// dashboard data is untouched, and always kill it.
 async function dashboardAnswers(ctx, deps) {
   if (!ctx.dashboardBin) return "the dashboard was not set up";
   const find = deps.findPort ?? findFreePort;
@@ -18,13 +22,17 @@ async function dashboardAnswers(ctx, deps) {
   const tries = deps.tries ?? 40;
   const intervalMs = deps.intervalMs ?? 500;
   let child = null;
+  let home = null;
+  let childError = null;
   try {
-    child = doSpawn(ctx.nodeBin ?? process.execPath, [ctx.dashboardBin, ctx.vaultPath, "--no-browser", "--port", String(port)], { stdio: "ignore", windowsHide: true, env: ctx.childEnv() });
-    try { child?.on?.("error", () => {}); } catch { /* ignore */ }
+    home = mkdtempSync(join(deps.tmpRoot ?? tmpdir(), "bp-health-"));
+    child = doSpawn(ctx.nodeBin ?? process.execPath, [ctx.dashboardBin, ctx.vaultPath, "--no-browser", "--port", String(port), "--home", home], { stdio: "ignore", windowsHide: true, env: ctx.childEnv() });
+    try { child?.on?.("error", (e) => { childError = e; }); } catch { /* ignore */ }
     for (let i = 0; i < tries; i++) {
       await sleep(intervalMs);
+      if (childError) return `the dashboard could not be started (${String(childError?.message ?? childError)})`;
       try {
-        const resp = await ctx.fetchImpl(`http://127.0.0.1:${port}/`);
+        const resp = await ctx.fetchImpl(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(2000) });
         if (resp.status < 500) return null;
       } catch { /* not up yet */ }
     }
@@ -33,6 +41,7 @@ async function dashboardAnswers(ctx, deps) {
     return `the dashboard could not be started (${String(e?.message ?? e)})`;
   } finally {
     try { child?.kill(); } catch { /* ignore */ }
+    if (home) try { rmSync(home, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 }
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseArgs, buildSteps, runInstall, withTestFaults } from "../installer/run-install.js";
+import { parseArgs, buildSteps, runInstall, withTestFaults, splitSteps } from "../installer/run-install.js";
 import { healthStep } from "../installer/steps/health.js";
 import { launchStep } from "../installer/steps/launch.js";
 
@@ -130,7 +130,7 @@ test("health: dashboard check spawns on the found port, polls, and always kills 
   };
   let n = 0;
   const ctx = healthCtx({ fetchImpl: async (u) => { urls.push(u); if (++n < 3) throw new Error("down"); return { status: 404 }; } });
-  await assert.rejects(() => healthStep(deps).action(ctx), /CLAUDE\.md/);
+  await assert.rejects(() => healthStep(deps).action(ctx), (e) => /CLAUDE\.md/.test(e.message) && !/dashboard/.test(e.message));
   assert.deepEqual(urls[0], "http://127.0.0.1:50021/");
   assert.ok(spawned[0].includes("50021"));
   assert.equal(killed, 1);
@@ -156,4 +156,85 @@ test("launch: skipped with noLaunch; otherwise runs interactive twice when signe
   await step.action({ ...base, run: async () => ({ ok: false }) });
   assert.equal(runs, 1);
   assert.match(printed.join("\n"), /not signed in yet/);
+});
+
+test("parseArgs: missing values never swallow flags or wipe env; --flag=value works; unknown flags ignored", () => {
+  const env = { SHOPOS_VAULT_PATH: "ENVV", SHOPOS_LICENSE_KEY: "ENVK" };
+  assert.equal(parseArgs(["--vault"], env).vaultPath, "ENVV");
+  const a = parseArgs(["--license", "--no-launch", "--bogus"], env);
+  assert.equal(a.licenseKey, "ENVK");
+  assert.equal(a.noLaunch, true);
+  const b = parseArgs(["--vault=/x/y", "--license=SHOP-A"], {});
+  assert.equal(b.vaultPath, "/x/y");
+  assert.equal(b.licenseKey, "SHOP-A");
+});
+
+test("splitSteps splits launch off", () => {
+  const { main, launch } = splitSteps(buildSteps());
+  assert.equal(main.length, 9);
+  assert.equal(launch.id, "launch");
+  assert.equal(splitSteps([{ id: "a" }]).launch, null);
+});
+
+function twoPhase({ launchAction, failMain = false, wait = 0 }) {
+  const events = []; const sent = [];
+  const steps = [
+    { id: "a", title: "A", severity: failMain ? "stop" : "stop", action: async () => { if (failMain) throw new Error("bad"); } },
+    { id: "launch", title: "Opening Claude Code", severity: "warn", action: launchAction(events, sent) },
+  ];
+  const run = () => runInstall({
+    argv: [], env: { SHOPOS_LICENSE_KEY: "SHOP-AB12-CD34-EF56" }, steps,
+    ctxOverrides: {
+      platform: "darwin", homeDir: home(), print: () => {}, snapshot: snap,
+      fetchImpl: async (u, init) => { const b = JSON.parse(init.body); sent.push(b); events.push(`report:${b.status}:${b.step}`); return { ok: true }; },
+    },
+  });
+  return { run, events, sent };
+}
+
+test("launch phase: success report is sent before launch, no launch progress report, duration excludes launch, launch failure keeps exit 0", async () => {
+  const t = twoPhase({ launchAction: (events, sent) => async () => {
+    assert.ok(sent.some((b) => b.status === "success"), "success report must precede launch");
+    events.push("launch-start");
+    await new Promise((r) => setTimeout(r, 300));
+    throw new Error("launch broke");
+  } });
+  const { exitCode } = await t.run();
+  assert.equal(exitCode, 0);
+  assert.ok(t.events.indexOf("report:success:complete") < t.events.indexOf("launch-start"));
+  assert.ok(!t.sent.some((b) => b.step === "launch"));
+  assert.equal(t.sent.at(-1).status, "success");
+  assert.ok(t.sent.find((b) => b.status === "success").duration_ms < 250);
+  assert.ok(!t.sent.some((b) => b.status === "error"));
+});
+
+test("a phase 1 failure never runs launch", async () => {
+  let ran = false;
+  const t = twoPhase({ failMain: true, launchAction: () => async () => { ran = true; } });
+  const { exitCode } = await t.run();
+  assert.equal(exitCode, 1);
+  assert.equal(ran, false);
+});
+
+test("health: stalled fetch is aborted by the per-poll timeout signal", async () => {
+  let signalSeen = false;
+  const deps = { findPort: async () => 50023, spawnImpl: () => ({ kill() {}, on() {} }), sleep: async () => {}, tries: 1 };
+  const ctx = healthCtx({ fetchImpl: (u, init) => { signalSeen = init?.signal instanceof AbortSignal; return new Promise((_, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))); } });
+  await assert.rejects(() => healthStep(deps).action(ctx), /did not answer/);
+  assert.ok(signalSeen);
+});
+
+test("health: spawn that throws and child error event give a clear message and kill/clean up", async () => {
+  await assert.rejects(() => healthStep({ findPort: async () => 50024, spawnImpl: () => { throw new Error("ENOENT node"); }, sleep: async () => {} }).action(healthCtx()), /could not be started \(ENOENT node\)/);
+  let killed = 0;
+  const spawnImpl = () => ({ kill: () => killed++, on(ev, cb) { if (ev === "error") cb(new Error("spawn EACCES")); } });
+  await assert.rejects(() => healthStep({ findPort: async () => 50025, spawnImpl, sleep: async () => {} }).action(healthCtx()), /could not be started \(spawn EACCES\)/);
+  assert.equal(killed, 1);
+});
+
+test("health: passes --home temp dir to the throwaway dashboard", async () => {
+  let args;
+  const deps = { findPort: async () => 50026, spawnImpl: (c, a) => { args = a; return { kill() {}, on() {} }; }, sleep: async () => {} };
+  await healthStep(deps).action(healthCtx({ vaultPath: process.cwd() })).catch(() => {});
+  assert.ok(args.includes("--home"));
 });

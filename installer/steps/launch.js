@@ -4,7 +4,10 @@ import { claudePath, authOk } from "../core/claude.js";
 function interactive(ctx) {
   return new Promise((resolve) => {
     const child = spawn(claudePath(ctx), [], { cwd: ctx.vaultPath, env: ctx.childEnv(), stdio: "inherit" });
-    child.on("error", () => resolve(1));
+    child.on("error", () => {
+      ctx.print("\nClaude Code could not be opened automatically. To open it yourself, open a terminal in your Blueprint OS folder and run `claude`.\n");
+      resolve(1);
+    });
     child.on("close", (code) => resolve(code ?? 0));
   });
 }
