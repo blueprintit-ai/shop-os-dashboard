@@ -20,8 +20,8 @@ export function looksLikeLicenseKey(key) {
   return LICENSE_KEY_SHAPE.test(key);
 }
 
-export async function validateLicense(key, { fetchImpl = fetch } = {}) {
-  const url = `${LICENSE_SERVER}/validate?key=${encodeURIComponent(key)}`;
+export async function validateLicense(key, { fetchImpl = fetch, server = LICENSE_SERVER } = {}) {
+  const url = `${server}/validate?key=${encodeURIComponent(key)}`;
   let resp;
   try {
     resp = await fetchImpl(url);
