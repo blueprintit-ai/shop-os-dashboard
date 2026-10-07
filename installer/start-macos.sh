@@ -9,7 +9,7 @@ ALPHA=ABCDEFGHJKLMNPQRSTUVWXYZ23456789
 CODE="BP-"; for _ in 1 2 3 4; do CODE="$CODE${ALPHA:$((RANDOM % 32)):1}"; done
 
 json_str() { # $1 text -> JSON-safe: home dir hidden, control chars dropped, \ and " escaped, 400 chars max
-  local s="${1//"$HOME"/\~}"
+  local t="~" s="$1"; s="${s//"$HOME"/$t}"
   s="$(printf '%s' "$s" | LC_ALL=C tr -d '\000-\037' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
   printf '%s' "${s:0:400}"
 }
