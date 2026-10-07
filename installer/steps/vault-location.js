@@ -30,6 +30,7 @@ export function validateVaultName(name) {
   if (!n || n === "." || n === "..") throw bad();
   if (/[\\/<>:"|?*\u0000-\u001f]/.test(n)) throw bad();
   if (/[. ]$/.test(n)) throw bad();
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(n)) throw new StepError(`"${n}" is a reserved Windows name. Choose a different folder name.`);
   return n;
 }
 

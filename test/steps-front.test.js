@@ -143,3 +143,8 @@ test("vault location: a Mac pick of / stays /", async () => {
   await runSteps([vaultLocationStep()], ctx, quiet);
   assert.equal(ctx.vaultPath, join("/", "Blueprint OS"));
 });
+
+test("validateVaultName rejects Windows reserved device names only", () => {
+  for (const bad of ["NUL", "con", "COM1", "LPT1.txt", "aux "]) assert.throws(() => validateVaultName(bad), /reserved Windows name/, bad);
+  for (const good of ["Console", "communications", "Blueprint OS"]) assert.equal(validateVaultName(good), good);
+});
