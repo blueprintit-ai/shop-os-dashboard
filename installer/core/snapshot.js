@@ -2,6 +2,7 @@ import { statfsSync, existsSync } from "node:fs";
 import { homedir, type as osType, release as osRelease } from "node:os";
 import { runCommand } from "./exec.js";
 import { detectClaudeDesktop } from "./desktop.js";
+import { hasCommandLineTools } from "../steps/clt.js";
 
 const HOSTS = { github: "https://github.com", npm: "https://registry.npmjs.org", claude_ai: "https://claude.ai" };
 
@@ -22,9 +23,11 @@ export async function collectSnapshot({
     : !!(await safe(() => process.getuid?.() === 0, false));
   const disk = await safe(() => { const s = statfs(homeDir); return Math.floor((s.bavail * s.bsize) / (1024 * 1024)); }, -1);
   const [github, npm, claude_ai] = await Promise.all(Object.values(HOSTS).map((u) => reachable(fetchImpl, u, timeoutMs)));
-  const git = !!(await safe(() => run("git", ["--version"], { timeoutMs: 8000 }), { ok: false }))?.ok;
+  // On a Mac, `git` without the Command Line Tools opens Apple's installer mid-run: check xcode-select first.
+  const clt = platform === "darwin" ? await safe(() => hasCommandLineTools(run), false) : null;
+  const git = clt === false ? false : !!(await safe(() => run("git", ["--version"], { timeoutMs: 8000 }), { ok: false }))?.ok;
   const proxy = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].some((k) => !!env?.[k]);
   const desktop = await safe(() => detectClaudeDesktop({ platform, env, homeDir, exists }).installed, false);
   const os = await safe(() => `${osType()} ${osRelease()}`, "unknown");
-  return { os, arch, elevated, node: nodeVersion, free_disk_mb: disk, proxy, reach: { github, npm, claude_ai }, git, desktop };
+  return { os, arch, elevated, node: nodeVersion, free_disk_mb: disk, proxy, reach: { github, npm, claude_ai }, git, clt, desktop };
 }

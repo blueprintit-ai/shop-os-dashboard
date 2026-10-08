@@ -3,6 +3,7 @@ import { existsSync, rmSync, renameSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { StepError } from "../core/errors.js";
 import { extractZip } from "../zip.js";
+import { hasCommandLineTools, commandLineToolsMissing } from "./clt.js";
 
 // Claude Code's plugin commands shell out to git for `owner/repo` marketplaces
 // and every plugin install (spike runs 2-5). Windows PCs often have none, so we
@@ -42,6 +43,7 @@ async function download(ctx, url) {
 }
 
 export async function ensureGit(ctx, { mingit = MINGIT } = {}) {
+  if (ctx.platform === "darwin" && !(await hasCommandLineTools(ctx.run))) throw commandLineToolsMissing(ctx);
   const have = await gitRuns(ctx);
   if (have.ok) return;
   if (ctx.platform !== "win32") {

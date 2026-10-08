@@ -123,3 +123,21 @@ test("SHOPOS_NODE_BIN from the starter becomes ctx.nodeBin when the file exists;
   const explicit = createContext({ platform: "darwin", nodeBin: "/mine/node", env: { SHOPOS_NODE_BIN: "/opt/homebrew/bin/node" }, exists: () => true });
   assert.equal(explicit.nodeBin, "/mine/node");
 });
+
+test("snapshot on a Mac without Command Line Tools checks xcode-select first and never runs git", async () => {
+  const calls = [];
+  const run = async (cmd, args) => { calls.push(cmd); return { ok: cmd !== "xcode-select" }; };
+  const snap = await collectSnapshot({ platform: "darwin", env: {}, homeDir: "/h", run, exists: () => false, fetchImpl: async () => ({ ok: true }), statfs: () => ({ bavail: 1, bsize: 1 << 30 }) });
+  assert.equal(snap.clt, false);
+  assert.equal(snap.git, false);
+  assert.deepEqual(calls, ["xcode-select"]);
+});
+test("snapshot on a Mac with the tools runs git; Windows has clt null and never calls xcode-select", async () => {
+  const mk = (platform) => { const calls = []; return { calls, run: async (cmd) => { calls.push(cmd); return { ok: true }; }, platform }; };
+  const mac = mk("darwin");
+  const s1 = await collectSnapshot({ platform: "darwin", env: {}, homeDir: "/h", run: mac.run, exists: () => false, fetchImpl: async () => ({ ok: true }), statfs: () => ({ bavail: 1, bsize: 1 << 30 }) });
+  assert.equal(s1.clt, true); assert.equal(s1.git, true); assert.deepEqual(mac.calls, ["xcode-select", "git"]);
+  const win = mk("win32");
+  const s2 = await collectSnapshot({ platform: "win32", env: {}, homeDir: "C:\\u", run: win.run, exists: () => false, fetchImpl: async () => ({ ok: true }), statfs: () => ({ bavail: 1, bsize: 1 << 30 }) });
+  assert.equal(s2.clt, null); assert.ok(!win.calls.includes("xcode-select"));
+});

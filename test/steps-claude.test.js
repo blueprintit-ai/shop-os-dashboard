@@ -131,12 +131,27 @@ test("plugins: plugin commands run via the absolute claude path", async () => {
   const ctx = createContext({ platform: "darwin", homeDir: "/home/u", print: () => {}, run, exists: (p) => p === abs, shoposHome: "/tmp/bp-test-shopos" });
   const r = await runSteps([pluginsStep({ fetchTarball: async () => ({ ok: true }) })], ctx, quiet);
   assert.equal(r.ok, true, JSON.stringify(r.failed));
-  assert.ok(cmds.filter((c) => c !== "git").every((c) => c === abs));
+  assert.ok(cmds.filter((c) => c !== "git" && c !== "xcode-select").every((c) => c === abs));
 });
 
-test("ensureGit: Mac without git throws a hinted StepError", async () => {
-  const ctx = createContext({ platform: "darwin", print: () => {}, run: async () => bad("git: command not found") });
+test("ensureGit: Mac with the tools but no working git throws a hinted StepError", async () => {
+  const ctx = createContext({ platform: "darwin", print: () => {}, run: async (c) => (c === "xcode-select" ? ok("/Library/Developer/CommandLineTools") : bad("git: command not found")) });
   await assert.rejects(ensureGit(ctx), (e) => e.name === "StepError" && /xcode-select/.test(e.hint));
+});
+
+test("ensureGit: Mac without Command Line Tools never runs git, triggers the installer once and explains what to do", async () => {
+  const calls = [];
+  const ctx = createContext({ platform: "darwin", print: () => {}, run: async (c, a) => { calls.push([c, ...a].join(" ")); return c === "xcode-select" && a[0] === "-p" ? bad("xcode-select: error: unable to get active developer directory") : ok(); } });
+  await assert.rejects(ensureGit(ctx), (e) => e.name === "StepError" && /Command Line Tools/.test(e.message) && /click Install/i.test(e.message) && /run this setup again/i.test(e.message) && /xcode-select --install/.test(e.hint));
+  assert.ok(!calls.some((c) => c.startsWith("git")), calls.join("|"));
+  assert.equal(calls.filter((c) => c === "xcode-select --install").length, 1);
+});
+
+test("ensureGit: Windows never consults xcode-select", async () => {
+  const calls = [];
+  const ctx = createContext({ platform: "win32", print: () => {}, run: async (c) => { calls.push(c); return ok("git version 2"); } });
+  await ensureGit(ctx);
+  assert.deepEqual(calls, ["git"]);
 });
 
 

@@ -48,3 +48,8 @@ test("xcode rule", () => assert.match(hintFor({ outTail: "xcode-select: error" }
 test("success with no warnings has no Note line", () => {
   assert.doesNotMatch(renderSuccess({ desktopInstalled: false, vaultPath: "V", warnings: [] }), /Note:/);
 });
+test("Command Line Tools hint tells the support person what the customer must do", () => {
+  const h = hintFor({ message: "macOS needs Apple's Command Line Tools" });
+  assert.match(h, /xcode-select --install/);
+  assert.match(h, /click Install/i);
+});

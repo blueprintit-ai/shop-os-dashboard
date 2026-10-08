@@ -1,4 +1,5 @@
 import { StepError } from "../core/errors.js";
+import { commandLineToolsMissing } from "./clt.js";
 
 export function machineCheckStep() {
   return {
@@ -8,6 +9,7 @@ export function machineCheckStep() {
       const s = await ctx.snapshot();
       // free_disk_mb of -1 means "unknown" and must not fail the check.
       if (s.free_disk_mb >= 0 && s.free_disk_mb < 2048) throw new StepError(`Only ${s.free_disk_mb} MB of disk space is free; Blueprint OS needs at least 2048 MB.`);
+      if (ctx.platform === "darwin" && s.clt === false) throw commandLineToolsMissing(ctx);
       if (!s.reach.github) throw new StepError("Cannot reach github.com, which is needed to download Blueprint OS components.", { hint: "GitHub unreachable, likely a firewall or proxy." });
       if (!s.reach.claude_ai) throw new StepError("Cannot reach claude.ai, which is needed to install Claude Code.", { hint: "claude.ai unreachable, likely a firewall or proxy." });
     },

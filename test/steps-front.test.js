@@ -31,6 +31,24 @@ test("machine check stops when claude.ai is unreachable, with a hint", async () 
   assert.match(r.failed.error, /claude\.ai/);
   assert.equal(r.failed.hint, "claude.ai unreachable, likely a firewall or proxy.");
 });
+test("machine check on a Mac without Command Line Tools: customer-readable stop, installer triggered once", async () => {
+  const calls = [];
+  const run = async (c, a) => { calls.push([c, ...a].join(" ")); return { ok: true, stdout: "", outTail: "" }; };
+  const ctx = createContext({ platform: "darwin", print: () => {}, run, snapshot: async () => ({ ...okSnap, clt: false }) });
+  const r = await runSteps([machineCheckStep()], ctx, quiet);
+  assert.equal(r.ok, false);
+  assert.match(r.failed.error, /Apple's free Command Line Tools/);
+  assert.match(r.failed.error, /click Install/i);
+  assert.match(r.failed.error, /few minutes/);
+  assert.match(r.failed.error, /run this setup again/i);
+  assert.match(r.failed.hint, /xcode-select --install/);
+  assert.deepEqual(calls, ["xcode-select --install"]);
+});
+test("machine check on a Mac with the tools (or Windows, where clt is absent) is unaffected", async () => {
+  const ctx = createContext({ platform: "darwin", print: () => {}, run: async () => { throw new Error("must not run"); }, snapshot: async () => ({ ...okSnap, clt: true }) });
+  assert.equal((await runSteps([machineCheckStep()], ctx, quiet)).ok, true);
+  assert.equal((await runSteps([machineCheckStep()], withSnap({ ...okSnap, clt: false }), quiet)).ok, true);
+});
 test("machine check rejects Linux", async () => {
   const r = await runSteps([machineCheckStep()], createContext({ platform: "linux", print: () => {}, snapshot: async () => okSnap }), quiet);
   assert.match(r.failed.error, /Unsupported/);
