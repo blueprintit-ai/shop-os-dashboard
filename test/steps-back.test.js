@@ -312,6 +312,14 @@ test("dashboard: Windows Desktop is resolved from PowerShell (OneDrive redirect)
   assert.ok(existsSync(od));
 });
 
+test("dashboard: the Desktop lookup forces UTF-8 output (non-ASCII profile names)", async () => {
+  const d = dashCtx("win32");
+  const baseRun = d.ctx.run; let psCmd = null;
+  d.ctx.run = async (cmd, args, opts) => { if (cmd === "powershell") { psCmd = args.join(" "); return { ok: true, stdout: "", outTail: "", cmdline: cmd }; } return baseRun(cmd, args, opts); };
+  await runSteps([dashboardStep(d.deps)], d.ctx, quiet);
+  assert.match(psCmd, /^-NoProfile -Command \[Console\]::OutputEncoding\s*=\s*\[(System\.)?Text\.Encoding\]::UTF8;.*GetFolderPath\('Desktop'\)/);
+});
+
 test("dashboard: both autostart and shortcut failures are reported in one error", async () => {
   const d = dashCtx("win32");
   d.deps.spawnSyncImpl = () => ({ status: 1, stderr: "denied" });

@@ -84,3 +84,13 @@ test("fix: capReport enforces the cap on large identity-ish fields", () => {
   assert.ok(Buffer.byteLength(JSON.stringify(r)) <= 20000);
   assert.equal(r.status, "error");
 });
+
+test("license keys are shortened case-insensitively, other text untouched", () => {
+  assert.equal(shortenLicenseKey("shop-ab12-cd34-ef56"), "SHOP-ab12-...-ef56");
+  assert.equal(shortenLicenseKey("Shop-Ab12-Cd34-Ef56"), "SHOP-Ab12-...-Ef56");
+  assert.equal(redactText("key shop-ab12-cd34-ef56 failed", { homeDir: null }), "key SHOP-ab12-...-ef56 failed");
+  assert.ok(!redactText("shop-ab12-cd34-ef56", { homeDir: null }).includes("cd34"));
+  // negatives: not a key shape
+  assert.equal(redactText("shop-os-dashboard and SHOP-AB12-CD34", { homeDir: null }), "shop-os-dashboard and SHOP-AB12-CD34");
+  assert.equal(shortenLicenseKey("SHOP-AB12-CD34-EF56-XX"), "SHOP-AB12-...-EF56-XX");
+});

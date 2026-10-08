@@ -94,6 +94,37 @@ test("saveLicenseFile writes a chmod-600 record under the given home", () => {
   assert.equal(record.customer, "Acme");
 });
 
+test("saveLicenseFile creates license.json with mode 0600 from the start (no 0644 window)", { skip: process.platform === "win32" }, async () => {
+  const { statSync } = await import("node:fs");
+  const home = mkdtempSync(join(tmpdir(), "home-"));
+  const oldUmask = process.umask(0o022);
+  try {
+    const path = saveLicenseFile({ key: "SHOP-AAAA-BBBB-CCCC", customer: "Acme", product: "f", entitlements: [] }, home);
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+    // an existing looser file is tightened too
+    const { chmodSync } = await import("node:fs");
+    chmodSync(path, 0o644);
+    saveLicenseFile({ key: "SHOP-AAAA-BBBB-CCCC", customer: "Acme", product: "f", entitlements: [] }, home);
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+  } finally { process.umask(oldUmask); }
+});
+
+test("enableForVault accepts a settings.json that starts with a UTF-8 BOM (no backup, keys kept)", () => {
+  const vault = mkdtempSync(join(tmpdir(), "vault-"));
+  mkdirSync(join(vault, ".claude"), { recursive: true });
+  const sp = join(vault, ".claude", "settings.json");
+  writeFileSync(sp, "\uFEFF" + JSON.stringify({ theme: "dark", enabledPlugins: { "other@mp": true } }));
+  const { path, warning } = enableForVault(vault, ["obsidian@blueprint-skills"]);
+  assert.equal(warning, null);
+  assert.equal(existsSync(sp + ".bak"), false);
+  const settings = JSON.parse(readFileSync(path, "utf8"));
+  assert.equal(settings.theme, "dark");
+  assert.equal(settings.enabledPlugins["other@mp"], true);
+  // a genuinely broken file is still backed up
+  writeFileSync(sp, "\uFEFF{nope");
+  assert.match(enableForVault(vault, ["x@y"]).warning, /not valid JSON/);
+});
+
 test("installMarketplaces fetches both marketplaces via tarball, no git", async () => {
   const claudeRoot = mkdtempSync(join(tmpdir(), "claude-"));
   const fetchImpl = async () => ({ ok: true, arrayBuffer: async () => tarGzWithManifest("obsidian") });

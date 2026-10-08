@@ -18,7 +18,7 @@ async function desktopDirFor(ctx) {
   if (ctx.platform === "win32") {
     // The Desktop may be redirected (OneDrive); ask Windows where it really is.
     try {
-      const r = await ctx.run("powershell", ["-NoProfile", "-Command", "[Environment]::GetFolderPath('Desktop')"], { timeoutMs: 20000 });
+      const r = await ctx.run("powershell", ["-NoProfile", "-Command", "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Environment]::GetFolderPath('Desktop')"], { timeoutMs: 20000 });
       const out = r.ok ? String(r.stdout ?? "").trim() : "";
       if (out) dir = out;
     } catch { /* fall back */ }

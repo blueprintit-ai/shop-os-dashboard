@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 
-const LICENSE_RE = /SHOP-([A-Z0-9]{4})-[A-Z0-9]{4}-([A-Z0-9]{4})/g;
+const LICENSE_RE = /SHOP-([A-Z0-9]{4})-[A-Z0-9]{4}-([A-Z0-9]{4})/gi;
 const SECRET_RES = [
   /\bsk-[A-Za-z0-9_-]{16,}/g,
   /\bcfut_[A-Za-z0-9_-]{16,}/g,

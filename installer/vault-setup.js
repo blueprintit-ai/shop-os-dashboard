@@ -53,7 +53,7 @@ function readSettingsForMerge(path) {
   if (!existsSync(path)) return { settings: {}, warning: null };
   const raw = readFileSync(path, "utf8");
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw.replace(/^\uFEFF/, "")); // Windows editors often save a BOM
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return { settings: parsed, warning: null };
     return backupUnparseable(path, raw, "not a JSON object");
   } catch (e) {
@@ -135,7 +135,7 @@ export function saveLicenseFile(license, homeOverride) {
     key: license.key ?? null, customer: license.customer, product: license.product,
     entitlements: license.entitlements, valid_until: license.valid_until,
     activated_at: new Date().toISOString(),
-  }, null, 2) + "\n", "utf8");
+  }, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
   try { chmodSync(path, 0o600); } catch { /* no-op on Windows */ }
   return path;
 }
