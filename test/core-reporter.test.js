@@ -43,13 +43,20 @@ test("a synchronously throwing fetch never throws", async () => {
 test("a hanging fetch is aborted at the timeout; send settles near timeoutMs and flush is prompt", async () => {
   let aborted = false;
   const r = mk({ fetchImpl: (url, init) => new Promise((_, rej) => init.signal.addEventListener("abort", () => { aborted = true; rej(new Error("aborted")); })) });
-  const t0 = Date.now();
-  await r.send({ status: "progress", step: "a" });
-  assert.equal(aborted, true);
-  assert.ok(Date.now() - t0 < 300);
-  const t1 = Date.now();
-  await r.flush();
-  assert.ok(Date.now() - t1 < 300);
+  // The reporter's timers are unref'd (they must never delay process exit). A real hung fetch holds a
+  // socket open; this fake holds nothing, so keep the event loop alive ourselves or Node 22 cancels the test.
+  const keepAlive = setInterval(() => {}, 20);
+  try {
+    const t0 = Date.now();
+    await r.send({ status: "progress", step: "a" });
+    assert.equal(aborted, true);
+    assert.ok(Date.now() - t0 < 300);
+    const t1 = Date.now();
+    await r.flush();
+    assert.ok(Date.now() - t1 < 300);
+  } finally {
+    clearInterval(keepAlive);
+  }
 });
 
 test("event fields cannot override the reporter identity fields", async () => {

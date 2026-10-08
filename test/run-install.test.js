@@ -220,7 +220,13 @@ test("health: stalled fetch is aborted by the per-poll timeout signal", async ()
   let signalSeen = false;
   const deps = { findPort: async () => 50023, spawnImpl: () => ({ kill() {}, on() {} }), sleep: async () => {}, tries: 1 };
   const ctx = healthCtx({ fetchImpl: (u, init) => { signalSeen = init?.signal instanceof AbortSignal; return new Promise((_, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))); } });
-  await assert.rejects(() => healthStep(deps).action(ctx), /did not answer/);
+  // AbortSignal.timeout timers are unref'd and this fake fetch holds no socket: keep the loop alive (Node 22 cancels otherwise).
+  const keepAlive = setInterval(() => {}, 20);
+  try {
+    await assert.rejects(() => healthStep(deps).action(ctx), /did not answer/);
+  } finally {
+    clearInterval(keepAlive);
+  }
   assert.ok(signalSeen);
 });
 
