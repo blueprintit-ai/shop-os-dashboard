@@ -35,6 +35,10 @@ export function createContext(overrides = {}) {
     env[key] = [...ctx.extraPath, env[key] ?? ""].filter(Boolean).join(ctx.platform === "win32" ? ";" : ":");
     return env;
   };
+  // The starter exports the node it found (a stable path such as /opt/homebrew/bin/node); process.execPath
+  // may be a version-specific, symlink-resolved Cellar path that goes stale on the next `brew upgrade`.
+  const starterNode = ctx.env?.SHOPOS_NODE_BIN;
+  if (!ctx.nodeBin && starterNode && ctx.exists(starterNode)) ctx.nodeBin = starterNode;
   ctx.tmpDir ??= () => { const d = join(tmpdir(), "blueprint-os-install"); mkdirSync(d, { recursive: true }); return d; };
   if (!ctx.snapshot) {
     let snap = null;

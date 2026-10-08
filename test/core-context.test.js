@@ -112,3 +112,14 @@ test("snapshot never throws when every probe throws, and uses HEAD with a signal
   assert.equal(seen.length, 3);
   for (const o of seen) { assert.equal(o.method, "HEAD"); assert.ok(o.signal); }
 });
+
+test("SHOPOS_NODE_BIN from the starter becomes ctx.nodeBin when the file exists; otherwise it is ignored", () => {
+  const ok = createContext({ platform: "darwin", env: { SHOPOS_NODE_BIN: "/opt/homebrew/bin/node" }, exists: (p) => p === "/opt/homebrew/bin/node" });
+  assert.equal(ok.nodeBin, "/opt/homebrew/bin/node");
+  const missing = createContext({ platform: "darwin", env: { SHOPOS_NODE_BIN: "/gone/node" }, exists: () => false });
+  assert.equal(missing.nodeBin, undefined);
+  const unset = createContext({ platform: "darwin", env: {}, exists: () => true });
+  assert.equal(unset.nodeBin, undefined);
+  const explicit = createContext({ platform: "darwin", nodeBin: "/mine/node", env: { SHOPOS_NODE_BIN: "/opt/homebrew/bin/node" }, exists: () => true });
+  assert.equal(explicit.nodeBin, "/mine/node");
+});

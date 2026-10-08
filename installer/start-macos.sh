@@ -7,6 +7,7 @@ SHOPOS="$HOME/.shopos"
 PKG_DIR="$SHOPOS/app/node_modules/@blueprintitai/shop-os-dashboard"
 ALPHA=ABCDEFGHJKLMNPQRSTUVWXYZ23456789
 CODE="BP-"; for _ in 1 2 3 4; do CODE="$CODE${ALPHA:$((RANDOM % 32)):1}"; done
+RUN_ID="$(uuidgen 2>/dev/null)"; [[ "$RUN_ID" =~ ^[A-Za-z0-9-]{1,64}$ ]] || RUN_ID="starter-$(date +%s)-$RANDOM"
 
 json_str() { # $1 text -> JSON-safe: home dir hidden, non-printable dropped, cut at 400, THEN \ and " escaped
   local t="~" s="$1"; s="${s//"$HOME"/$t}"
@@ -17,7 +18,7 @@ json_str() { # $1 text -> JSON-safe: home dir hidden, non-printable dropped, cut
 fail() { # $1 stage, $2 message
   echo; echo "Setup hit a problem at \"$1\". We've been notified and will email you shortly. If you contact us, quote support code $CODE."
   curl -fsS -m 8 -X POST "$SERVER/install-log" -H 'Content-Type: application/json' \
-    -d "{\"license_key\":\"$(json_str "${SHOPOS_LICENSE_KEY:-unknown}")\",\"status\":\"error\",\"step\":\"starter:$1\",\"error_message\":\"$(json_str "$2")\",\"support_code\":\"$CODE\",\"machine\":{\"os\":\"macOS $(json_str "$(sw_vers -productVersion 2>/dev/null)")\",\"source\":\"installer-v2-starter\"}}" >/dev/null 2>&1 || true
+    -d "{\"license_key\":\"$(json_str "${SHOPOS_LICENSE_KEY:-unknown}")\",\"status\":\"error\",\"run_id\":\"$RUN_ID\",\"step\":\"starter:$1\",\"error_message\":\"$(json_str "$2")\",\"support_code\":\"$CODE\",\"machine\":{\"os\":\"macOS $(json_str "$(sw_vers -productVersion 2>/dev/null)")\",\"source\":\"installer-v2-starter\"}}" >/dev/null 2>&1 || true
   exit 1
 }
 mkdir -p "$SHOPOS" || fail setup "could not create ~/.shopos"
@@ -60,4 +61,5 @@ fi
 [ -f "$PKG_DIR/bin/blueprint-os-install.js" ] || fail package-extract "bin/blueprint-os-install.js is missing after download."
 
 # 3. Hand over (exec: the installer's exit code is ours).
+export SHOPOS_NODE_BIN="$NODE_BIN"   # the installer records this stable path for the autostart
 exec "$NODE_BIN" "$PKG_DIR/bin/blueprint-os-install.js" "$@"

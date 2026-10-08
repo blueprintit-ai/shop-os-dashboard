@@ -136,3 +136,40 @@ test("the Windows starter never sends a null license_key (falls back to unknown 
   assert.match(t, /license_key\s*=\s*\$lk/);
   assert.match(t, /\$lk\s*=\s*if \(\$env:SHOPOS_LICENSE_KEY\)[^\n]*"unknown"/);
 });
+
+// ---- final review fixes ----
+test("macOS starter: failure reports carry a valid run_id; the node path is exported for the installer", async () => {
+  const home = mkdtempSync(join(tmpdir(), "starter-home-"));
+  const pkg = mkdtempSync(join(tmpdir(), "starter-pkg-"));
+  let body = null;
+  const srv = createServer((req, res) => { let b = ""; req.on("data", (d) => (b += d)); req.on("end", () => { body = b; res.end("{}"); }); });
+  await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  const env = { PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, SHOPOS_PACKAGE_DIR: pkg, SHOPOS_LICENSE_SERVER: `http://127.0.0.1:${srv.address().port}` };
+  await new Promise((resolve) => { const c = spawn("bash", [new URL("../installer/start-macos.sh", import.meta.url).pathname], { env }); c.stdout.on("data", () => {}); c.on("close", resolve); });
+  srv.close();
+  const parsed = JSON.parse(body);
+  assert.match(parsed.run_id, /^[A-Za-z0-9-]{1,64}$/);
+});
+test("macOS starter exports SHOPOS_NODE_BIN (the path it found) before handing over", async () => {
+  const home = mkdtempSync(join(tmpdir(), "starter-home-"));
+  const pkg = mkdtempSync(join(tmpdir(), "starter-pkg-"));
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  mkdirSync(join(pkg, "bin"));
+  writeFileSync(join(pkg, "bin", "blueprint-os-install.js"), "console.log('NODEBIN=' + process.env.SHOPOS_NODE_BIN);\n");
+  const env = { PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, SHOPOS_PACKAGE_DIR: pkg };
+  const out = await new Promise((resolve) => {
+    const c = spawn("bash", [new URL("../installer/start-macos.sh", import.meta.url).pathname], { env });
+    let o = ""; c.stdout.on("data", (d) => (o += d)); c.on("close", () => resolve(o));
+  });
+  assert.match(out, /NODEBIN=\/.*node\s*$/m);
+});
+test("Windows starter: run_id (GUID) in failure reports, SHOPOS_NODE_BIN exported, pinned Node fallback when index.json fails", () => {
+  assert.match(P, /\$runId = \[guid\]::NewGuid\(\)\.ToString\(\)/);
+  assert.match(P, /run_id = \$runId/);
+  assert.match(P, /\$env:SHOPOS_NODE_BIN = \$nodeBin/);
+  assert.match(P, /Get-Command node/);
+  // the index.json fetch has its own try/catch and a v22.20.0 default set BEFORE it
+  assert.match(P, /\$ver = "v22\.20\.0"[^\n]*\n\s*try \{\s*\n\s*\$idx = Invoke-RestMethod[\s\S]*?\} catch \{\}/);
+  assert.ok(P.indexOf('$ver = "v22.20.0"') < P.indexOf("Invoke-RestMethod -Uri \"https://nodejs.org/dist/index.json\""));
+  assert.match(P, /Get-FileHash[^\n]*SHA256/);
+});
