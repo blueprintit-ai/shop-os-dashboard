@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { createContext } from "./core/context.js";
-import { createReporter } from "./core/reporter.js";
+import { createReporter, installerVersionFor } from "./core/reporter.js";
 import { runSteps } from "./core/runner.js";
 import { newRunId, newSupportCode } from "./core/ids.js";
 import { renderFailure, renderSuccess } from "./core/messages.js";
@@ -90,6 +90,7 @@ export async function runInstall({ argv = process.argv.slice(2), env = process.e
     ctx.licenseKey = key;
     ctx.reporter = createReporter({
       licenseKey: key ?? "unknown", runId, supportCode, serverBase: ctx.licenseServer,
+      installerVersion: installerVersionFor(env.SHOPOS_INSTALLER_REF),
       fetchImpl: ctx.fetchImpl, logDir: join(ctx.shoposHome, "logs"), homeDir: ctx.homeDir, homeToken: ctx.platform === "win32" ? "%USERPROFILE%" : "~",
     });
     const { main, launch } = splitSteps(steps ?? buildSteps());

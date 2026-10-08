@@ -122,11 +122,11 @@ Auto mode blocks the agent from every one of these. The operator runs them:
 6. [ ] Flag the pilot customer, tell them to re-download, watch alerts.
 7. [ ] Other customers, one at a time.
 
-### Pinning V2_RAW_BASE and the starter URLs
-Both starters and the Worker point at `main` today. After the dashboard PR is merged:
-- [ ] Choose a tag or commit SHA on `shop-os-dashboard` that contains the final `installer/` files.
-- [ ] In the license-server repo, edit `V2_RAW_BASE` in `src/install-page.ts` (line 32) from `.../shop-os-dashboard/main/installer` to `.../shop-os-dashboard/<TAG_OR_SHA>/installer`. This needs a deploy.
-- [ ] The starters themselves download the installer package from `https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main` (`installer/start-windows.ps1` line 75, `installer/start-macos.sh` line 56). Pinning `V2_RAW_BASE` does NOT pin this. Decide: change those two URLs to the same `<TAG_OR_SHA>` (a follow-up commit, then tag that commit), or accept that package contents follow `main`. Either way record the decision.
+### Pinning the installer ref (V2_INSTALLER_REF)
+Both starters and the Worker follow `main` until one constant is set. After the dashboard PR is squash-merged:
+- [ ] Take the 40-character commit SHA of the squash-merge commit on `shop-os-dashboard` `main` (it contains the final `installer/` files).
+- [ ] In the license-server repo, set the single constant `V2_INSTALLER_REF` in `src/install-page.ts` to that SHA, then deploy. The Worker uses it to fetch the starters from `https://raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/<SHA>/installer/` and writes `SHOPOS_INSTALLER_REF=<SHA>` into each customer's .bat / .command. The starters read that variable and download the package from `https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/<SHA>`, so the package is pinned too. Nothing in the dashboard repo is edited by hand.
+- [ ] A missing or invalid value (anything outside `^[A-Za-z0-9._-]{1,64}$`) makes the starters fall back to `refs/heads/main`. Installer reports then show `Installer: v2.0.0+<first 12 chars of the SHA>`.
 - [ ] Verify both starter URLs return 200 before flipping anyone.
 
 ```

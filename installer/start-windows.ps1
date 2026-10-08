@@ -72,9 +72,10 @@ if (-not $nodeBin) {
 if ($env:SHOPOS_PACKAGE_DIR) { $pkgDir = $env:SHOPOS_PACKAGE_DIR } else {
   Write-Host "Fetching the Blueprint OS installer..."
   $tgz = Join-Path $env:TEMP "blueprint-os-installer.tar.gz"
+  $ref = if ($env:SHOPOS_INSTALLER_REF -match '^[A-Za-z0-9._-]{1,64}$' -and $env:SHOPOS_INSTALLER_REF -notmatch '^\.') { $env:SHOPOS_INSTALLER_REF } else { "refs/heads/main" }   # server-set pin
   try {
     New-Item -ItemType Directory -Force -Path $pkgDir | Out-Null
-    Invoke-WebRequest -Uri "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -OutFile $tgz -UseBasicParsing -ErrorAction Stop
+    Invoke-WebRequest -Uri "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/$ref" -OutFile $tgz -UseBasicParsing -ErrorAction Stop
   } catch { Fail "package-download" $_.Exception.Message }
   $global:LASTEXITCODE = -1; & "$env:SystemRoot\System32\tar.exe" -xzf $tgz -C $pkgDir --strip-components=1
   if ($LASTEXITCODE -ne 0) { Fail "package-extract" "tar.exe exited $LASTEXITCODE" }

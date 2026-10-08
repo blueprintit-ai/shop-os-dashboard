@@ -54,7 +54,10 @@ fi
 if [ -n "${SHOPOS_PACKAGE_DIR:-}" ]; then PKG_DIR="$SHOPOS_PACKAGE_DIR"; else
   echo "Fetching the Blueprint OS installer..."
   mkdir -p "$PKG_DIR" || fail package-download "could not create the package folder"
-  curl -fsSL "https://codeload.github.com/blueprintit-ai/shop-os-dashboard/tar.gz/refs/heads/main" -o "$SHOPOS/installer.tar.gz" || fail package-download "download failed (curl exit $?)"
+  # Pin: the license server sets SHOPOS_INSTALLER_REF (main, a commit SHA or a tag). Missing/invalid -> main.
+  REF="refs/heads/main"; R="${SHOPOS_INSTALLER_REF:-}"; [[ "$R" =~ ^[A-Za-z0-9._-]{1,64}$ && "$R" != .* ]] && REF="$R"
+  CL="https://codeload.github.com"; [ "${SHOPOS_TEST_MODE:-}" = 1 ] && CL="${SHOPOS_TEST_CODELOAD:-$CL}"   # test-only host override
+  curl -fsSL "$CL/blueprintit-ai/shop-os-dashboard/tar.gz/$REF" -o "$SHOPOS/installer.tar.gz" || fail package-download "download failed (curl exit $?)"
   tar -xzf "$SHOPOS/installer.tar.gz" -C "$PKG_DIR" --strip-components=1 || fail package-extract "extract failed (tar exit $?)"
   rm -f "$SHOPOS/installer.tar.gz"
 fi

@@ -2,6 +2,12 @@ import { mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { redactDeep, capReport } from "./redact.js";
 
+// "2.0.0" or, when the license server pinned a ref, "2.0.0+<first 12 chars>" (the server keeps 20 chars).
+export function installerVersionFor(ref, base = "2.0.0") {
+  if (typeof ref !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(ref) || ref.startsWith(".")) return base;
+  return `${base}+${ref.slice(0, 12)}`;
+}
+
 export function createReporter({
   licenseKey, runId, supportCode, serverBase, fetchImpl = globalThis.fetch, logDir, homeDir, homeToken,
   timeoutMs = 4000, installerVersion = "2.0.0",

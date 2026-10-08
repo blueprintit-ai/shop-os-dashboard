@@ -22,7 +22,7 @@ test("native commands run with EAP Continue and are judged by exit code", () => 
   assert.match(t, /\$ProgressPreference = "SilentlyContinue"/);
 });
 test("both starters stay thin and hand over to the Node installer", () => {
-  assert.ok(ps1.toString("utf8").split("\n").length < 90);
+  assert.ok(ps1.toString("utf8").split("\n").length < 92);
   assert.ok(sh.split("\n").length < 80);
   assert.match(ps1.toString("utf8"), /blueprint-os-install\.js/);
   assert.match(sh, /blueprint-os-install\.js/);
@@ -172,4 +172,44 @@ test("Windows starter: run_id (GUID) in failure reports, SHOPOS_NODE_BIN exporte
   assert.match(P, /\$ver = "v22\.20\.0"[^\n]*\n\s*try \{\s*\n\s*\$idx = Invoke-RestMethod[\s\S]*?\} catch \{\}/);
   assert.ok(P.indexOf('$ver = "v22.20.0"') < P.indexOf("Invoke-RestMethod -Uri \"https://nodejs.org/dist/index.json\""));
   assert.match(P, /Get-FileHash[^\n]*SHA256/);
+});
+
+test("both starters read SHOPOS_INSTALLER_REF, validate it, and default to refs/heads/main", () => {
+  const t = ps1.toString("utf8");
+  for (const x of [t, sh]) {
+    assert.match(x, /SHOPOS_INSTALLER_REF/);
+    assert.ok(x.includes("[A-Za-z0-9._-]{1,64}"));
+    assert.match(x, /refs\/heads\/main/);
+  }
+  assert.match(t, /tar\.gz\/\$ref"/);
+  assert.match(sh, /tar\.gz\/\$REF"/);
+  assert.match(t, /--strip-components=1/);
+  assert.match(sh, /--strip-components=1/);
+  assert.doesNotMatch(t, /tar\.gz\/refs\/heads\/main"/);
+});
+for (const [name, ref, expected] of [
+  ["a valid ref is used", "abc123", "/blueprintit-ai/shop-os-dashboard/tar.gz/abc123"],
+  ["a full sha is used", "a".repeat(40), `/tar.gz/${"a".repeat(40)}`],
+  ["path traversal falls back to main", "a/../b", "/tar.gz/refs/heads/main"],
+  ["command substitution falls back to main", "$(x)", "/tar.gz/refs/heads/main"],
+  ["a bare dot-dot falls back to main", "..", "/tar.gz/refs/heads/main"],
+  ["unset falls back to main", undefined, "/tar.gz/refs/heads/main"],
+]) {
+  test(`macOS starter download URL: ${name}`, async () => {
+    const home = mkdtempSync(join(tmpdir(), "starter-home-"));
+    const urls = [];
+    const srv = createServer((req, res) => { urls.push(req.url); req.resume(); req.on("end", () => { res.statusCode = req.url.includes("tar.gz") ? 404 : 200; res.end("{}"); }); });
+    await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${srv.address().port}`;
+    const env = { PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: home, SHOPOS_LICENSE_SERVER: base, SHOPOS_TEST_MODE: "1", SHOPOS_TEST_CODELOAD: base };
+    if (ref !== undefined) env.SHOPOS_INSTALLER_REF = ref;
+    const code = await new Promise((resolve) => { const c = spawn("bash", [new URL("../installer/start-macos.sh", import.meta.url).pathname], { env }); c.stdout.on("data", () => {}); c.stderr.on("data", () => {}); c.on("close", resolve); });
+    srv.close();
+    assert.equal(code, 1);
+    const dl = urls.find((u) => u.includes("tar.gz"));
+    assert.ok(dl && dl.includes(expected), `${dl} should contain ${expected}`);
+  });
+}
+test("the test-only codeload override is ignored unless SHOPOS_TEST_MODE=1", () => {
+  assert.match(sh, /\[ "\$\{SHOPOS_TEST_MODE:-\}" = 1 \] && CL=/);
 });

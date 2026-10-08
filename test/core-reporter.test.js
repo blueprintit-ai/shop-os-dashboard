@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createReporter } from "../installer/core/reporter.js";
+import { createReporter, installerVersionFor } from "../installer/core/reporter.js";
 
 const KEY = "SHOP-AB12-CD34-EF56";
 const mk = (over = {}) => createReporter({
@@ -102,4 +102,18 @@ test("payload stays under 20 KB", async () => {
   await r.flush();
   assert.ok(Buffer.byteLength(body) <= 20000);
   assert.equal(JSON.parse(body).license_key, KEY);
+});
+
+test("installer_version is 2.0.0 by default and 2.0.0+<12 chars> for a valid pinned ref", async () => {
+  assert.equal(installerVersionFor(undefined), "2.0.0");
+  assert.equal(installerVersionFor("main"), "2.0.0+main");
+  assert.equal(installerVersionFor("0123456789abcdef0123456789abcdef01234567"), "2.0.0+0123456789ab");
+  assert.equal(installerVersionFor("a/../b"), "2.0.0");
+  assert.equal(installerVersionFor("$(x)"), "2.0.0");
+  assert.equal(installerVersionFor(".."), "2.0.0");
+  assert.ok(installerVersionFor("x".repeat(64)).length <= 20);
+  const calls = [];
+  const r = mk({ installerVersion: installerVersionFor("0123456789abcdef"), fetchImpl: async (u, init) => { calls.push(JSON.parse(init.body)); return { ok: true }; } });
+  await r.send({ status: "success", step: "complete" }); await r.flush();
+  assert.equal(calls[0].installer_version, "2.0.0+0123456789ab");
 });
