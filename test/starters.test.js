@@ -130,3 +130,9 @@ test("macOS starter behaves: package-extract failure prints the exact message an
   assert.equal(parsed.license_key, '~/k\\"q');
   assert.ok(!body.includes(home));
 });
+test("the Windows starter never sends a null license_key (falls back to unknown like the Mac starter)", () => {
+  const t = ps1.toString("utf8");
+  assert.doesNotMatch(t, /license_key\s*=\s*\$env:SHOPOS_LICENSE_KEY/);
+  assert.match(t, /license_key\s*=\s*\$lk/);
+  assert.match(t, /\$lk\s*=\s*if \(\$env:SHOPOS_LICENSE_KEY\)[^\n]*"unknown"/);
+});

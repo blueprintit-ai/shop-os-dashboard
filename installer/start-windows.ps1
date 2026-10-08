@@ -17,7 +17,8 @@ function Fail($stage, $message) {
     $msg = [string]$message   # TEMP first: it usually lives inside USERPROFILE
     foreach ($p in @(@($env:TEMP, "%TEMP%"), @($env:USERPROFILE, "%USERPROFILE%"))) { if ($p[0]) { $msg = $msg -ireplace [regex]::Escape($p[0]), $p[1] } }
     if ($msg.Length -gt 400) { $msg = $msg.Substring(0, 400) }
-    $body = @{ license_key = $env:SHOPOS_LICENSE_KEY; status = "error"; step = "starter:$stage"; error_message = $msg; support_code = $code
+    $lk = if ($env:SHOPOS_LICENSE_KEY) { $env:SHOPOS_LICENSE_KEY } else { "unknown" }   # JSON null would be a 400
+    $body = @{ license_key = $lk; status = "error"; step = "starter:$stage"; error_message = $msg; support_code = $code
                machine = @{ os = [Environment]::OSVersion.VersionString; source = "installer-v2-starter" } } | ConvertTo-Json -Depth 4
     Invoke-RestMethod -Uri "$server/install-log" -Method Post -ContentType "application/json" -Body $body -TimeoutSec 8 -UseBasicParsing | Out-Null
   } catch {}
