@@ -2,7 +2,7 @@
 
 Three parts: (1) the manual checklist (about 15 minutes per machine), (2) the support runbook, (3) the cutover procedure. Everything here is what CI cannot prove. A line marked UNVERIFIED was written from reading the code and has not been run on a real machine.
 
-Legend: `<WORKER>` = the license-server base URL (https://shop-os-license-server.glenn-15d.workers.dev). `<TEST_KEY>` = a throwaway license key. `<SCOTT_KEY>` = Scott's real key (never write it into the repo). `$ADMIN_TOKEN` = the Worker admin token, exported in the shell.
+Legend: `<WORKER>` = the license-server base URL (https://shop-os-license-server.glenn-15d.workers.dev). `<TEST_KEY>` = a throwaway license key. `<CUSTOMER_KEY>` = the pilot customer's real key (never write it into the repo). `$ADMIN_TOKEN` = the Worker admin token, exported in the shell.
 
 Preconditions:
 - [ ] Dashboard PR is green on both CI jobs (unit job and the real Windows + macOS install job in `.github/workflows/installer-e2e.yml`).
@@ -13,7 +13,7 @@ Preconditions:
 
 ## Part 1. Manual checklist
 
-### Windows (run on Glenn's Windows 11 PC, then again on a standard-user account)
+### Windows (run on a spare Windows 11 PC, then again on a standard-user account)
 - [ ] Double-click the v2 `.bat` for the test key. No UAC prompt appears.
 - [ ] SmartScreen "More info > Run anyway" works once and the window stays open.
 - [ ] Defender raises no alert for the starter, MinGit, the Claude installer, or the Obsidian installer.
@@ -40,10 +40,10 @@ Preconditions:
 - [ ] Desktop item "Blueprint OS.app" opens the dashboard; LaunchAgent `ai.blueprintit.shop-os-dashboard` is loaded after logout/login.
 - [ ] Re-run the `.command`: second run does not fail on the LaunchAgent (a known deferred defect: `launchctl load` on an already loaded plist is not preceded by an unload; if the dashboard step now warns, that is the defect).
 
-### Scott's machine (repair mode, before sending him the file)
+### The pilot customer's machine (repair mode, before sending him the file)
 - [ ] On a copy of his state (or a PC with an old dashboard install): existing `.shopos`, `ShopOSDashboard` task and the "Shop OS" vault are reused; the folder-picker offers "Shop OS" as the default name; his CLAUDE.md is not overwritten.
-- [ ] Scott's old desktop shortcut may have a different name than "Blueprint OS" (the old installer called it "Shop OS" or similar). After the install check the desktop: a second shortcut may remain. If so, tell him which one to delete. (UNVERIFIED.)
-- [ ] His vault is `C:\Users\Scott\Dropbox\Shop OS`. The picker should offer it, not create a new folder.
+- [ ] The pilot customer's old desktop shortcut may have a different name than "Blueprint OS" (the old installer called it "Shop OS" or similar). After the install check the desktop: a second shortcut may remain. If so, tell him which one to delete. (UNVERIFIED.)
+- [ ] His vault is `<pilot vault path>`. The picker should offer it, not create a new folder.
 
 ### Alert pipeline (do once, on any machine)
 - [ ] A step that waits on the customer (folder picker, Claude login) for more than 30 minutes sends a "may be HUNG" email, even though the customer is just away. Expect it; do not treat it as a failure. (The picker itself times out at 15 minutes.)
@@ -96,14 +96,14 @@ Never ask for passwords, tokens, or vault contents.
 - [ ] Hint says firewall or proxy: GitHub or claude.ai unreachable. Customer retries on another network.
 - [ ] Windows, non-ASCII username: see ANSI code page item above.
 - [ ] The v2 file says "Could not download the Blueprint OS setup script": the starter URLs are not reachable (not merged, repo private, wrong tag). Roll the customer back to legacy (below), fix the URL.
-- [ ] Install page copy still says UAC "Click Yes" or "type your Mac password" for v2 customers. That text belongs to the legacy installer and is wrong for v2 (the page does not yet know the flag). Tell Scott in your email that no admin prompt or password will appear.
+- [ ] Install page copy still says UAC "Click Yes" or "type your Mac password" for v2 customers. That text belongs to the legacy installer and is wrong for v2 (the page does not yet know the flag). Tell the pilot customer in your email that no admin prompt or password will appear.
 
 ---
 
 ## Part 3. Cutover procedure
 
 ### What the user must do themselves
-Auto mode blocks the agent from every one of these. Glenn runs them:
+Auto mode blocks the agent from every one of these. The operator runs them:
 - [ ] Push the dashboard branch `feat/installer-v2` and open the PR (needs `gh auth switch --user blueprintit-ai && gh auth setup-git`).
 - [ ] Watch both CI jobs go green on Actions (the Windows and macOS real-install job has never run on Actions; expect first-run fixes).
 - [ ] Merge the dashboard PR.
@@ -111,7 +111,7 @@ Auto mode blocks the agent from every one of these. Glenn runs them:
 - [ ] Create the tag or note the commit SHA used to pin the starters.
 - [ ] Run every `curl -X POST` against production (they use `$ADMIN_TOKEN`).
 - [ ] Any secret writes (`gh secret set`, `wrangler secret`) and any Resend or Cloudflare dashboard changes.
-- [ ] Send Scott his message.
+- [ ] Send the pilot customer his message.
 
 ### Order of operations
 1. [ ] Dashboard PR: both CI jobs green, then merge to `main`.
@@ -119,7 +119,7 @@ Auto mode blocks the agent from every one of these. Glenn runs them:
 3. [ ] Merge the license-server PR. It auto-deploys, but the default installer is legacy, so the merge changes nothing for any customer by itself.
 4. [ ] Verify live that everyone is still legacy.
 5. [ ] Flag only the test key to v2, download its `.bat`, run Part 1 on the Windows PC and the Mac.
-6. [ ] Flag Scott, tell him to re-download, watch alerts.
+6. [ ] Flag the pilot customer, tell them to re-download, watch alerts.
 7. [ ] Other customers, one at a time.
 
 ### Pinning V2_RAW_BASE and the starter URLs
@@ -153,20 +153,20 @@ curl -s "<WORKER>/install-script?key=<TEST_KEY>&os=windows"
 ```
 - [ ] Output now mentions `start-windows.ps1` and sets `SHOPOS_LICENSE_KEY` and `SHOPOS_LICENSE_SERVER`.
 - [ ] Download the `.bat` from `<WORKER>/install?key=<TEST_KEY>` and run Part 1.
-- [ ] Gate: Part 1 passes on Windows and on the Mac. If not, stop; Scott stays on legacy.
+- [ ] Gate: Part 1 passes on Windows and on the Mac. If not, stop; the pilot customer stays on legacy.
 
-### Flip Scott
+### Flip the pilot customer
 ```
-curl -X POST "<WORKER>/admin/set-installer?key=<SCOTT_KEY>&installer=v2" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X POST "<WORKER>/admin/set-installer?key=<CUSTOMER_KEY>&installer=v2" -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 - [ ] Response shows `"installer":"v2"`.
-- [ ] Scott re-downloads the `.bat` from his `/install?key=` link. The flag is read at download time; a file he already has keeps the old installer.
-- [ ] Tell Scott: no admin prompt and no password will appear (the install page text may still say otherwise), a folder window will open (possibly behind other windows), and he signs in to Claude in the browser.
+- [ ] The pilot customer re-downloads the `.bat` from his `/install?key=` link. The flag is read at download time; a file he already has keeps the old installer.
+- [ ] Tell the pilot customer: no admin prompt and no password will appear (the install page text may still say otherwise), a folder window will open (possibly behind other windows), and he signs in to Claude in the browser.
 - [ ] Watch the alert inbox and the Admin Installs page during his install and for a few days after.
 
 ### Rollback (instant)
 ```
-curl -X POST "<WORKER>/admin/set-installer?key=<SCOTT_KEY>&installer=legacy" -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -X POST "<WORKER>/admin/set-installer?key=<CUSTOMER_KEY>&installer=legacy" -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 - [ ] Takes effect on the next download. A file already downloaded keeps its installer, so have the customer re-download.
 - [ ] A reinstall of the legacy installer on top of a partial v2 install is UNVERIFIED.

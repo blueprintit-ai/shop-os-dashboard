@@ -13,7 +13,7 @@ import { dashboardStep, findNpmCli } from "../installer/steps/dashboard.js";
 const redirectTo = (v) => ({ ok: false, status: 302, headers: new Headers({ location: `https://github.com/obsidianmd/obsidian-releases/releases/tag/v${v}` }) });
 const quiet = { sleep: async () => {} };
 const home = () => mkdtempSync(join(tmpdir(), "bp-home-"));
-const lic = { key: "SHOP-AB12-CD34-EF56", customer: "Scott", product: "p", entitlements: [], valid_until: null };
+const lic = { key: "SHOP-AB12-CD34-EF56", customer: "Test Customer", product: "p", entitlements: [], valid_until: null };
 
 test("obsidian: skipped when already installed (Windows per-user path)", async () => {
   const ctx = createContext({ platform: "win32", homeDir: "C:\\u", env: { LOCALAPPDATA: "C:\\u\\AppData\\Local" }, print: () => {}, exists: (p) => p.endsWith("Obsidian.exe") });
