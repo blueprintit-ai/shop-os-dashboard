@@ -2,6 +2,8 @@
 
 Companion to `plans/2026-09-18-shop-os-dashboard-installer.md`'s Task 11 ("Manual install test matrix"). That task's 7 items need real physical hardware, a reboot, and macOS access that a CI/agent sandbox does not have — this document tracks what's been verified so far and gives exact, reproducible steps for the rest.
 
+> **Superseded for installer v2 (2026-10-07):** the v2 installer's manual checklist, support runbook and cutover procedure are in `specs/2026-10-07-installer-v2-manual-checklist.md`. This file covers only the older dashboard installer.
+
 **Status: 2 of 7 done, 5 open.** Run the 5 open items before the cutover gate (per the design spec, `specs/2026-09-05-shop-os-dashboard-design.md`'s Section 6: "All tests above passing, plus one real shop running both systems side by side for a week with no regression in existing skills, before the install page flips").
 
 ## Done
