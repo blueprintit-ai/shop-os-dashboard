@@ -1,8 +1,9 @@
 // usage: node test/e2e/assert-install.mjs <vaultPath> <reportsFile> <mode: ok|fail-github>
+// env: SHOPOS_LICENSE_KEY (the full key must appear only in the license_key field of reports, never in other fields or local logs)
 // The pure checks (checkOkReports, checkFailGithubReports, homeLeaks) are exported and unit-tested offline.
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
@@ -23,7 +24,73 @@ export function homeLeaks(text, home) {
   return [...variants].some((v) => hay.includes(v.toLowerCase()));
 }
 
-function checkCommon(reports, home) {
+// What leaked, as a list of kinds ([] = clean): the home dir in any form, the bare user name (whole word,
+// case-insensitive, 3+ characters so "al" cannot flag everything), and the Windows 8.3 short form of the home dir.
+export function findLeaks(text, { home, username, shortHome } = {}) {
+  const found = [];
+  if (homeLeaks(text, home)) found.push("home");
+  if (shortHome) {
+    if (homeLeaks(text, shortHome)) found.push("short-home");
+    else {
+      const seg = String(shortHome).split(/[\\/]/).filter(Boolean).pop();
+      if (seg && seg.includes("~") && String(text).toLowerCase().includes(seg.toLowerCase())) found.push("short-home");
+    }
+  }
+  const u = String(username ?? "");
+  if (u.length >= 3 && new RegExp(`(?<![A-Za-z0-9_])${u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9_])`, "i").test(String(text))) found.push("username");
+  return found;
+}
+
+// Windows only: the 8.3 form of the home dir (C:\Users\RUNNER~1). null when the platform has none.
+export function shortHomeDir(home = homedir()) {
+  if (process.platform !== "win32") return null;
+  try {
+    const r = spawnSync("powershell", ["-NoProfile", "-Command", "(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:SHOPOS_HOME_FOR_SHORT).ShortPath"],
+      { encoding: "utf8", env: { ...process.env, SHOPOS_HOME_FOR_SHORT: home } });
+    const out = r.status === 0 ? r.stdout.trim() : "";
+    return out && out.toLowerCase() !== String(home).toLowerCase() ? out : null;
+  } catch { return null; }
+}
+
+// Every file under dir as { name, text }; a missing folder is [].
+export function readLogs(dir) {
+  const out = [];
+  const walk = (d) => {
+    let names;
+    try { names = readdirSync(d); } catch { return; }
+    for (const n of names) {
+      const p = join(d, n);
+      try { statSync(p).isDirectory() ? walk(p) : out.push({ name: p, text: readFileSync(p, "utf8") }); } catch { /* unreadable: skip */ }
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+// The full license key may appear only in the TOP-LEVEL license_key field of a report. Anywhere else in a report,
+// or anywhere in a local log, is a leak. Unshortened block pairs (CI12-TEST, TEST-0001) count too.
+export function licenseKeyLeaks(reports, logs, key) {
+  const k = String(key ?? "").trim();
+  if (!k) return [];
+  const needles = [k.toLowerCase()];
+  const blocks = k.split("-");
+  if (blocks.length === 4) needles.push(`${blocks[1]}-${blocks[2]}`.toLowerCase(), `${blocks[2]}-${blocks[3]}`.toLowerCase());
+  const has = (t) => needles.some((n) => String(t).toLowerCase().includes(n));
+  const found = [];
+  reports.forEach((r, i) => {
+    const { license_key: _top, ...rest } = r;
+    if (has(JSON.stringify(rest))) found.push(`report ${i}`);
+  });
+  for (const l of logs) if (has(l.text)) found.push(`log ${l.name}`);
+  return found;
+}
+
+export function checkNoRejected(file) {
+  const text = existsSync(file) ? readFileSync(file, "utf8").trim() : "";
+  assert.equal(text, "", `the fake license server rejected (400) ${text.split("\n").length} report(s) the real server would also reject: ${text.slice(0, 600)}`);
+}
+
+function checkCommon(reports, { home, username, shortHome, logs = [], licenseKey }) {
   assert.ok(reports.length > 0, "no reports were received");
   const last = reports.at(-1);
   assert.match(String(last.support_code ?? ""), SUPPORT_CODE, "support_code on the last report");
@@ -33,13 +100,17 @@ function checkCommon(reports, home) {
   assert.ok(Array.isArray(last.notes) && last.notes.every((n) => typeof n === "string"), "notes is an array of strings");
   assert.ok(Number.isFinite(last.duration_ms), "duration_ms is a number");
   assert.ok(last.snapshot && typeof last.snapshot === "object", "snapshot is present");
-  assert.ok(!homeLeaks(JSON.stringify(reports), home), "home directory leaked into a report");
+  const leaks = findLeaks(JSON.stringify(reports), { home, username, shortHome });
+  assert.deepEqual(leaks.filter((l) => l === "home"), [], "home directory leaked into a report");
+  assert.deepEqual(leaks, [], `report leaks: ${leaks.join(", ")} (username / short home dir)`);
+  for (const l of logs) assert.deepEqual(findLeaks(l.text, { home, username, shortHome }), [], `local log ${l.name} leaks the home dir or user name`);
+  assert.deepEqual(licenseKeyLeaks(reports, logs, licenseKey), [], "license key outside the license_key field of a report, or in a local log");
   return last;
 }
 
 // Two-phase run with SHOPOS_NO_LAUNCH=1: progress per step, then ONE success report, nothing after it.
-export function checkOkReports(reports, { home = homedir(), strictSteps = [] } = {}) {
-  const last = checkCommon(reports, home);
+export function checkOkReports(reports, { home = homedir(), strictSteps = [], ...leakOpts } = {}) {
+  const last = checkCommon(reports, { home, ...leakOpts });
   assert.equal(last.status, "success", `last report status was ${last.status} (a report after the success report, such as launch progress, is not allowed)`);
   assert.equal(last.step, "complete", "success report step");
   assert.equal(reports.filter((r) => r.status === "success").length, 1, "exactly one success report");
@@ -55,8 +126,8 @@ export function checkOkReports(reports, { home = homedir(), strictSteps = [] } =
 }
 
 // SHOPOS_TEST_FAIL_HOSTS blocks github.com inside the installer, so machine-check is the step that must stop the run.
-export function checkFailGithubReports(reports, { home = homedir() } = {}) {
-  const last = checkCommon(reports, home);
+export function checkFailGithubReports(reports, { home = homedir(), ...leakOpts } = {}) {
+  const last = checkCommon(reports, { home, ...leakOpts });
   assert.equal(last.status, "error", `last report status was ${last.status}`);
   assert.equal(last.step, "machine-check", `failing step was ${last.step}`);
   assert.ok(last.step_title, "step_title on the error report");
@@ -100,12 +171,19 @@ function readReports(file) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [vault, reportsFile, mode = "ok"] = process.argv.slice(2);
   const reports = readReports(reportsFile);
+  checkNoRejected(`${reportsFile}.rejected`);
+  const home = homedir();
+  let username = "";
+  try { username = userInfo().username; } catch { /* no user name available */ }
+  const logDir = process.env.SHOPOS_LOGS || join(home, ".shopos", "logs");
+  const leakOpts = { home, username, shortHome: shortHomeDir(home), logs: readLogs(logDir), licenseKey: process.env.SHOPOS_LICENSE_KEY ?? "" };
   if (mode === "ok") {
     checkMachine(vault);
-    checkOkReports(reports, { strictSteps: STRICT_STEPS });
+    assert.ok(leakOpts.logs.length > 0, `no local install log found under ${logDir}`);
+    checkOkReports(reports, { strictSteps: STRICT_STEPS, ...leakOpts });
     console.log("OK: install verified");
   } else if (mode === "fail-github") {
-    checkFailGithubReports(reports);
+    checkFailGithubReports(reports, leakOpts);
     console.log("OK: deliberate failure reported with a hint");
   } else {
     throw new Error(`unknown mode ${mode}`);

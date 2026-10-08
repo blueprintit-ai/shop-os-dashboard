@@ -30,7 +30,7 @@ test("fake server answers GET /validate with a valid blueprint-os license", asyn
 
 test("fake server appends each POST /install-log body as one JSON line", async () => {
   await withServer(async (base, out) => {
-    for (const body of [{ status: "progress", step: "a" }, { status: "success", note: "line1\nline2" }]) {
+    for (const body of [{ license_key: "SHOP-AB12-CD34-EF56", status: "progress", step: "a" }, { license_key: "SHOP-AB12-CD34-EF56", status: "success", note: "line1\nline2" }]) {
       const r = await fetch(`${base}/install-log`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       assert.equal(r.status, 200);
       assert.deepEqual(await r.json(), { ok: true });
@@ -137,8 +137,11 @@ test("the CLI reads a reports file and exits 0/1 for fail-github", async () => {
   writeFileSync(good, failReports().map((r) => JSON.stringify(r)).join("\n") + "\n");
   writeFileSync(bad, okReports().map((r) => JSON.stringify(r)).join("\n") + "\n");
   const script = fileURLToPath(new URL("./e2e/assert-install.mjs", import.meta.url));
-  assert.equal(spawnSync(process.execPath, [script, dir, good, "fail-github"]).status, 0);
-  assert.notEqual(spawnSync(process.execPath, [script, dir, bad, "fail-github"]).status, 0);
+  assert.equal(spawnSync(process.execPath, [script, dir, good, "fail-github"], { env: { ...process.env, SHOPOS_LOGS: dir } }).status, 0);
+  assert.notEqual(spawnSync(process.execPath, [script, dir, bad, "fail-github"], { env: { ...process.env, SHOPOS_LOGS: dir } }).status, 0);
+  // a rejected (400) report recorded next to the reports file fails the run even when the reports themselves are fine
+  writeFileSync(`${good}.rejected`, '{"reason":"x"}\n');
+  assert.notEqual(spawnSync(process.execPath, [script, dir, good, "fail-github"], { env: { ...process.env, SHOPOS_LOGS: dir } }).status, 0);
 });
 
 // ---- workflow guard rails (the real proof is a run on GitHub Actions) ----
@@ -158,3 +161,109 @@ test("installer-e2e workflow: ASCII only, majors pinned, no unexpanded ~ paths, 
   assert.match(t, /path: \$\{\{ runner\.temp \}\}\/install-artifacts/);
   assert.doesNotMatch(t, /path:\s*\|/, "multi-path uploads break on Windows (two drives)");
 });
+
+// ---- fake server mirrors the real server's validation ----
+const post = (base, body, raw) => fetch(`${base}/install-log`, { method: "POST", headers: { "Content-Type": "application/json" }, body: raw ?? JSON.stringify(body) });
+
+test("fake server rejects what the real server rejects: 400 and the body is recorded to <out>.rejected, not <out>", async () => {
+  await withServer(async (base, out) => {
+    const bad = [
+      { status: "progress" },                                              // missing license_key
+      { license_key: null, status: "progress" },                          // JSON null (the PowerShell starter bug)
+      { license_key: 12345, status: "progress" },                         // not a string
+      { license_key: "   ", status: "progress" },                         // empty after trim
+      { license_key: "SHOP AB12", status: "progress" },                   // bad characters
+      { license_key: "A".repeat(65), status: "progress" },                // too long
+      { license_key: "SHOP-AB12-CD34-EF56", status: "weird" },            // status not allowed
+      { license_key: "SHOP-AB12-CD34-EF56" },                             // no status
+      { license_key: "SHOP-AB12-CD34-EF56", status: "progress", run_id: "has space" },
+      { license_key: "SHOP-AB12-CD34-EF56", status: "progress", run_id: "x".repeat(65) },
+    ];
+    for (const b of bad) assert.equal((await post(base, b)).status, 400, JSON.stringify(b));
+    for (const raw of ["[1,2]", "null", '"str"', "42", "{not json"]) assert.equal((await post(base, null, raw)).status, 400, raw);
+    assert.equal(existsSync(out), false, "rejected bodies must not land in the reports file");
+    const rejected = readFileSync(`${out}.rejected`, "utf8").split("\n").filter(Boolean);
+    assert.equal(rejected.length, bad.length + 5);
+  });
+});
+test("fake server accepts every valid status, trims the key, and run_id of the allowed shape", async () => {
+  await withServer(async (base, out) => {
+    for (const status of ["success", "error", "retry", "progress"]) {
+      assert.equal((await post(base, { license_key: "  SHOP-ab12-CD34-EF56 ", status, run_id: "3f2b8c1e-aaaa-4bbb-8ccc-123456789abc" })).status, 200, status);
+    }
+    assert.equal((await post(base, { license_key: "unknown", status: "error" })).status, 200);
+    assert.equal(readFileSync(out, "utf8").split("\n").filter(Boolean).length, 5);
+    assert.equal(existsSync(`${out}.rejected`), false);
+  });
+});
+
+import { writeFileSync } from "node:fs";
+import { checkNoRejected, findLeaks, licenseKeyLeaks, readLogs, shortHomeDir } from "./e2e/assert-install.mjs";
+
+test("checkNoRejected fails when the rejected file has content, passes when missing or empty", () => {
+  const dir = mkdtempSync(join(tmpdir(), "rej-"));
+  const f = join(dir, "reports.jsonl.rejected");
+  assert.doesNotThrow(() => checkNoRejected(f));
+  writeFileSync(f, "");
+  assert.doesNotThrow(() => checkNoRejected(f));
+  writeFileSync(f, '{"status":"weird"}\n');
+  assert.throws(() => checkNoRejected(f), /rejected/);
+});
+
+// ---- stronger leak checks ----
+test("findLeaks: home path variants, bare username (whole word, case-insensitive), 8.3 short home", () => {
+  const o = { home: "C:\\Users\\runneradmin", username: "runneradmin", shortHome: "C:\\Users\\RUNNER~1" };
+  assert.deepEqual(findLeaks("all clean %USERPROFILE%\\x", o), []);
+  assert.ok(findLeaks("C:\\\\Users\\\\runneradmin\\\\x", o).includes("home"));
+  assert.ok(findLeaks("hello RunnerAdmin!", o).includes("username"));
+  assert.ok(findLeaks("saved in C:\\Users\\RUNNER~1\\Desktop", o).includes("short-home"));
+  assert.ok(findLeaks('{"p":"C:\\\\Users\\\\RUNNER~1\\\\Desktop"}', o).includes("short-home"));
+  // negatives: the username inside a longer word is not a leak; tiny usernames are ignored
+  assert.deepEqual(findLeaks("runneradministrator group", o), []);
+  assert.deepEqual(findLeaks("ab is fine", { home: "/Users/ab", username: "ab" }), []);
+  assert.deepEqual(findLeaks("nothing", { home: "/Users/alice", username: "alice", shortHome: null }), []);
+  assert.ok(findLeaks("owner alice", { home: "/Users/alice", username: "alice" }).includes("username"));
+});
+test("shortHomeDir is null off Windows and never throws", () => {
+  if (process.platform !== "win32") assert.equal(shortHomeDir("/Users/alice"), null);
+});
+
+const KEY = "SHOP-CI12-TEST-0001";
+test("licenseKeyLeaks: the full key may sit in license_key only", () => {
+  const ok = [{ license_key: KEY, status: "progress", error_message: "key SHOP-CI12-...-0001 bad", timeline: [{ error: "x" }] }];
+  assert.deepEqual(licenseKeyLeaks(ok, [], KEY), []);
+  const inMsg = [{ license_key: KEY, error_message: `License check failed for ${KEY}` }];
+  assert.equal(licenseKeyLeaks(inMsg, [], KEY).length, 1);
+  const nested = [{ license_key: KEY, timeline: [{ id: "license", outTail: `got ${KEY.toLowerCase()}` }] }];
+  assert.equal(licenseKeyLeaks(nested, [], KEY).length, 1, "case-insensitive, nested");
+  const partial = [{ license_key: KEY, notes: ["used CI12-TEST and TEST-0001"] }];
+  assert.equal(licenseKeyLeaks(partial, [], KEY).length, 1, "unshortened block pairs count");
+  const nestedLicenseKey = [{ license_key: KEY, snapshot: { license_key: KEY } }];
+  assert.equal(licenseKeyLeaks(nestedLicenseKey, [], KEY).length, 1, "only the TOP-LEVEL license_key is exempt");
+  const logs = [{ name: "install.jsonl", text: `{"license_key":"${KEY}"}` }];
+  assert.equal(licenseKeyLeaks([], logs, KEY).length, 1, "never in local logs");
+  assert.deepEqual(licenseKeyLeaks([], [{ name: "a", text: "SHOP-CI12-...-0001" }], KEY), []);
+  assert.deepEqual(licenseKeyLeaks(ok, [], ""), [], "no key configured: nothing to check");
+});
+
+test("checkOkReports applies the extended checks: username, logs, license key", () => {
+  const home = "/Users/alice";
+  const base = okReports();
+  assert.doesNotThrow(() => checkOkReports(base, { home, username: "alice", logs: [{ name: "l", text: "ok" }], licenseKey: KEY }));
+  assert.throws(() => checkOkReports(okReports({ notes: ["hello alice"] }), { home, username: "alice" }), /username/);
+  assert.throws(() => checkOkReports(base, { home, username: "alice", logs: [{ name: "install.jsonl", text: "see /Users/alice/x" }] }), /install\.jsonl/);
+  assert.throws(() => checkOkReports(okReports({ notes: [`k ${KEY}`] }), { home, licenseKey: KEY }), /license key/);
+  assert.throws(() => checkFailGithubReports(failReports({ error_message: `bad ${KEY}` }), { home, licenseKey: KEY }), /license key/);
+});
+
+test("readLogs reads every file under a folder recursively; a missing folder gives []", () => {
+  const dir = mkdtempSync(join(tmpdir(), "logs-"));
+  const { mkdirSync } = require_fs();
+  mkdirSync(join(dir, "sub"));
+  writeFileSync(join(dir, "a.jsonl"), "one");
+  writeFileSync(join(dir, "sub", "b.log"), "two");
+  assert.deepEqual(readLogs(dir).map((l) => l.text).sort(), ["one", "two"]);
+  assert.deepEqual(readLogs(join(dir, "nope")), []);
+});
+import * as fsAll from "node:fs";
+function require_fs() { return fsAll; }
