@@ -6,10 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createContext } from "../installer/core/context.js";
 import { runSteps } from "../installer/core/runner.js";
-import { obsidianStep } from "../installer/steps/obsidian.js";
+import { obsidianStep, OBSIDIAN_FALLBACK_VERSION } from "../installer/steps/obsidian.js";
 import { vaultStep } from "../installer/steps/vault.js";
 import { dashboardStep, findNpmCli } from "../installer/steps/dashboard.js";
 
+const redirectTo = (v) => ({ ok: false, status: 302, headers: new Headers({ location: `https://github.com/obsidianmd/obsidian-releases/releases/tag/v${v}` }) });
 const quiet = { sleep: async () => {} };
 const home = () => mkdtempSync(join(tmpdir(), "bp-home-"));
 const lic = { key: "SHOP-AB12-CD34-EF56", customer: "Scott", product: "p", entitlements: [], valid_until: null };
@@ -27,8 +28,8 @@ test("obsidian: Windows installs via Start-Process -Wait (no pipe hang), quotes 
     platform: "win32", homeDir: "C:\\Users\\O'Brien", env: { LOCALAPPDATA: "C:\\u\\AppData\\Local" }, print: () => {}, tmpDir: () => tmp,
     exists: (p) => installed && p.endsWith("Obsidian.exe"),
     run: async (cmd, args, opts) => { calls.push([cmd, args, opts]); installed = true; return { ok: true, stdout: "", outTail: "", cmdline: cmd }; },
-    fetchImpl: async (url) => url.includes("api.github.com")
-      ? { ok: true, json: async () => ({ assets: [{ name: "Obsidian-1.9.0.exe", browser_download_url: "https://x/Obsidian-1.9.0.exe" }] }) }
+    fetchImpl: async (url) => url.endsWith("/releases/latest")
+      ? redirectTo("1.9.0")
       : { ok: true, arrayBuffer: async () => new ArrayBuffer(8) },
   });
   const r = await runSteps([obsidianStep()], ctx, quiet);
@@ -57,8 +58,8 @@ test("obsidian: awkward installer paths go only through the environment", async 
       platform: "win32", homeDir: "C:\\u", env: { LOCALAPPDATA: "C:\\u\\AppData\\Local" }, print: () => {}, tmpDir: () => tmp,
       exists: (p) => installed && p.endsWith("Obsidian.exe"),
       run: async (cmd, args, opts) => { calls.push([args[2], opts.env.BP_OBS_EXE]); installed = true; return { ok: true, stdout: "", outTail: "", cmdline: cmd }; },
-      fetchImpl: async (url) => url.includes("api.github.com")
-        ? { ok: true, json: async () => ({ assets: [{ name: "Obsidian-1.9.0.exe", browser_download_url: "u" }] }) }
+      fetchImpl: async (url) => url.endsWith("/releases/latest")
+        ? redirectTo("1.9.0")
         : { ok: true, arrayBuffer: async () => new ArrayBuffer(8) },
     });
     assert.equal((await runSteps([obsidianStep()], ctx, quiet)).ok, true);
@@ -75,8 +76,8 @@ test("obsidian: temp download dir is removed after success, failure and failed r
       platform: "win32", homeDir: "C:\\u", env: { LOCALAPPDATA: "C:\\u\\AppData\\Local" }, print: () => {}, tmpDir: () => tmp,
       exists: (p) => installed && p.endsWith("Obsidian.exe"),
       run: async (cmd) => { installed = runOk; return { ok: runOk, stdout: "", outTail: "x", cmdline: cmd, code: 1 }; },
-      fetchImpl: async (url) => url.includes("api.github.com")
-        ? { ok: true, json: async () => ({ assets: [{ name: "Obsidian-1.9.0.exe", browser_download_url: "u" }] }) }
+      fetchImpl: async (url) => url.endsWith("/releases/latest")
+        ? redirectTo("1.9.0")
         : fetchBody,
     });
     return { tmp, ctx };
@@ -100,8 +101,8 @@ test("obsidian: streaming download branch (web ReadableStream body) writes the f
     platform: "win32", homeDir: "C:\\u", env: { LOCALAPPDATA: "C:\\u\\AppData\\Local" }, print: () => {}, tmpDir: () => tmp,
     exists: (p) => installed && p.endsWith("Obsidian.exe"),
     run: async (cmd, args, opts) => { size = readFileSync(opts.env.BP_OBS_EXE).length; installed = true; return { ok: true, stdout: "", outTail: "", cmdline: cmd }; },
-    fetchImpl: async (url) => url.includes("api.github.com")
-      ? { ok: true, json: async () => ({ assets: [{ name: "Obsidian-1.9.0.exe", browser_download_url: "u" }] }) }
+    fetchImpl: async (url) => url.endsWith("/releases/latest")
+      ? redirectTo("1.9.0")
       : { ok: true, body: new ReadableStream({ start(c) { c.enqueue(new Uint8Array(5)); c.enqueue(new Uint8Array(7)); c.close(); } }) },
   });
   assert.equal((await runSteps([obsidianStep()], ctx, quiet)).ok, true);
@@ -117,8 +118,8 @@ test("obsidian: Mac mounts the dmg, copies the app, always detaches", async () =
     platform: "darwin", homeDir: h, print: () => {}, tmpDir: () => tmp,
     exists: (p) => copied && p === join(h, "Applications", "Obsidian.app"),
     run: async (cmd, args) => { calls.push(cmd); if (cmd === "ditto") { copied = true; return { ok: false, outTail: "boom", cmdline: "ditto" }; } return { ok: true, stdout: "", outTail: "", cmdline: cmd }; },
-    fetchImpl: async (url) => url.includes("api.github.com")
-      ? { ok: true, json: async () => ({ assets: [{ name: "Obsidian-1.9.0.dmg", browser_download_url: "u" }] }) }
+    fetchImpl: async (url) => url.endsWith("/releases/latest")
+      ? redirectTo("1.9.0")
       : { ok: true, arrayBuffer: async () => new ArrayBuffer(8) },
   });
   const r = await runSteps([obsidianStep()], ctx, { sleep: async () => {}, retryDelayMs: 0 });
@@ -127,6 +128,49 @@ test("obsidian: Mac mounts the dmg, copies the app, always detaches", async () =
   assert.ok(calls.includes("hdiutil") && calls.at(-1) === "hdiutil", "detach runs last even on copy failure");
   assert.ok(!existsSync(join(h, "Applications", "Obsidian.app.partial")));
   assert.deepEqual(readdirSync(tmp), []);
+});
+
+test("obsidian lookup: follows the releases/latest redirect, never touches api.github.com, right asset per platform", async () => {
+  for (const [platform, ext] of [["win32", "exe"], ["darwin", "dmg"]]) {
+    const urls = [];
+    const inits = [];
+    const tmp = mkdtempSync(join(tmpdir(), "bp-tmp-"));
+    const ctx = createContext({
+      platform, homeDir: "/h", env: { LOCALAPPDATA: "C:\\u" }, print: () => {}, tmpDir: () => tmp, exists: () => false,
+      run: async (cmd) => ({ ok: false, outTail: "stop", cmdline: cmd }),
+      fetchImpl: async (url, init) => { urls.push(url); inits.push(init); return url.endsWith("/releases/latest") ? redirectTo("2.3.4") : { ok: true, arrayBuffer: async () => new ArrayBuffer(8) }; },
+    });
+    await runSteps([obsidianStep()], ctx, { sleep: async () => {}, retryDelayMs: 0 });
+    assert.equal(urls[0], "https://github.com/obsidianmd/obsidian-releases/releases/latest");
+    assert.equal(inits[0].redirect, "manual");
+    assert.ok(inits[0].headers["User-Agent"]);
+    assert.equal(urls[1], `https://github.com/obsidianmd/obsidian-releases/releases/download/v2.3.4/Obsidian-2.3.4.${ext}`);
+    assert.ok(urls.every((u) => !u.includes("api.github.com")));
+  }
+});
+
+test("obsidian lookup: network error, non-302 and unparsable Location fall back to the pinned version", async () => {
+  const cases = {
+    "network error": async () => { throw new Error("ECONNRESET"); },
+    "HTTP 403": async () => ({ ok: false, status: 403, headers: new Headers() }),
+    "200 without redirect": async () => ({ ok: true, status: 200, headers: new Headers() }),
+    "unparsable Location": async () => ({ ok: false, status: 302, headers: new Headers({ location: "https://github.com/login?return_to=x" }) }),
+    "hostile Location": async () => ({ ok: false, status: 302, headers: new Headers({ location: "https://github.com/x/tag/v1.2.3/../../evil" }) }),
+  };
+  for (const [name, lookup] of Object.entries(cases)) {
+    const urls = [];
+    const tmp = mkdtempSync(join(tmpdir(), "bp-tmp-"));
+    const ctx = createContext({
+      platform: "win32", homeDir: "C:\\u", env: { LOCALAPPDATA: "C:\\u" }, print: () => {}, tmpDir: () => tmp, exists: () => false,
+      run: async (cmd) => ({ ok: false, outTail: "stop", cmdline: cmd }),
+      fetchImpl: async (url, init) => { urls.push(url); return url.endsWith("/releases/latest") ? lookup() : { ok: true, arrayBuffer: async () => new ArrayBuffer(8) }; },
+    });
+    await runSteps([obsidianStep()], ctx, { sleep: async () => {}, retryDelayMs: 0 });
+    const dl = urls.filter((u) => u.includes("/download/"));
+    assert.ok(dl.length > 0 && dl.every((u) => u === `https://github.com/obsidianmd/obsidian-releases/releases/download/v${OBSIDIAN_FALLBACK_VERSION}/Obsidian-${OBSIDIAN_FALLBACK_VERSION}.exe`), name);
+    assert.ok(urls.every((u) => !u.includes("api.github.com")), name);
+  }
+  assert.match(OBSIDIAN_FALLBACK_VERSION, /^\d+\.\d+\.\d+$/);
 });
 
 test("obsidian failure is a warning, not a stop", async () => {

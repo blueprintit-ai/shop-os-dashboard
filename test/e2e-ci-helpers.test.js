@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFakeLicenseServer } from "./helpers/fake-license-server.js";
-import { homeLeaks, checkOkReports, checkFailGithubReports } from "./e2e/assert-install.mjs";
+import { homeLeaks, checkOkReports, checkFailGithubReports, STRICT_STEPS } from "./e2e/assert-install.mjs";
 
 async function withServer(fn) {
   const dir = mkdtempSync(join(tmpdir(), "fake-lic-"));
@@ -118,6 +118,15 @@ test("checkOkReports strictSteps flags a warn or missing step", () => {
   assert.doesNotThrow(() => checkOkReports(withTl([entry("plugins"), entry("dashboard", "skipped")]), { home, strictSteps: ["plugins", "dashboard"] }));
   assert.throws(() => checkOkReports(withTl([entry("plugins"), entry("dashboard", "warn", { error: "x" })]), { home, strictSteps: ["plugins", "dashboard"] }), /dashboard finished warn/);
   assert.throws(() => checkOkReports(withTl([entry("plugins")]), { home, strictSteps: ["plugins", "dashboard"] }), /timeline has step dashboard/);
+});
+
+test("STRICT_STEPS includes obsidian: a warn there fails CI, ok and skipped pass", () => {
+  assert.ok(STRICT_STEPS.includes("obsidian"));
+  const home = "/Users/alice";
+  const run = (status) => checkOkReports(okReports({ timeline: [entry("obsidian", status, status === "warn" ? { error: "HTTP 403" } : {})] }), { home, strictSteps: ["obsidian"] });
+  assert.doesNotThrow(() => run("ok"));
+  assert.doesNotThrow(() => run("skipped"));
+  assert.throws(() => run("warn"), /obsidian finished warn/);
 });
 
 test("the CLI reads a reports file and exits 0/1 for fail-github", async () => {

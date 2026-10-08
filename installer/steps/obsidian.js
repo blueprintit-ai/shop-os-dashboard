@@ -15,17 +15,27 @@ function obsidianPaths(ctx) {
 }
 const installed = (ctx) => obsidianPaths(ctx).some((p) => ctx.exists(p));
 
-async function latestAsset(ctx, re) {
-  let rel;
+// Last resort only: used when the redirect lookup below fails. It may be stale, but old Obsidian
+// releases stay downloadable, so a stale pin still installs a working app.
+export const OBSIDIAN_FALLBACK_VERSION = "1.14.4";
+const RELEASES = "https://github.com/obsidianmd/obsidian-releases/releases";
+
+// Asks github.com (not the rate-limited API) where /releases/latest points: a 302 to .../tag/vX.Y.Z.
+// Any failure returns the pinned fallback; the lookup alone must never block the install.
+async function latestVersion(ctx) {
   try {
-    rel = await ctx.fetchImpl("https://api.github.com/repos/obsidianmd/obsidian-releases/releases/latest", { headers: { "User-Agent": "blueprint-os-installer", Accept: "application/vnd.github+json" } });
-  } catch (e) {
-    throw new StepError(`Could not reach GitHub to look up the Obsidian download: ${e.message}`);
-  }
-  if (!rel.ok) throw new StepError(`Could not look up the Obsidian download: HTTP ${rel.status}`);
-  const asset = ((await rel.json()).assets ?? []).find((a) => re.test(a.name));
-  if (!asset) throw new StepError("No matching Obsidian download was found in the latest release.");
-  return asset;
+    const r = await ctx.fetchImpl(`${RELEASES}/latest`, { redirect: "manual", headers: { "User-Agent": "blueprint-os-installer" } });
+    const loc = r?.status === 302 ? r.headers?.get?.("location") : null;
+    const m = typeof loc === "string" ? /\/tag\/v?(\d+\.\d+\.\d+)$/.exec(loc) : null;
+    if (m) return m[1];
+  } catch { /* fall through to the pinned version */ }
+  return OBSIDIAN_FALLBACK_VERSION;
+}
+
+async function latestAsset(ctx, ext) {
+  const v = await latestVersion(ctx);
+  const name = `Obsidian-${v}.${ext}`;
+  return { name, url: `${RELEASES}/download/v${v}/${name}` };
 }
 
 // Writes a ~300 MB response to disk without holding two copies in memory.
@@ -43,10 +53,10 @@ export function obsidianStep() {
     check: async (ctx) => installed(ctx),
     async action(ctx) {
       const win = ctx.platform === "win32";
-      const asset = await latestAsset(ctx, win ? /^Obsidian-[\d.]+\.exe$/ : /^Obsidian-[\d.]+\.dmg$/);
+      const asset = await latestAsset(ctx, win ? "exe" : "dmg");
       let resp;
       try {
-        resp = await ctx.fetchImpl(asset.browser_download_url);
+        resp = await ctx.fetchImpl(asset.url);
       } catch (e) {
         throw new StepError(`Could not download Obsidian: ${e.message}`);
       }

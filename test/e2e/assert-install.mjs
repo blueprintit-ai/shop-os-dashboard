@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 const SUPPORT_CODE = /^BP-[A-HJ-NP-Z2-9]{4}$/;
 const PLUGINS = ["obsidian@blueprint-skills", "superpowers@claude-plugins-official"];
 // Steps whose failure the customer would feel; a "warn" here is a real finding even though the run still succeeds.
-export const STRICT_STEPS = ["machine-check", "license", "vault-location", "claude-code", "plugins", "vault", "dashboard", "health"];
+export const STRICT_STEPS = ["machine-check", "license", "vault-location", "claude-code", "plugins", "obsidian", "vault", "dashboard", "health"];
 
 // True when `text` contains the home dir in any form it could take inside a report: raw, JSON-escaped
 // (backslashes doubled), forward-slash, each compared case-insensitively (Windows paths are).
