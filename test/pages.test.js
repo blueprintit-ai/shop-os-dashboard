@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, cpSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, cpSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,11 +22,11 @@ async function bootAsOwner() {
   const setup = await fetch(`${base}/api/setup`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: base },
-    body: JSON.stringify({ displayName: "Glenn", username: "glenn", password: "longenough1" }),
+    body: JSON.stringify({ displayName: "Pat", username: "pat", password: "longenough1" }),
   });
   const cookie = setup.headers.get("set-cookie").split(";")[0];
   return {
-    base, cookie,
+    base, cookie, vault,
     cleanup: () => { server.close(); server.ctx.index.close(); rmSync(root, { recursive: true, force: true }); },
   };
 }
@@ -58,32 +58,28 @@ test("no page rewrites wikilinks to obsidian://", () => {
   for (const f of ["js/chat.js", "js/notes.js"]) assert.doesNotMatch(read(f), /obsidian:\/\//);
 });
 
-test("GET /owner serves owner.html, not employee.html", async () => {
+test("GET /owner serves the kit page with the shop name filled in and nothing left to substitute", async () => {
   const { base, cookie, cleanup } = await bootAsOwner();
   try {
     const res = await fetch(`${base}/owner`, { headers: { cookie } });
     const body = await res.text();
     assert.equal(res.status, 200);
-    assert.match(body, /id="ring-root"/); // owner.html marker, absent from employee.html
+    assert.match(body, /id="profilePop"/); // kit marker, absent from employee.html
     assert.doesNotMatch(body, /data-tab="chat"/); // employee.html's tab markup
+    assert.match(body, /<title>Blueprint OS \u2014 Acme Cabinets<\/title>/);
+    assert.doesNotMatch(body, /__SHOP_NAME(_JS)?__|__ROLE__|__THEME_CLASS__/);
   } finally {
     cleanup();
   }
 });
 
-test("GET /owner reflects the user's saved theme with no flash", async () => {
-  const { base, cookie, cleanup } = await bootAsOwner();
+test("the shop name is escaped for HTML and for the title widget's JS template literal", async () => {
+  const { base, cookie, cleanup, vault } = await bootAsOwner();
   try {
-    const current = await (await fetch(`${base}/api/layout`, { headers: { cookie } })).json();
-    const put = await fetch(`${base}/api/layout`, {
-      method: "PUT",
-      headers: { cookie, "content-type": "application/json", origin: base },
-      body: JSON.stringify({ ...current, theme: "light" }),
-    });
-    assert.equal(put.status, 200);
-    const res = await fetch(`${base}/owner`, { headers: { cookie } });
-    const body = await res.text();
-    assert.match(body, /<html lang="en" class="light">/);
+    writeFileSync(join(vault, "Context", "organization.md"), "# Bob's <b>`${alert(1)}`\\ Cabinets\n");
+    const body = await (await fetch(`${base}/owner`, { headers: { cookie } })).text();
+    assert.match(body, /<title>Blueprint OS \u2014 Bob&#39;s|<title>Blueprint OS \u2014 Bob's &lt;b&gt;/);
+    assert.ok(body.includes("Bob's &lt;b&gt;\\`\\${alert(1)}\\`\\\\ Cabinets <span>- Blueprint OS</span>"), "title widget heading");
   } finally {
     cleanup();
   }

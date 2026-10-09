@@ -84,7 +84,7 @@ async function bootAsOwner() {
   const setup = await fetch(`${b}/api/setup`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: b },
-    body: JSON.stringify({ displayName: "Glenn", username: "glenn", password: "longenough1" }),
+    body: JSON.stringify({ displayName: "Pat", username: "pat", password: "longenough1" }),
   });
   const jar = { owner: setup.headers.get("set-cookie").split(";")[0] };
 

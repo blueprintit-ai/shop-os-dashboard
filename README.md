@@ -25,7 +25,11 @@ Blueprint OS Dashboard: one local Node server that becomes the center access poi
 - [[Projects/shop-os-chat|Blueprint OS Chat]] (engine source)
 - [[Projects/shop-os-installer|Blueprint OS installer]] (install logic source; Plans 1-3 confirmed not to touch it)
 - [[Projects/shop-os-license-server|License server]] (reused unchanged)
-- Reference kits: `Dropbox/Robonuggets/agentic-os`, `Dropbox/Robonuggets/second-brain` (CC BY 4.0, NOTICE.md in each)
+- Reference kits: RoboNuggets `agentic-os` (the owner page is synced from it) and `second-brain` (CC BY 4.0, NOTICE.md in each)
+
+## Owner page
+
+`/owner` is the RoboNuggets "Rubric Agentic OS" page served essentially verbatim (CC BY 4.0, see NOTICE.md). It is not hand-maintained: `tools/sync-kit.mjs` regenerates `public/owner.html`, `widgets.html`, `assets.html` and `vendor/thinking-orbs.js` from the kit folder with a short list of named substitutions, and `test/kit-parity.test.js` keeps them honest. Its API is provided by `src/routes/kit-compat-routes.js` on top of the product's data (vault snapshots, runs, artifacts, assets, chat). Layout, look and dashboard profiles live in the browser's localStorage, as in the kit. How to re-sync is in REDESIGN.md.
 
 ## Package
 

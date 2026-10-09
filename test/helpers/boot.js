@@ -15,7 +15,7 @@ import { createServer } from "../../src/server.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "vault");
 
-export const OWNER_USERNAME = "glenn";
+export const OWNER_USERNAME = "pat";
 export const OWNER_PASSWORD = "longenough1";
 export const STAFF_USERNAME = "marco";
 export const STAFF_PASSWORD = "longenough1";
@@ -39,12 +39,12 @@ async function* fakeRunTurn() {
 //                          this test suite, for callers that want it directly.
 //   - cleanup            : closes the server and index watcher and removes
 //                          the tmp vault/home. MUST be called by every test.
-export async function bootAsOwner({ staffSwitches = {} } = {}) {
+export async function bootAsOwner({ staffSwitches = {}, runTurn = fakeRunTurn, licenseCheck = () => ({ ok: true }), applyUpdateImpl = undefined } = {}) {
   const root = mkdtempSync(join(tmpdir(), "sod-boot-"));
   const vault = join(root, "vault");
   cpSync(FIX, vault, { recursive: true });
   const home = join(root, "home");
-  const server = createServer({ vaultPath: vault, homeDir: home, runTurn: fakeRunTurn, licenseCheck: () => ({ ok: true }) });
+  const server = createServer({ vaultPath: vault, homeDir: home, runTurn, licenseCheck, applyUpdateImpl });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${server.address().port}`;
   const jar = {};
@@ -59,7 +59,7 @@ export async function bootAsOwner({ staffSwitches = {} } = {}) {
     return res;
   };
 
-  const setup = await http("POST", "/api/setup", { body: { displayName: "Glenn", username: OWNER_USERNAME, password: OWNER_PASSWORD }, as: "owner" });
+  const setup = await http("POST", "/api/setup", { body: { displayName: "Pat", username: OWNER_USERNAME, password: OWNER_PASSWORD }, as: "owner" });
   assert.equal(setup.status, 200, "owner setup must succeed");
 
   const created = await http("POST", "/api/users", {

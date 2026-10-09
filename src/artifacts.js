@@ -26,6 +26,31 @@ function inferCategory(name) {
   return "other";
 }
 
+// The kit page assigns an artifact's sidecar `svg` straight to an <svg>'s innerHTML, and
+// a sidecar is agent-writable, so it is validated here before /api/artifacts ever serves
+// it. Reject-not-strip: the string must be nothing but allowlisted shape elements with
+// allowlisted geometry attributes whose values are plain tokens; anything else (script,
+// foreignObject, style/href/on* attributes, entities, comments, stray text) yields "" and
+// the page falls back to its built-in glyph for the artifact's icon.
+const SVG_TAGS = "path|circle|rect|line|polyline|polygon|ellipse|g";
+const SVG_ATTR = "(?:d|cx|cy|r|x|y|width|height|x1|y1|x2|y2|points|rx|ry|transform)";
+const SVG_VAL = "[-0-9A-Za-z .,()+]*";
+const SVG_ATTRS = `(?:\\s+${SVG_ATTR}="${SVG_VAL}")*`;
+const SVG_ELEMENT = new RegExp(`^(?:<(${SVG_TAGS})${SVG_ATTRS}\\s*/>|<(${SVG_TAGS})${SVG_ATTRS}\\s*>|</(?:${SVG_TAGS})\\s*>)`);
+export function sanitizeArtifactSvg(svg) {
+  if (typeof svg !== "string" || !svg || svg.length > 8000) return "";
+  const open = [];
+  let rest = svg.trim();
+  while (rest) {
+    const m = SVG_ELEMENT.exec(rest);
+    if (!m) return "";
+    if (m[2]) open.push(m[2]);
+    else if (m[0].startsWith("</")) { const want = /^<\/([a-z0-9]+)/.exec(m[0])[1]; if (open.pop() !== want) return ""; }
+    rest = rest.slice(m[0].length).trimStart();
+  }
+  return open.length ? "" : svg.trim();
+}
+
 // filename must be a single path segment ending in .htm/.html - no directory traversal, no nesting,
 // and (not incidentally) no reaching the .json sidecar or the _trash folder through this check.
 const SAFE_HTML_NAME = /^[^/\\]+\.html?$/i;
@@ -44,6 +69,12 @@ function readSidecar(htmlPath) {
   try { return JSON.parse(readFileSync(side, "utf8")); } catch { return {}; }
 }
 
+// The kit page puts the title into innerHTML (name chips) and the sidecar is agent-writable, so a title
+// is only trusted when it has no markup characters or control characters; otherwise the file name stands in.
+const UNSAFE_TEXT = /[<>&\u0000-\u001f\u007f]/;
+const UNSAFE_TEXT_ALL = new RegExp(UNSAFE_TEXT.source, "g");
+const safeTitle = (t, stem) => (typeof t === "string" && t.trim() && !UNSAFE_TEXT.test(t) ? t.trim() : (stem.replace(UNSAFE_TEXT_ALL, "").trim() || "artifact"));
+
 export function listArtifacts(vaultPath, user) {
   const dir = artifactsDir(vaultPath);
   if (!existsSync(dir)) return { fetched: new Date().toISOString(), count: 0, artifacts: [] };
@@ -57,12 +88,13 @@ export function listArtifacts(vaultPath, user) {
       const head = readFileSync(full, "utf8").slice(0, 2000);
       title = (head.match(/<title>([^<]+)<\/title>/i)?.[1] || f.replace(/\.html?$/i, "")).trim();
     }
+    title = safeTitle(title, f.replace(/\.html?$/i, ""));
     return {
       file: f, title,
       icon: meta.icon || inferIcon(f + " " + title),
       kind: meta.kind || "artifact",
       note: meta.note || "",
-      svg: meta.svg || "",
+      svg: sanitizeArtifactSvg(meta.svg),
       category: meta.category || inferCategory(f + " " + title + " " + (meta.kind || "")),
       visibility: meta.visibility === "staff" ? "staff" : "owner",
       created: meta.created || st.birthtime.toISOString(),

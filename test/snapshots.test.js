@@ -68,7 +68,7 @@ test("GET /api/snapshots/stats and /routines require a session", async () => {
     const setup = await fetch(`${base}/api/setup`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: base },
-      body: JSON.stringify({ displayName: "Glenn", username: "glenn", password: "longenough1" }),
+      body: JSON.stringify({ displayName: "Pat", username: "pat", password: "longenough1" }),
     });
     const sc = setup.headers.get("set-cookie");
     if (sc) jar.owner = sc.split(";")[0];

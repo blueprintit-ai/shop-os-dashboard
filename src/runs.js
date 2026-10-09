@@ -3,18 +3,23 @@ import { join } from "node:path";
 import { marked } from "marked";
 
 export const SKILLS = [
-  { id: "bp-digest", label: "Digest", model: "SONNET", effort: "MEDIUM", needsInput: false },
-  { id: "morning-briefing", label: "Morning Briefing", model: "HAIKU", effort: "LOW", needsInput: false },
-  { id: "bp-optimizer", label: "BP Optimizer", model: "OPUS", effort: "HIGH", needsInput: false },
+  { id: "bp-digest", label: "Digest", model: "SONNET", effort: "MEDIUM", needsInput: false, icon: "doc" },
+  { id: "morning-briefing", label: "Morning Briefing", model: "HAIKU", effort: "LOW", needsInput: false, icon: "mail" },
+  { id: "bp-optimizer", label: "BP Optimizer", model: "OPUS", effort: "HIGH", needsInput: false, icon: "chart" },
 ];
 
-const MODEL_IDS = {
+// Same lists, in the same order, as the kit page's MODELS / EFFORTS arrays: the
+// kit's /api/skills sends skills' model + effort as indexes into them.
+export const MODELS = ["HAIKU", "SONNET", "OPUS", "FABLE"];
+export const EFFORTS = ["LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"];
+
+export const MODEL_IDS = {
   HAIKU: "claude-haiku-4-5-20251001",
   SONNET: "claude-sonnet-5",
   OPUS: "claude-opus-5",
   FABLE: "claude-fable-5-1",
 };
-const EFFORT_HINTS = {
+export const EFFORT_HINTS = {
   LOW: "Keep it brief. One pass, no deep exploration.",
   MEDIUM: "Normal thoroughness.",
   HIGH: "Be thorough — check your work before finishing.",
@@ -64,7 +69,9 @@ ${body}
   return `${slug}.html`;
 }
 
-export async function runSkill({ vaultPath, skillId, input, model, effort, runTurn, audit }) {
+// `jobId` (optional) lets a caller that already told its client the job id keep it;
+// `onEvent` (optional) sees every engine event as it streams, for live progress.
+export async function runSkill({ vaultPath, skillId, input, model, effort, runTurn, audit, jobId, onEvent }) {
   const dir = runsDir(vaultPath);
   mkdirSync(dir, { recursive: true });
   const startedAt = Date.now();
@@ -80,6 +87,7 @@ export async function runSkill({ vaultPath, skillId, input, model, effort, runTu
   try {
     for await (const ev of runTurn({ prompt, options })) {
       log += JSON.stringify(ev) + "\n";
+      try { onEvent?.(ev); } catch { /* progress is best-effort */ }
       if (ev.type === "text") resultText += ev.delta;
       if (ev.type === "done") { resultText = ev.text ?? resultText; ok = true; }
       if (ev.type === "error") { log += `ERROR: ${ev.message}\n`; }
@@ -93,5 +101,5 @@ export async function runSkill({ vaultPath, skillId, input, model, effort, runTu
   const reportFile = writeReport(vaultPath, { skillId, model, effort, seconds, ok, resultText, code });
   recordRun(vaultPath, { id: skillId, at: new Date().toISOString(), model, effort, seconds, exit: code, report: reportFile });
   audit?.log("run.end", { skillId, model, effort, ok, seconds });
-  return { jobId: `${skillId}-${startedAt}`, id: skillId, status: ok ? "done" : "failed", startedAt, endedAt: Date.now(), code, reportFile };
+  return { jobId: jobId || `${skillId}-${startedAt}`, id: skillId, status: ok ? "done" : "failed", startedAt, endedAt: Date.now(), code, reportFile };
 }

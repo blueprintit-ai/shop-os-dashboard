@@ -9,7 +9,7 @@ test("Audit appends JSON lines with timestamp and reads them back", () => {
   const dir = mkdtempSync(join(tmpdir(), "sod-audit-"));
   const p = join(dir, "activity.jsonl");
   const a = new Audit(p);
-  a.log("login", { userId: "u1", username: "glenn" });
+  a.log("login", { userId: "u1", username: "pat" });
   a.log("note.view", { userId: "u1", path: "Projects/Acme.md" });
   const rows = readAll(p);
   assert.equal(rows.length, 2);

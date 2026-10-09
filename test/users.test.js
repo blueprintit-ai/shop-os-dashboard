@@ -24,7 +24,7 @@ async function bootAsOwner() {
   const setup = await fetch(`${b}/api/setup`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: b },
-    body: JSON.stringify({ displayName: "Glenn", username: "glenn", password: "longenough1" }),
+    body: JSON.stringify({ displayName: "Pat", username: "pat", password: "longenough1" }),
   });
   const jar = { owner: setup.headers.get("set-cookie").split(";")[0] };
 
@@ -58,10 +58,10 @@ test("hashPassword produces scrypt format and verifyPassword round-trips", async
 
 test("create owner then staff; usernames are unique and case-insensitive", async () => {
   const { store, cleanup } = tmpStore();
-  const owner = await store.create({ username: "Glenn", displayName: "Glenn", password: "longenough1", role: "owner" });
+  const owner = await store.create({ username: "Pat", displayName: "Pat", password: "longenough1", role: "owner" });
   assert.equal(owner.role, "owner");
-  assert.equal(store.findByUsername("glenn").id, owner.id);
-  await assert.rejects(store.create({ username: "GLENN", displayName: "x", password: "longenough1", role: "staff" }), { code: "USERNAME_TAKEN" });
+  assert.equal(store.findByUsername("pat").id, owner.id);
+  await assert.rejects(store.create({ username: "PAT", displayName: "x", password: "longenough1", role: "staff" }), { code: "USERNAME_TAKEN" });
   const staff = await store.create({ username: "marco", displayName: "Marco", password: "longenough1", role: "staff" });
   assert.deepEqual(staff.switches.folders, [...DEFAULT_STAFF_FOLDERS]);
   assert.equal(staff.switches.assetsView, false);

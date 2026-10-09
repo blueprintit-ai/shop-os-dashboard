@@ -79,7 +79,7 @@ test("GET/PUT /api/layout round-trips per user, requires auth", async () => {
   };
 
   // Setup owner
-  const setup = await http("POST", "/api/setup", { body: { displayName: "Glenn", username: "glenn", password: "longenough1" }, as: "owner" });
+  const setup = await http("POST", "/api/setup", { body: { displayName: "Pat", username: "pat", password: "longenough1" }, as: "owner" });
   assert.equal(setup.status, 200);
 
   try {

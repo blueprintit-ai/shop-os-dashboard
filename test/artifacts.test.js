@@ -79,7 +79,7 @@ async function bootServer() {
     if (as && sc) jar[as] = sc.split(";")[0];
     return res;
   };
-  const setup = await http("POST", "/api/setup", { body: { displayName: "Glenn", username: "glenn", password: "longenough1" }, as: "owner" });
+  const setup = await http("POST", "/api/setup", { body: { displayName: "Pat", username: "pat", password: "longenough1" }, as: "owner" });
   assert.equal(setup.status, 200);
   const created = await http("POST", "/api/users", { as: "owner", body: { username: "marco", displayName: "Marco", password: "longenough1", role: "staff", switches: { folders: ["Projects", "Resources"] } } });
   assert.equal(created.status, 201);

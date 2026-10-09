@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ORB_DEFAULT, ORB_LEGACY_DEFAULT, migrateOrb, ORB_LIMITS, COLS, normalizeOrb, orbMetrics, snapHalf, resizeScale, dragPosition, gripPosition, rowsFor,
-} from "../public/js/owner/orb-math.js";
+} from "../src/orb-math.js";
 
 test("normalizeOrb: missing or non-object input becomes the defaults (a fresh copy)", () => {
   for (const bad of [undefined, null, 5, "x", [], true]) {

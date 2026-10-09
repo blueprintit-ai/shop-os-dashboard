@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blueprint OS — Widget Library</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><rect width='48' height='48' fill='%23050504'/><path d='M24 6l18 10v16L24 42 6 32V16Z' fill='none' stroke='%231c6ea4' stroke-width='3'/></svg>">
+<link rel="stylesheet" href="/static/css/kit-fonts.css">
+<style>
+  :root {
+    --bg:#050504; --text:#e8e2d2; --muted:#8d8775; --accent:#1c6ea4;
+    --line:rgba(232,226,210,.22); --linedim:rgba(232,226,210,.12);
+    --cardsolid:#24221c;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Outfit',sans-serif;
+    overflow-x:hidden; }
+  #hexbg { position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.85; }
+  #gridCv { position:absolute; left:0; top:0; z-index:1; pointer-events:none;
+    opacity:0; transition:opacity .18s; }
+  body.dragging #gridCv { opacity:1; }
+  #board { position:relative; z-index:2; }
+
+  /* ---- widgets: the OS's editorial rule, verbatim ---- */
+  .w { position:absolute; background:transparent; border-top:2px solid var(--text);
+    display:flex; flex-direction:column; z-index:10; overflow:hidden;
+    transition:left .18s ease, top .18s ease, width .18s ease, height .18s ease; }
+  .w::after { content:''; position:absolute; top:-2px; left:0; width:0; height:2px;
+    background:var(--accent); transition:width .5s cubic-bezier(.2,.8,.3,1); pointer-events:none; }
+  .w:hover::after { width:88px; }
+  .w.live { transition:none; opacity:.92; z-index:15; border-top-color:var(--accent); }
+  .w.chromeless { border-top:0; }
+  .w.chromeless::after { display:none; }
+  .wh { padding:13px 4px 9px; font-size:12.6px; letter-spacing:3.6px; text-transform:uppercase;
+    display:flex; align-items:center; gap:10px; }
+  body.edit .wh { cursor:move; }
+  .wh svg.wic { width:22px; height:22px; stroke:var(--text); fill:none; stroke-width:2.2;
+    stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto; }
+  .wh .tick { margin-left:auto; font-size:11.4px; color:var(--muted); letter-spacing:1.2px;
+    text-transform:none; }
+  .wh .pbtn { background:transparent; border:1px solid var(--line); color:var(--muted);
+    font:600 8.5px/1 Outfit,sans-serif; letter-spacing:1.8px; padding:5px 9px;
+    cursor:pointer; text-transform:uppercase; flex:0 0 auto; }
+  .wh .pbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .wb { flex:1; margin:0 14px 12px; min-height:0; overflow:hidden; position:relative; }
+  body.edit .wb { pointer-events:none; opacity:.75; }
+  .why { font-size:11px; color:var(--muted); line-height:1.5; margin-bottom:10px; }
+
+  /* edit chrome */
+  .wx { position:absolute; top:8px; right:6px; z-index:5; width:22px; height:22px;
+    background:transparent; border:0; color:var(--muted); font-size:15px; cursor:pointer;
+    display:none; line-height:1; }
+  body.edit .wx { display:block; }
+  .wx:hover { color:var(--accent); }
+  .rs { position:absolute; right:2px; bottom:2px; width:14px; height:14px; display:none;
+    cursor:nwse-resize; border-right:2.5px solid var(--accent);
+    border-bottom:2.5px solid var(--accent); z-index:6; }
+  body.edit .rs { display:block; }
+
+  /* ---- title widget ---- */
+  #w-title .tb { text-align:center; padding:6px 10px; width:100%; }
+  #w-title h1 { font-size:26px; font-weight:700; letter-spacing:-.5px; white-space:nowrap;
+    display:flex; align-items:center; justify-content:center; gap:9px; }
+  #w-title h1 .hexlogo { width:26px; height:26px; flex:0 0 auto; }
+  #w-title h1 span { color:var(--accent); font-weight:300; letter-spacing:.5px; }
+  #w-title .sub { font-size:12px; color:var(--muted); }
+  .tbar { display:flex; justify-content:center; gap:18px; margin-top:7px; }
+  .tbar button { width:22px; height:22px; background:transparent; border:0; padding:1px; cursor:pointer; }
+  .tbar button svg { width:100%; height:100%; stroke:var(--muted); fill:none; stroke-width:2;
+    stroke-linecap:round; stroke-linejoin:round; transition:stroke .15s; }
+  .tbar button:hover svg { stroke:var(--accent); }
+  body.edit #editBtn svg { stroke:var(--accent); }
+  body.edit #resetBtn { display:block !important; }
+  #restoreRow { display:none; justify-content:center; gap:7px; margin-top:8px; flex-wrap:wrap; }
+  body.edit #restoreRow { display:flex; }
+  #restoreRow button { background:transparent; border:1px solid var(--line); color:var(--muted);
+    font:600 8.5px/1 Outfit,sans-serif; letter-spacing:1.6px; padding:5px 9px; cursor:pointer; }
+  #restoreRow button:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* ---- the rules strip body ---- */
+  .rgrid { display:grid; grid-template-columns:repeat(4, 1fr); gap:5px 24px; }
+  .rgrid .it { font-size:10.5px; line-height:1.5; color:var(--muted); padding:4px 0;
+    border-bottom:1px solid var(--linedim); display:flex; gap:8px; }
+  .rgrid .it b { color:var(--text); font-weight:500; white-space:nowrap; }
+  .rgrid .it i { color:var(--accent); font-style:normal; flex:0 0 auto; }
+
+  /* ---- HORIZONTAL SHOP APPS: 4 rounded-rect icon buttons in a row ---- */
+  .happ { display:flex; gap:12px; height:100%; align-items:stretch; padding-top:2px; }
+  .happ a { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:8px; border:1.5px solid var(--line); border-radius:14px; text-decoration:none;
+    color:var(--text); cursor:pointer; transition:border-color .15s, transform .15s;
+    background:rgba(232,226,210,.03); }
+  .happ a:hover { border-color:var(--accent); transform:translateY(-2px); }
+  .happ svg { width:26px; height:26px; stroke:var(--text); fill:none; stroke-width:2;
+    stroke-linecap:round; stroke-linejoin:round; transition:stroke .15s; }
+  .happ a:hover svg { stroke:var(--accent); }
+  .happ b { font-size:9px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+    color:var(--muted); }
+  .happ a:hover b { color:var(--accent); }
+
+  /* ---- preview bodies (exhibits) ---- */
+  .prev { background:var(--cardsolid); padding:14px 14px 11px; pointer-events:none; overflow:hidden; }
+  .bignum { font-weight:600; font-size:28px; color:var(--accent); line-height:1;
+    font-variant-numeric:tabular-nums; }
+  .cap { font-size:9.5px; color:var(--muted); letter-spacing:1px; line-height:1.5; margin-top:4px; }
+  .prow { display:flex; align-items:center; gap:8px; font-size:10.5px; padding:5px 2px;
+    border-bottom:1px solid var(--linedim); }
+  .prow:last-child { border-bottom:0; }
+  .prow .nm { font-weight:500; }
+  .prow .rt { margin-left:auto; font-size:8px; letter-spacing:1.5px; color:var(--muted); }
+  .prow .lead { font-size:7px; letter-spacing:1.2px; color:var(--accent);
+    border:1px solid rgba(28,110,164,.5); padding:2px 5px; }
+  .mini { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+  .mini .mk { background:rgba(232,226,210,.05); border:1px solid var(--linedim);
+    border-radius:6px; padding:8px 9px; }
+  .mini .mk .n { font-size:9.5px; font-weight:600; }
+  .mini .mk .n i { color:var(--accent); font-style:normal; }
+  .mini .mk .c { font-size:7.5px; letter-spacing:1.2px; color:var(--muted); margin-top:3px; }
+  .clock { font-size:26px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .wheelprev { display:grid; place-items:center; padding:4px 0; }
+  .wheelprev svg { width:72px; height:72px; stroke:var(--accent); fill:none; stroke-width:2; }
+  .dots { display:flex; gap:5px; margin-top:8px; }
+  .dots i { width:7px; height:7px; border-radius:50%; background:rgba(232,226,210,.18); }
+  .dots i.on { background:var(--accent); }
+
+  /* ---- prompt popup ---- */
+  #ov { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.55);
+    backdrop-filter:blur(3px); display:none; place-items:center; }
+  #ov.show { display:grid; }
+  #pop { width:min(680px, 92vw); background:#141310; border:1px solid rgba(28,110,164,.55);
+    border-radius:16px; padding:26px 28px; box-shadow:0 18px 60px rgba(0,0,0,.7); }
+  #pop .pk { font-size:10px; letter-spacing:3px; color:var(--accent); text-transform:uppercase; }
+  #pop h2 { font-size:21px; font-weight:700; margin:6px 0 4px; }
+  #pop .pi { font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:14px; }
+  #pop pre { background:#0b0a08; border:1px solid var(--linedim); padding:16px;
+    font:400 11.5px/1.65 'Consolas', monospace; color:var(--text); white-space:pre-wrap;
+    max-height:300px; overflow:auto; margin-bottom:16px; }
+  #pop .row { display:flex; gap:10px; }
+  #pop .copy { flex:1; background:transparent; border:1.5px solid var(--accent); color:var(--accent);
+    font:600 10.5px/1 Outfit,sans-serif; letter-spacing:2.6px; text-transform:uppercase;
+    padding:11px 0; cursor:pointer; }
+  #pop .copy:hover { background:var(--accent); color:#fff; }
+  #pop .x { background:transparent; border:1.5px solid var(--line); color:var(--muted);
+    font:600 10.5px/1 Outfit,sans-serif; letter-spacing:2.6px; padding:11px 22px; cursor:pointer; }
+  #pop .x:hover { border-color:var(--text); color:var(--text); }
+</style>
+</head>
+<body>
+<canvas id="hexbg"></canvas>
+<canvas id="gridCv"></canvas>
+<div id="board"></div>
+
+<div id="ov"><div id="pop">
+  <div class="pk">Send to your agent</div>
+  <h2 id="popT">Widget</h2>
+  <div class="pi">Copy this prompt and paste it into your agent. It names the board file and the rules, so the widget lands looking native.</div>
+  <pre id="popP"></pre>
+  <div class="row"><button class="copy" id="popCopy">COPY PROMPT</button>
+    <button class="x" id="popX">CLOSE</button></div>
+</div></div>
+
+<script>
+/* ================= grid (the OS's geometry, on a tall scrollable canvas) ============ */
+const COLS = 16;
+let CELL = Math.floor(innerWidth / COLS);
+const px = c => c * CELL + 5, py = r => r * CELL + 5;
+
+const DEF = {
+  widgets: [
+    { id:'w-title',  c:5,  r:0,  cs:6,  rs:2, kind:'title' },
+    { id:'w-rules',  c:1,  r:2,  cs:14, rs:2 },
+    { id:'w-x-new',  c:2,  r:4,  cs:12, rs:2 },
+    { id:'w-happ',   c:2,  r:6,  cs:8,  rs:2 },
+    { id:'w-x-apps', c:10, r:6,  cs:4,  rs:3 },
+    { id:'w-x-cal',  c:2,  r:9,  cs:4,  rs:3 },
+    { id:'w-x-yt',   c:6,  r:9,  cs:4,  rs:3 },
+    { id:'w-x-mail', c:10, r:9,  cs:4,  rs:3 },
+    { id:'w-x-rt',   c:2,  r:12, cs:4,  rs:3 },
+    { id:'w-x-sk',   c:6,  r:12, cs:4,  rs:3 },
+    { id:'w-x-wheel',c:10, r:12, cs:4,  rs:3 }
+  ],
+  removed: []
+};
+const LKEY = 'os-widlib-v2';   /* v2: centered + ADD YOUR OWN WIDGET on top */
+const LAY = Object.assign(JSON.parse(JSON.stringify(DEF)),
+  JSON.parse(localStorage.getItem(LKEY) || '{}'));
+const save = () => localStorage.setItem(LKEY, JSON.stringify(LAY));
+
+/* ================= widget definitions ================= */
+const BOARD_PATH = 'the Dashboard folder of this vault (Dashboard/)';
+const promptFor = (name, size, data, extra) =>
+`Add the ${name} widget to the Blueprint IT - Shop OS main board.
+
+Board: ${BOARD_PATH} (the dashboard runs from the installed Blueprint OS package and is served at the address it is opened at).
+Rules: read WIDGET-RULES.md in that folder FIRST and follow it exactly - boxless editorial chrome, header anatomy, orange-only accent, real data, board registration steps.
+Size: ${size} on the 16-column grid.
+Data: ${data}
+${extra}
+Verify before finishing: open the dashboard (the address it normally runs at) headless - zero console errors, every button live, content stays inside the widget box. Do not touch TWDEF, storage keys, or any other widget.`;
+
+const APPS_H = [
+  { n:'GENERATIONS', url:'http://localhost:PORT/your-app',
+    ic:'<rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 16l5-4 4 3 5-5 4 4"/>' },
+  { n:'TELEPROMPTER', url:'http://localhost:PORT/another-app',
+    ic:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 8h10M7 12h7"/><path d="M12 16v4M8 20h8"/>' },
+  { n:'FLOWS', url:'http://localhost:PORT/third-app',
+    ic:'<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7 7.5l3.5 8M17 7.5l-3.5 8"/>' },
+  { n:'CONSOLE', url:'http://localhost:PORT/fourth-app',
+    ic:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>' },
+];
+
+const WIDGETS = {
+  'w-title': { kind:'title' },
+  'w-rules': { name:'THE WIDGET RULES', ic:'<path d="M9 11l2 2 4-5"/><rect x="3" y="3" width="18" height="18" rx="2"/>',
+    tick:'full spec: WIDGET-RULES.md',
+    body:`<div class="rgrid">
+      <div class="it"><i>01</i><span><b>Boxless chrome.</b> 2px cream rule, 88px orange hover underline.</span></div>
+      <div class="it"><i>02</i><span><b>One accent.</b> Orange only; cream text, muted labels.</span></div>
+      <div class="it"><i>03</i><span><b>Header anatomy.</b> icon &rarr; tracked name &rarr; live tick.</span></div>
+      <div class="it"><i>04</i><span><b>Type scale.</b> 32px orange bignums, 10px caps, 9px sync foot.</span></div>
+      <div class="it"><i>05</i><span><b>4x3 default.</b> content scales, never reflows.</span></div>
+      <div class="it"><i>06</i><span><b>Real data only.</b> /api/* or add the endpoint.</span></div>
+      <div class="it"><i>07</i><span><b>Rows are links.</b> one primary action max.</span></div>
+      <div class="it"><i>08</i><span><b>Board-safe.</b> zero console errors to ship.</span></div>
+    </div>` },
+  'w-happ': { name:'SHOP APPS · HORIZONTAL', ic:'<rect x="2" y="8" width="4.5" height="8" rx="1.5"/><rect x="8" y="8" width="4.5" height="8" rx="1.5"/><rect x="14" y="8" width="4.5" height="8" rx="1.5"/><path d="M20 10v4"/>',
+    tick:'live · click an app', live:true,
+    prompt:['SHOP APPS - HORIZONTAL', '8 x 2',
+      'no feed - four static app buttons, each with its real local URL.',
+      `Body: a single row of 4 rounded-rectangle buttons (14px radius, 1.5px hairline border, hover = orange border + icon + 2px lift), each an icon over a 9px tracked uppercase label:
+GENERATIONS -> http://localhost:PORT/your-app
+TELEPROMPTER -> http://localhost:PORT/another-app
+FLOWS -> http://localhost:PORT/third-app
+CONSOLE -> http://localhost:PORT/fourth-app
+This replaces or sits alongside the vertical SHOP APPS - ask the user which.`],
+    body:`<div class="happ">` + APPS_H.map(a =>
+      `<a data-url="${a.url}"><svg viewBox="0 0 24 24">${a.ic}</svg><b>${a.n}</b></a>`).join('') + `</div>` },
+  'w-x-apps': { name:'SHOP APPS', ic:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/>',
+    tick:'on board', prompt:['SHOP APPS', '4 x 3', 'static rows; each row carries its data-url to a real local app.',
+      'Rows: app name + one-line caption + arrow. + ADD APP opens the paste-ready prompt popup.'],
+    body:`<div class="why">Vertical launcher - rows open the real localhost tools.</div>
+      <div class="prev"><div class="prow"><span class="nm">Generations</span><span class="rt">:5000 &rarr;</span></div>
+      <div class="prow"><span class="nm">Teleprompter</span><span class="rt">:5000 &rarr;</span></div>
+      <div class="prow"><span class="nm">Second Brain</span><span class="rt">:5210 &rarr;</span></div></div>` },
+  'w-x-ba': { name:'BUSINESS ASSETS', ic:'<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/>',
+    tick:'on board', prompt:['BUSINESS ASSETS', '8 x 4', 'the starred documents from the Business Assets repository (the Business Assets folder, subfolders = categories).',
+      'Rows: doc icon + file name + category; click opens the file. Footer counts every document and links to the full /assets page.'],
+    body:`<div class="why">Up to 4 favorites from your business document repository - Articles, EIN, licenses, insurance, SOPs. Star them on the /assets page.</div>
+      <div class="prev"><div class="prow"><span class="nm">Articles of Organization.pdf</span><span class="rt">OPEN &rarr;</span></div>
+      <div class="prow"><span class="nm">EIN Letter.pdf</span><span class="rt">OPEN &rarr;</span></div>
+      <div class="prow"><span class="nm">General Liability Policy.pdf</span><span class="rt">OPEN &rarr;</span></div></div>` },
+  'w-x-cal': { name:'CALENDAR', ic:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    tick:'on board', prompt:['CALENDAR', '4 x 3', 'GET /api/calendar (gws -> snapshot fallback).',
+      'Live AEST clock, world times, next event countdown, one orange action: OPEN GOOGLE CALENDAR.'],
+    body:`<div class="why">Live clock, next real event, one orange action.</div>
+      <div class="prev"><span class="clock">14:05:29</span><span class="cap" style="margin-left:10px">AEST &middot; SYDNEY</span>
+      <div class="cap" style="margin-top:8px">WHAT'S NEXT</div>
+      <div class="prow"><span class="nm">Ask &amp; Advice Sessions</span><span class="rt">in 2h 46m</span></div></div>` },
+  'w-x-yt': { name:'YOUTUBE STUDIO', ic:'<rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 9l6 3-6 3z"/>',
+    tick:'on board', prompt:['YOUTUBE STUDIO', '4 x 3', 'GET /api/youtube (Data API v3, paged uploads).',
+      'Real 30d views, subs, longforms this month, publish-day grid with today ringed.'],
+    body:`<div class="why">Real channel numbers and the publish-day grid.</div>
+      <div class="prev"><div style="display:flex; gap:22px"><div><div class="bignum">297K</div><div class="cap">VIEWS PAST 30D</div></div>
+      <div><div class="bignum">163,000</div><div class="cap">SUBSCRIBERS</div></div></div>
+      <div class="dots"><i class="on"></i><i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i></i></div></div>` },
+  'w-x-mail': { name:'EMAIL', ic:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 8 10-8"/>',
+    tick:'on board', prompt:['EMAIL', '4 x 3', 'GET /api/email (gws gmail, lead classification, warm cache).',
+      'Total + leads waiting + flagged rows that open the real Gmail thread; SYNCED footer.'],
+    body:`<div class="why">Inbox past 24h - flagged rows open your webmail.</div>
+      <div class="prev"><div class="bignum">18</div><div class="cap">EMAILS PAST 24H &middot; <span style="color:var(--accent)">15 leads</span></div>
+      <div class="prow" style="margin-top:6px"><span class="lead">LEAD</span><span class="nm">Sponsored collab - Pollo AI</span><span class="rt">2h</span></div></div>` },
+  'w-x-rt': { name:'ROUTINES · FIRING BOARD', ic:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 3"/>',
+    tick:'on board', prompt:['ROUTINES FIRING BOARD', '4 x 2', 'GET /api/routines (02-routines/data.js).',
+      'Departures board: split-flap times, FIRED/QUEUED, NEXT FIRE countdown, source legend.'],
+    body:`<div class="why">The day's automations as a departures board.</div>
+      <div class="prev"><div class="prow"><span class="rt">09:00</span><span class="nm">one personal question per day</span><span class="rt">FIRED</span></div>
+      <div class="prow"><span class="rt">17:30</span><span class="nm">evening digest</span><span class="rt" style="color:var(--accent)">T-2H 41M</span></div></div>` },
+  'w-x-sk': { name:'SKILLS DECK', ic:'<path d="M13 2L4 14h6l-2 8 9-12h-6z"/>',
+    tick:'on board', prompt:['SKILLS DECK', '4 x 3', 'GET /api/skills; POST /api/run writes the report artifact.',
+      'Four skill cards, model x effort adjuster, ▶ run -> HTML report lands on the ring as a ball.'],
+    body:`<div class="why">Run skills; finished runs become balls on the ring.</div>
+      <div class="prev"><div class="mini">
+      <div class="mk"><div class="n"><i>/</i>sprint-planning</div><div class="c">OPUS &middot; HIGH</div></div>
+      <div class="mk"><div class="n"><i>/</i>newsletter</div><div class="c">OPUS &middot; HIGH</div></div>
+      <div class="mk"><div class="n"><i>/</i>master-lesson</div><div class="c">FABLE &middot; HIGH</div></div>
+      <div class="mk"><div class="n"><i>/</i>mrr-sync</div><div class="c">HAIKU &middot; LOW</div></div></div></div>` },
+  'w-x-if': { name:'IN FLIGHT', ic:'<path d="M12 4l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>',
+    tick:'on board', prompt:['IN FLIGHT', '8 x 4', 'GET /api/jobs/active (JOBS map in server.js, server-side only).',
+      'One row per currently-running skill job: name, model x effort, elapsed timer. Server-tracked, so it survives a page reload (unlike the skill card\'s own progress bar) - a job that finishes while the widget was gone still gets picked up and its artifact pulled.'],
+    body:`<div class="why">Running skill jobs, server-tracked - a page reload can't lose them.</div>
+      <div class="prev"><div class="prow"><span class="nm">/prospect-report</span><span class="rt">SONNET · MEDIUM · 4:12</span></div></div>` },
+  'w-x-wheel': { name:'ACTION WHEEL', ic:'<circle cx="12" cy="12" r="8" stroke-dasharray="9 4"/><circle cx="12" cy="12" r="1.6"/>',
+    tick:'off board', prompt:['ACTION WHEEL', '2 x 2', 'no feed - quadrants call board functions.',
+      'Click + hold radial menu: SCAN / RUN / STORE / INSPECT, release runs the lit quadrant.'],
+    body:`<div class="why">Click + hold radial menu. Currently off the board.</div>
+      <div class="prev"><div class="wheelprev"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="15" stroke-dasharray="18 5"/><circle cx="24" cy="24" r="3.2"/></svg></div>
+      <div class="cap" style="text-align:center">CLICK + HOLD &middot; RELEASE TO RUN</div></div>` },
+  'w-x-new': { name:'ADD YOUR OWN WIDGET', ic:'<rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 3"/><path d="M12 8v8M8 12h8"/>',
+    tick:'click me to start', blank:true,
+    body:`<div class="prev" style="cursor:pointer"><div class="cap" style="text-align:center; padding:16px 0"><b>Click here</b> to get your starter prompt.<br>Describe your widget - your agent builds it to the board's rules.</div></div>` },
+};
+
+/* ================= build ================= */
+const board = document.getElementById('board');
+const els = {};
+function buildWidgets() {
+  board.innerHTML = '';
+  LAY.widgets.forEach(w => {
+    const def = WIDGETS[w.id]; if (!def) return;
+    const el = document.createElement('div');
+    el.className = 'w' + (def.kind === 'title' ? ' chromeless' : '');
+    el.id = w.id;
+    if (def.kind === 'title') {
+      el.innerHTML = `<div class="wh tb" style="display:block">
+        <h1><svg class="hexlogo" viewBox="0 0 48 48" fill="none" stroke="#1c6ea4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 6l18 10v16L24 42 6 32V16Z"/><path d="M24 6v16l18 10" opacity="0.5"/><path d="M24 22L6 32" opacity="0.5"/></svg>Blueprint IT <span>Widget Library</span></h1>
+        <div class="sub">copy a prompt &middot; paste it to your agent &middot; it lands on the board</div>
+        <div class="tbar">
+          <button id="editBtn" title="Edit layout"><svg viewBox="0 0 24 24"><path d="M17 3l4 4L8 20l-5 1 1-5Z"/></svg></button>
+          <button id="homeBtn" title="Back to the OS"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 9.5V20h12V9.5"/></svg></button>
+          <button id="resetBtn" title="Reset layout" style="display:none"><svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 2 6"/><path d="M4 5v5h5"/></svg></button>
+        </div>
+        <div id="restoreRow"></div></div>`;
+    } else {
+      el.innerHTML = `<div class="wh"><svg class="wic" viewBox="0 0 24 24">${def.ic}</svg>
+        <span>${def.name}</span><span class="tick">${def.tick || ''}</span>
+        <button class="pbtn" data-p="${w.id}">COPY PROMPT</button></div>
+        <div class="wb">${def.body}</div>
+        <button class="wx">×</button><div class="rs"></div>`;
+    }
+    board.appendChild(el);
+    els[w.id] = el;
+  });
+  document.getElementById('editBtn').onclick = () => document.body.classList.toggle('edit');
+  document.getElementById('homeBtn').onclick = () => location.href = '/';
+  document.getElementById('resetBtn').onclick = () => { localStorage.removeItem(LKEY); location.reload(); };
+  document.querySelectorAll('.pbtn').forEach(b => {
+    b.addEventListener('pointerdown', e => e.stopPropagation());
+    b.onclick = e => { e.stopPropagation(); openPrompt(b.dataset.p); };
+  });
+  /* the ADD YOUR OWN WIDGET card opens its starter prompt from anywhere on the card */
+  const nw = els['w-x-new'];
+  if (nw) {
+    const zone = nw.querySelector('.wb');
+    zone.addEventListener('pointerdown', e => e.stopPropagation());
+    zone.style.cursor = 'pointer';
+    zone.onclick = () => openPrompt('w-x-new');
+  }
+  document.querySelectorAll('.happ a').forEach(a => {
+    a.addEventListener('pointerdown', e => e.stopPropagation());
+    a.onclick = e => { e.preventDefault(); window.open(a.dataset.url, '_blank'); };
+  });
+  renderRestore();
+  applyLayout();
+}
+function applyLayout() {
+  LAY.widgets.forEach(w => {
+    const el = els[w.id]; if (!el) return;
+    el.style.left = px(w.c) + 'px'; el.style.top = py(w.r) + 'px';
+    el.style.width = (w.cs * CELL - 10) + 'px'; el.style.height = (w.rs * CELL - 10) + 'px';
+  });
+  boardHeight();
+}
+function boardHeight() {
+  /* the canvas grows with the layout - scroll as far as the widgets go */
+  const maxR = Math.max(8, ...LAY.widgets.map(w => w.r + w.rs)) + 3;
+  board.style.height = (maxR * CELL) + 'px';
+  drawGrid(maxR);
+  drawHex();
+}
+function renderRestore() {
+  const row = document.getElementById('restoreRow');
+  row.innerHTML = LAY.removed.map(r => `<button data-res="${r.id}">+ ${WIDGETS[r.id]?.name || r.id}</button>`).join('');
+  row.querySelectorAll('button').forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const i = LAY.removed.findIndex(x => x.id === b.dataset.res);
+    const w = LAY.removed.splice(i, 1)[0];
+    LAY.widgets.push(w);
+    pushDown(w);
+    save(); buildWidgets();
+  });
+}
+
+/* ================= edit: drag / resize / remove ================= */
+let drag = null;
+document.addEventListener('pointerdown', e => {
+  if (!document.body.classList.contains('edit')) return;
+  if (e.target.closest('#editBtn') || e.target.closest('#homeBtn') || e.target.closest('#restoreRow')) return;
+  const wEl = e.target.closest('.w'); if (!wEl) return;
+  const w = LAY.widgets.find(x => x.id === wEl.id); if (!w) return;
+  if (e.target.classList.contains('wx')) {
+    LAY.widgets = LAY.widgets.filter(x => x !== w);
+    LAY.removed.push(w);
+    save(); buildWidgets(); return;
+  }
+  if (e.target.classList.contains('rs')) {
+    drag = { w, el: wEl, mode:'resize' };
+  } else if (e.target.closest('.wh')) {
+    const r = wEl.getBoundingClientRect();
+    drag = { w, el: wEl, mode:'move', ox: e.clientX - r.left, oy: e.clientY - r.top + scrollY };
+  } else return;
+  wEl.classList.add('live');
+  document.body.classList.add('dragging');
+  e.preventDefault();
+});
+document.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const { w, el } = drag;
+  if (drag.mode === 'move') {
+    el.style.left = (e.clientX - drag.ox) + 'px';
+    el.style.top = (e.clientY + scrollY - (drag.oy - scrollY) - scrollY + scrollY - drag.oy + scrollY) + 'px';
+    /* simpler: recompute from page coords */
+    el.style.top = (e.pageY - drag.oy) + 'px';
+    w.c = Math.max(0, Math.min(COLS - w.cs, Math.round((e.clientX - drag.ox - 5) / CELL)));
+    w.r = Math.max(0, Math.round((e.pageY - drag.oy - 5) / CELL));
+  } else {
+    const r = el.getBoundingClientRect();
+    el.style.width = Math.max(CELL - 10, e.clientX - r.left) + 'px';
+    el.style.height = Math.max(CELL - 10, e.pageY - (r.top + scrollY)) + 'px';
+    w.cs = Math.max(2, Math.min(COLS - w.c, Math.round((e.clientX - r.left + CELL / 2) / CELL)));
+    w.rs = Math.max(1, Math.round((e.pageY - (r.top + scrollY) + CELL / 2) / CELL));
+  }
+});
+function pushDown(moved) {
+  /* widgets never overlap: whoever the dropped widget lands on slides down,
+     and anyone THEY land on slides down after them */
+  let guard = 0, again = true;
+  while (again && guard++ < 80) {
+    again = false;
+    for (const a of LAY.widgets) for (const b of LAY.widgets) {
+      if (a === b) continue;
+      const hit = a.c < b.c + b.cs && b.c < a.c + a.cs && a.r < b.r + b.rs && b.r < a.r + a.rs;
+      if (!hit) continue;
+      let pushee = a === moved ? b : b === moved ? a : (a.r >= b.r ? a : b);
+      if (pushee === moved) pushee = a === moved ? b : a;
+      const other = pushee === a ? b : a;
+      pushee.r = other.r + other.rs;
+      again = true;
+    }
+  }
+}
+document.addEventListener('pointerup', () => {
+  if (!drag) return;
+  drag.el.classList.remove('live');
+  document.body.classList.remove('dragging');
+  pushDown(drag.w);
+  drag = null;
+  save(); applyLayout();
+});
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.getElementById('ov').classList.remove('show');
+    document.body.classList.remove('edit');
+  }
+});
+
+/* ================= prompt popup ================= */
+let curPrompt = '';
+function openPrompt(id) {
+  const def = WIDGETS[id];
+  curPrompt = def.blank
+    ? promptFor('[describe your widget - e.g. SUBSTACK: subscribers, open rate, last send]',
+        '4 x 3 (default)', 'describe the source; add a server.js endpoint if none fits.',
+        'Replace the bracketed line with what you want on the board, then paste.')
+    : promptFor(...def.prompt);
+  document.getElementById('popT').textContent = def.name;
+  document.getElementById('popP').textContent = curPrompt;
+  document.getElementById('ov').classList.add('show');
+}
+document.getElementById('popCopy').onclick = e => {
+  navigator.clipboard.writeText(curPrompt);
+  e.target.textContent = 'COPIED ✓';
+  setTimeout(() => e.target.textContent = 'COPY PROMPT', 1400);
+};
+document.getElementById('popX').onclick = () => document.getElementById('ov').classList.remove('show');
+document.getElementById('ov').addEventListener('pointerdown', e => {
+  if (e.target === document.getElementById('ov')) document.getElementById('ov').classList.remove('show');
+});
+
+/* ================= backdrops ================= */
+function drawHex() {
+  const cv = document.getElementById('hexbg'), g = cv.getContext('2d');
+  const DPR = Math.min(devicePixelRatio, 2);
+  const W = innerWidth, H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR; g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  const s = 20, hh = s * Math.sqrt(3) / 2, cx = W / 2, cy = H / 2;
+  const maxD = Math.hypot(cx, cy);
+  for (let y = -1; y * hh * 1.5 < H + 40; y++) for (let x = -1; x * s * 3 < W + 60; x++) {
+    const hx = x * s * 3 + (y % 2 ? s * 1.5 : 0), hy = y * hh * 1.5;
+    const a = .064 * Math.max(0, 1 - Math.hypot(hx - cx, hy - cy) / maxD * 1.15);
+    if (a < .004) continue;
+    g.strokeStyle = `rgba(255,255,255,${a})`;
+    g.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const an = Math.PI / 3 * i + Math.PI / 6;
+      i ? g.lineTo(hx + s * Math.cos(an), hy + s * Math.sin(an))
+        : g.moveTo(hx + s * Math.cos(an), hy + s * Math.sin(an));
+    }
+    g.closePath(); g.stroke();
+  }
+}
+function drawGrid(rows) {
+  const cv = document.getElementById('gridCv'), g = cv.getContext('2d');
+  const DPR = Math.min(devicePixelRatio, 2);
+  const W = innerWidth, H = rows * CELL;
+  cv.width = W * DPR; cv.height = H * DPR; g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  g.strokeStyle = 'rgba(232,226,210,.12)'; g.lineWidth = 1;
+  for (let c = 0; c <= COLS; c++) { g.beginPath(); g.moveTo(c * CELL, 0); g.lineTo(c * CELL, H); g.stroke(); }
+  for (let r = 0; r <= rows; r++) { g.beginPath(); g.moveTo(0, r * CELL); g.lineTo(W, r * CELL); g.stroke(); }
+}
+addEventListener('resize', () => { CELL = Math.floor(innerWidth / COLS); applyLayout(); });
+buildWidgets();
+</script>
+</body>
+</html>

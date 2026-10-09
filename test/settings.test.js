@@ -47,7 +47,7 @@ test("GET/PUT /api/settings is owner-only", async () => {
     const setup = await fetch(`${b}/api/setup`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: b },
-      body: JSON.stringify({ displayName: "Glenn", username: "glenn", password: "longenough1" }),
+      body: JSON.stringify({ displayName: "Pat", username: "pat", password: "longenough1" }),
     });
     const sc = setup.headers.get("set-cookie");
     if (sc) jar.owner = sc.split(";")[0];

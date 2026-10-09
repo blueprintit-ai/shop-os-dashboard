@@ -1,11 +1,10 @@
 import { readJsonBody, sendJson } from "../lib/http.js";
 import { requireUser } from "../auth.js";
-import { buildQueryOptions } from "../chat/options.js";
-import { buildStaffPrompt, buildOwnerPrompt } from "../chat/system-prompt.js";
+import { runChatTurn } from "../chat/turn.js";
 import { writeTranscript } from "../chat/transcript.js";
 
 export function chatRoutes(ctx) {
-  const { vaultPath, auth, audit, guard, chatSessions, runTurn, statusStore } = ctx;
+  const { vaultPath, auth, audit, guard, chatSessions } = ctx;
   return async (req, res, url) => {
     const p = url.pathname;
     if (!p.startsWith("/api/chat/")) return false;
@@ -30,36 +29,8 @@ export function chatRoutes(ctx) {
       const write = (ev) => res.write(`data: ${JSON.stringify(ev)}\n\n`);
       if (guard.stats().running >= guard.max) write({ type: "queue", position: guard.stats().queued + 1 });
       const release = await guard.acquire(session.id);
-      let timedOut = false;
       try {
-        chatSessions.recordTurn(session.id, { role: "user", content: b.prompt });
-        const systemPrompt = user.role === "owner"
-          ? buildOwnerPrompt({ vaultPath, name: user.displayName })
-          : buildStaffPrompt({ vaultPath, name: user.displayName, folders: [...user.switches.folders, ...(user.switches.teamFolder ? [user.switches.teamFolder] : [])] });
-        const options = buildQueryOptions({ vaultPath, user, systemPrompt, claudeSessionId: session.claudeSessionId, audit });
-        let assistantText = "";
-        const abortController = new AbortController();
-        options.abortController = abortController;
-        const timer = setTimeout(() => {
-          timedOut = true;
-          write({ type: "error", message: "Claude took too long. Try again." });
-          abortController.abort();
-        }, 5 * 60 * 1000);
-        try {
-          let observedThisTurn = false;
-          for await (const ev of runTurn({ prompt: b.prompt, options })) {
-            if (ev.type === "session" && ev.claudeSessionId) chatSessions.setClaudeSessionId(session.id, ev.claudeSessionId);
-            if (ev.type === "text") assistantText += ev.delta;
-            write(ev);
-            if (ev.type === "text" && !observedThisTurn) { observedThisTurn = true; ctx.statusStore?.recordClaudeObservation(true); }
-            if (ev.type === "error") ctx.statusStore?.observeChatError(ev.message);
-          }
-          if (assistantText) chatSessions.recordTurn(session.id, { role: "assistant", content: assistantText });
-        } finally {
-          clearTimeout(timer);
-        }
-      } catch (err) {
-        if (!timedOut) write({ type: "error", message: err.message });
+        await runChatTurn({ ctx, user, session, prompt: b.prompt, onEvent: write });
       } finally {
         release();
         res.end();

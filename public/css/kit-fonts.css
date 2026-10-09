@@ -1,0 +1,9 @@
+/* Local @font-face for the kit pages (replaces the Google Fonts <link>, rule "fonts-link").
+   Files: public/vendor/fonts/*.woff2, SIL OFL 1.1 (OFL-Outfit.txt, OFL-Doto.txt). */
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 300; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-300-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 400; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 500; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 600; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 700; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Doto'; font-style: normal; font-weight: 700; font-display: swap; src: url('/static/vendor/fonts/doto-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Doto'; font-style: normal; font-weight: 900; font-display: swap; src: url('/static/vendor/fonts/doto-latin-900-normal.woff2') format('woff2'); }

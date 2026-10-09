@@ -95,13 +95,17 @@ export class LinkIndex {
     return [...this.meta.entries()].filter(([p]) => TEXT_EXT.has(extname(p).toLowerCase())).map(([path, m]) => ({ path, ...m }));
   }
 
-  watch(onChange) {
+  // `watchImpl` and `debounceMs` are injectable so the debounce/rescan path can be tested without real fs events
+  // (which macOS delivers late or coalesced under load). Rebuilds once, `debounceMs` after the last change event.
+  watch(onChange, { watchImpl = watch, debounceMs = 750 } = {}) {
     try {
-      this.watcher = watch(this.vaultPath, { recursive: true }, () => {
+      this.watcher = watchImpl(this.vaultPath, { recursive: true }, () => {
         clearTimeout(this.timer);
-        this.timer = setTimeout(() => { this.build(); onChange?.(); }, 750);
+        this.timer = setTimeout(() => { this.build(); onChange?.(); }, debounceMs);
+        this.timer.unref?.();
       });
       this.watcher.on("error", () => {});
+      this.watcher.unref?.(); // never the thing that keeps the process alive (the HTTP server does that)
     } catch (e) {
       console.error("[notes] watch unavailable, use manual rescan:", e.message);
     }

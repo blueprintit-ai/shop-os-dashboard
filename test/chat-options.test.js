@@ -6,7 +6,7 @@ import { buildQueryOptions, STAFF_TOOLS } from "../src/chat/options.js";
 
 const VAULT = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "vault");
 const staff = { id: "s1", username: "marco", displayName: "Marco", role: "staff", switches: { folders: ["Projects"], teamFolder: null } };
-const owner = { id: "o1", username: "glenn", displayName: "Glenn", role: "owner", switches: { folders: [], teamFolder: null } };
+const owner = { id: "o1", username: "pat", displayName: "Pat", role: "owner", switches: { folders: [], teamFolder: null } };
 const audit = { events: [], log(e, f) { this.events.push({ e, ...f }); } };
 
 test("staff options restrict tools, use default permission mode, no allowedTools", () => {

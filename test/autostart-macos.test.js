@@ -37,7 +37,7 @@ test("createDesktopApp writes a launchable .app bundle", () => {
 test("plist escapes XML-significant characters in the vault path", () => {
   const home = mkdtempSync(join(tmpdir(), "home-"));
   const spawnSyncImpl = () => ({ status: 0 });
-  const vaultPath = "/Users/glenn/Acme & Sons <Vault>";
+  const vaultPath = "/Users/pat/Acme & Sons <Vault>";
   registerAutoStart({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath, homeOverride: home, spawnSyncImpl });
   const plist = readFileSync(join(home, "Library", "LaunchAgents", "ai.blueprintit.shop-os-dashboard.plist"), "utf8");
   assert.ok(plist.includes("Acme &amp; Sons &lt;Vault&gt;"), "XML-significant characters must be escaped");
@@ -47,7 +47,7 @@ test("plist escapes XML-significant characters in the vault path", () => {
 
 test(".app launcher single-quotes interpolated paths so $ and \" cannot expand or break out", () => {
   const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
-  const vaultPath = '/Users/glenn/$HOME "quoted" `backtick`';
+  const vaultPath = '/Users/pat/$HOME "quoted" `backtick`';
   const result = createDesktopApp({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath, desktopDir });
   assert.equal(result.ok, true);
   const script = readFileSync(join(result.path, "Contents", "MacOS", "Blueprint OS"), "utf8");
@@ -57,7 +57,7 @@ test(".app launcher single-quotes interpolated paths so $ and \" cannot expand o
 
 test(".app launcher escapes an embedded single quote", () => {
   const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
-  const result = createDesktopApp({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath: "/Users/glenn/Bob's Vault", desktopDir });
+  const result = createDesktopApp({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath: "/Users/pat/Bob's Vault", desktopDir });
   const script = readFileSync(join(result.path, "Contents", "MacOS", "Blueprint OS"), "utf8");
-  assert.ok(script.includes(`'/Users/glenn/Bob'"'"'s Vault'`), `unexpected launcher: ${script}`);
+  assert.ok(script.includes(`'/Users/pat/Bob'"'"'s Vault'`), `unexpected launcher: ${script}`);
 });

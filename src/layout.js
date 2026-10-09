@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { JsonStore } from "./lib/store.js";
-import { ORB_DEFAULT, normalizeOrb, migrateOrb } from "../public/js/owner/orb-math.js";
+import { ORB_DEFAULT, normalizeOrb, migrateOrb } from "./orb-math.js";
 
 export function defaultLayout() {
   return {
