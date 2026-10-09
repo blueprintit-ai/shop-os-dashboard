@@ -3,10 +3,12 @@
 import { api, escapeHtml, toast } from "/static/js/api.js";
 import { lanUrl } from "/static/js/lan-url.js";
 import { mountStaffSection } from "/static/js/staff-chat.js";
+import { mountPrivateBanner } from "/static/js/private-banner.js";
 
 const root = document.getElementById("extras-root");
 
 root.innerHTML = `
+  <section id="private-banner" hidden></section>
   <section class="extras-card" id="staff-chat"></section>
   <section class="extras-card" id="assets-setting">
     <h2>Business Assets folder</h2>
@@ -40,6 +42,7 @@ async function loadPhone() {
   const addrEl = document.getElementById("phone-addr"), qrEl = document.getElementById("phone-qr");
   const res = await api("GET", "/api/status");
   const status = res.ok ? await res.json() : null;
+  mountPrivateBanner(document.getElementById("private-banner"), status?.privateList);
   mountStaffSection(document.getElementById("staff-chat"), status, { toast });
   const url = lanUrl(status);
   if (!url) { addrEl.textContent = "No Wi-Fi address detected: the dashboard is only reachable from this computer."; qrEl.hidden = true; return; }

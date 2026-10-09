@@ -15,6 +15,12 @@ import { resolveVaultFile, readViewable, readSkillText, viewerUrl } from "../bra
 //   POST /api/brain/bake    (kit /api/bake)    owner, writes Dashboard/brain/bake.json
 // The page is owner-only; the read endpoints that return the whole vault's shape (graph, meta, expand, search) are
 // owner-only too, while file/open follow the notes viewer's rules (signed in + scope.js isPathAllowed).
+// Staff get one answer (404 "Not available") whether a file is private, listed, outside their folders, hidden or missing.
+function deny(res, user, found) {
+  if (user.role !== "owner" && found.status !== 400) return sendJson(res, 404, { error: "Not available" });
+  return sendJson(res, found.status, { error: found.error });
+}
+
 export function brainRoutes(ctx) {
   const { vaultPath, auth, audit, brain } = ctx;
   return async (req, res, url) => {
@@ -33,7 +39,7 @@ export function brainRoutes(ctx) {
         return sendJson(res, 200, text, { "cache-control": "no-store" }), true;
       }
       const found = resolveVaultFile(vaultPath, user, raw);
-      if (found.error) return sendJson(res, found.status, { error: found.error }), true;
+      if (found.error) return deny(res, user, found), true;
       const r = readViewable(found);
       if (r.status === 200) audit.log("brain.file", { userId: user.id, username: user.username, role: user.role, path: found.rel });
       return sendJson(res, r.status, r.body, { "cache-control": "no-store" }), true;
@@ -44,7 +50,7 @@ export function brainRoutes(ctx) {
       let body; try { body = await readJsonBody(req, 10_000); } catch { return sendJson(res, 400, { error: "Bad JSON" }), true; }
       if (typeof body?.path === "string" && body.path.startsWith("skill:")) return sendJson(res, 400, { error: "Skills open with View, not in the notes viewer" }), true;
       const found = resolveVaultFile(vaultPath, user, body?.path);
-      if (found.error) return sendJson(res, found.status, { error: found.error }), true;
+      if (found.error) return deny(res, user, found), true;
       const to = viewerUrl(found.rel);
       if (!to) return sendJson(res, 400, { error: "No viewer for this file type" }), true;
       return sendJson(res, 200, { ok: true, url: to }), true;

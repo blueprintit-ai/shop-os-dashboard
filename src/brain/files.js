@@ -1,6 +1,6 @@
 import { statSync, lstatSync, realpathSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
 import { join, extname, relative, sep } from "node:path";
-import { HIDDEN_DIRS, isPathAllowed } from "../scope.js";
+import { HIDDEN_DIRS, isPathAllowed, isPrivatePath } from "../scope.js";
 import { isSecret } from "./scan.js";
 import { insideDir } from "./skills.js";
 
@@ -22,6 +22,8 @@ export function resolveVaultFile(vaultPath, user, raw) {
   if (segs.some((s) => s.startsWith(".") || HIDDEN_DIRS.includes(s))) return { status: 403, error: "not available" };
   if (isSecret(norm)) return { status: 403, error: "not available" };
   const abs = join(vaultPath, ...segs);
+  // Private is indistinguishable from missing for staff, so a guessed name confirms nothing.
+  if (user.role !== "owner" && isPrivatePath(vaultPath, abs)) return { status: 404, error: "Not found" };
   let real;
   try { real = realpathSync.native(abs); } catch { return { status: 404, error: "Not found" }; }
   let root;

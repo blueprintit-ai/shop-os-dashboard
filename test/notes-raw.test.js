@@ -57,7 +57,7 @@ test("/api/notes/raw: traversal, hidden dirs, folder scope and auth are unchange
     writeFileSync(join(b.vault, ".obsidian", "x.html"), ACTIVE);
     assert.equal((await raw(b, "../../etc/passwd")).status, 403);
     assert.equal((await raw(b, ".obsidian/x.html")).status, 403);
-    assert.equal((await raw(b, "Context/operator.md", "staff")).status, 403);
+    assert.equal((await raw(b, "Context/operator.md", "staff")).status, 404);
     assert.ok([403, 404].includes((await raw(b, "Projects/missing.png")).status)); // unchanged: never 200
     assert.equal((await b.http("GET", "/api/notes/raw")).status, 401);
     assert.equal((await b.http("GET", "/api/notes/raw", { as: "owner" })).status, 400);

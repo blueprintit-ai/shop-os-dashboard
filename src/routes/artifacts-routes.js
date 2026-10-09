@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { requireUser, requireOwner } from "../auth.js";
 import { send, sendJson, readJsonBody, serveStatic } from "../lib/http.js";
-import { listArtifacts, removeArtifact, artifactsDir, artifactVisibility, isSafeArtifactFile } from "../artifacts.js";
+import { listArtifacts, removeArtifact, artifactsDir, artifactVisibility, artifactIsPrivate, isSafeArtifactFile } from "../artifacts.js";
 
 const ARTIFACTS_PREFIX = "/artifacts/";
 
@@ -36,7 +36,7 @@ export function artifactsRoutes({ vaultPath, auth, audit }) {
       if (user.role !== "owner") {
         const shared = user.switches?.artifactsShared === true;
         const visibility = artifactVisibility(vaultPath, file);
-        if (!shared || visibility !== "staff") {
+        if (!shared || visibility !== "staff" || artifactIsPrivate(vaultPath, file)) {
           return send(res, 403, { "content-type": "text/plain" }, "Forbidden"), true;
         }
       }

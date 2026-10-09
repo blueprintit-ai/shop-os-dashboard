@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isPathAllowed } from "../scope.js";
+import { createScope } from "../scope.js";
 
 function snippetAround(text, needle) {
   const i = text.toLowerCase().indexOf(needle);
@@ -13,9 +13,10 @@ export function searchNotes(vaultPath, user, index, q, { limit = 30 } = {}) {
   const needle = String(q ?? "").trim().toLowerCase();
   if (!needle) return [];
   const out = [];
+  const scope = createScope(vaultPath, user);
   for (const note of index.notes()) {
     const abs = join(vaultPath, note.path);
-    if (!isPathAllowed(vaultPath, user, abs)) continue;
+    if (!scope.allowedNote(note.path)) continue;
     let score = 0;
     const title = note.title.toLowerCase();
     if (title === needle) score += 100; else if (title.includes(needle)) score += 60;

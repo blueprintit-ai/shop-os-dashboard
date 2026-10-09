@@ -64,6 +64,7 @@ test("create owner then staff; usernames are unique and case-insensitive", async
   await assert.rejects(store.create({ username: "PAT", displayName: "x", password: "longenough1", role: "staff" }), { code: "USERNAME_TAKEN" });
   const staff = await store.create({ username: "marco", displayName: "Marco", password: "longenough1", role: "staff" });
   assert.deepEqual(staff.switches.folders, [...DEFAULT_STAFF_FOLDERS]);
+  assert.deepEqual([...DEFAULT_STAFF_FOLDERS], ["Projects", "Resources"], "a Blueprint OS vault has no Processes folder");
   assert.equal(staff.switches.assetsView, false);
   assert.equal(staff.switches.artifactsShared, true);
   assert.equal(store.list().length, 2);
@@ -141,4 +142,12 @@ test("GET /api/users/activity is owner-only and returns recent audit rows", asyn
   assert.ok(rows.every((r) => "event" in r && "username" in r));
   server.close(); server.ctx.index.close();
   rmSync(root, { recursive: true, force: true });
+});
+
+test("a staff user stored with the old default folders keeps them (only new users get the new defaults)", async () => {
+  const { store, cleanup } = tmpStore();
+  try {
+    const u = await store.create({ username: "old", displayName: "Old", password: "longenough1", role: "staff", switches: { folders: ["Projects", "Resources", "Processes"] } });
+    assert.deepEqual(store.get(u.id).switches.folders, ["Projects", "Resources", "Processes"]);
+  } finally { cleanup(); }
 });

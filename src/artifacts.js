@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { vaultDashboardDir } from "./lib/paths.js";
+import { isPrivatePath } from "./scope.js";
 
 const ICON_RULES = [
   [/deck|slide|present/i, "deck"],
@@ -105,9 +106,18 @@ export function listArtifacts(vaultPath, user) {
 
   if (user.role !== "owner") {
     const shared = user.switches?.artifactsShared === true;
-    artifacts = shared ? artifacts.filter((a) => a.visibility === "staff") : [];
+    artifacts = shared ? artifacts.filter((a) => a.visibility === "staff" && !artifactIsPrivate(vaultPath, a.file)) : [];
   }
   return { fetched: new Date().toISOString(), count: artifacts.length, artifacts };
+}
+
+// Private rules apply to artifacts too: a file the owner lists in Dashboard/private-paths.json (or a link into a Private
+// folder) or a sidecar saying private: true is never shown to staff, whatever its visibility says.
+export function artifactIsPrivate(vaultPath, file) {
+  const full = join(artifactsDir(vaultPath), file);
+  if (isPrivatePath(vaultPath, full)) return true;
+  const side = readSidecar(full).private;
+  return side === true || (typeof side === "string" && ["true", "yes", "on", "y", "1"].includes(side.trim().toLowerCase()));
 }
 
 // Re-check a single file's visibility without listing the whole directory - used to
