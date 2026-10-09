@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { send, serveStatic, isLoopback } from "../lib/http.js";
 import { readShopName } from "../chat/system-prompt.js";
 
+const escapeHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
 function redirect(res, to) { res.writeHead(302, { location: to }); res.end(); }
 
 export function pageRoutes(ctx) {
@@ -39,7 +41,7 @@ export function pageRoutes(ctx) {
       const layout = ctx.layoutStore.get(user.id);
       const html = page("owner.html")
         .replace("__ROLE__", user.role)
-        .replace("__SHOP_NAME__", readShopName(vaultPath))
+        .replace("__SHOP_NAME__", () => escapeHtml(readShopName(vaultPath)))
         .replace("__THEME_CLASS__", layout.theme === "light" ? "light" : "");
       return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
     }

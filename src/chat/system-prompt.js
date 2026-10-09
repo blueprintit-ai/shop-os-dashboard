@@ -5,8 +5,20 @@ function safeRead(p) { if (!existsSync(p)) return null; try { return readFileSyn
 function extractH1(md) { if (!md) return null; const body = md.replace(/^---[\s\S]*?---\s*/m, ""); const m = body.match(/^#\s+(.+)$/m); return m ? m[1].trim() : null; }
 function fmField(md, field) { if (!md) return null; const fm = md.match(/^---\s*([\s\S]*?)---/); if (!fm) return null; const m = fm[1].match(new RegExp(`^${field}\\s*:\\s*(.+)$`, "m")); return m ? m[1].trim() : null; }
 
+// Template H1s the onboarding scaffold may leave behind ("# Organization",
+// "# [Company Name]"): they are not a shop name, so keep looking.
+const GENERIC_NAME = /^(organi[sz]ation|company|business|shop)(\s+(profile|overview|context|name))?$|^[\[{<].*[\]}>]$/i;
+function usable(name) { return name && !GENERIC_NAME.test(name) ? name : null; }
+
+// Order: Context/organization.md H1, then the vault CLAUDE.md front matter
+// `license-customer:` (written by the installer, present before /bp-setup has
+// created any Context file), then the generic fallback.
 export function readShopName(vaultPath) {
-  return extractH1(safeRead(join(vaultPath, "Context", "organization.md"))) ?? "this shop";
+  const fromOrg = usable(extractH1(safeRead(join(vaultPath, "Context", "organization.md"))));
+  if (fromOrg) return fromOrg;
+  const lic = fmField(safeRead(join(vaultPath, "CLAUDE.md")), "license-customer");
+  const fromLicense = usable(lic ? lic.replace(/^["']|["']$/g, "").trim() : null);
+  return fromLicense ?? "this shop";
 }
 function readOwnerName(vaultPath) {
   const op = safeRead(join(vaultPath, "Context", "operator.md"));
