@@ -38,7 +38,7 @@ const layout = await getLayout();
 const allKinds = { ...kindRenderers, skills: mountSkillsDeck, assets: mountAssetsFavorites, status: renderStatusWidget };
 
 mountHexBackground();
-mountRing(document.getElementById("ring-root"));
+mountRing(document.getElementById("ring-root"), layout);
 mountGrid(document.getElementById("widgets-root"), layout, allKinds);
 
 // ring.js dispatches "artifacts:list" (detail: the artifact array) right

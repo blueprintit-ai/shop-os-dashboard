@@ -17,7 +17,7 @@
 //    selectors so the chrome (remove button, resize handle, edit-mode cursor)
 //    actually renders instead of silently matching nothing.
 
-import { saveLayout } from "./layout-client.js";
+import { scheduleLayoutSave as scheduleSave } from "./layout-client.js";
 import { iconCanvasHtml, paintHeaderIcons } from "./icons.js";
 import { buildTitleHeading } from "./title-widget.js";
 
@@ -41,11 +41,6 @@ function syncToolbar(el) {
 }
 const COLS = 32;
 const MIN_SPAN = 2;
-let saveTimer = null;
-function scheduleSave(layout) {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveLayout(layout), 400);
-}
 
 export function mountGrid(root, layout, kindRenderers) {
   root.innerHTML = "";
