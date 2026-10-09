@@ -12,9 +12,12 @@
 //   - Second Brain reachability probe ......... dashboard.html:3960-3966
 //   - 3D orb portal (three.js particles) ...... dashboard.html:3483-3736 (<script type="module">)
 //
+// The orb sits on the same 32-col grid as the widgets (layout.orb: c, r, s, z,
+// see orb-math.js) and has the kit's edit-mode move/resize and use-mode spin.
+//
 // Deliberately NOT ported (see owner.css's own header comment for the
-// project-wide exclusion list this task inherits): the 32-col widget grid /
-// edit mode / drag-resize (Task 9 owns that), the info ball + hover "chip
+// project-wide exclusion list this task inherits): the widget grid's own
+// edit mode / drag-resize (widgets.js owns that), the info ball + hover "chip
 // burst" (tied to the kit's spotlight tour, out of scope here), the GLYPH
 // demo spawn-balls (inbox/routine/skill/mail placeholders - those source
 // features don't exist in this project, only real artifacts do), the
@@ -33,6 +36,8 @@
 import { api, toast } from "/static/js/api.js";
 import { mountChatToggle } from "./chat-toggle.js";
 import { sanitizeArtifactSvg } from "./sanitize-svg.js";
+import { scheduleLayoutSave } from "./layout-client.js";
+import { normalizeOrb, orbMetrics, rowsFor, snapHalf, resizeScale, dragPosition, gripPosition } from "./orb-math.js";
 
 const POLL_MS = 15000;
 const BRAIN_URL = "http://localhost:5210";
@@ -77,16 +82,17 @@ function fmtCreated(iso) {
   return d.toLocaleString("en-AU", { month: "short" }) + d.getDate() + " - " + h + ":" + String(d.getMinutes()).padStart(2, "0") + ap;
 }
 
-export function mountRing(root) {
+export function mountRing(root, layout) {
   // Idempotent: a repeat mountRing(root) call (the brief's own devtools
   // verification recipe) tears down the previous instance's timers/rAF/
   // listeners first instead of stacking a second ring on top.
   root.__ringTeardown?.();
 
   const LIGHT = document.documentElement.classList.contains("light");
-  root.innerHTML = `<canvas id="ringCv"></canvas><div id="orbBox"></div><div id="tip" hidden><div class="t1"></div><div class="t2"></div></div>`;
+  root.innerHTML = `<canvas id="ringCv"></canvas><div id="orbBox"></div><div id="orbGrip" title="Drag to resize the orb"></div><div id="tip" hidden><div class="t1"></div><div class="t2"></div></div>`;
   const ringCv = root.querySelector("#ringCv");
   const orbBox = root.querySelector("#orbBox");
+  const orbGrip = root.querySelector("#orbGrip");
   const tip = root.querySelector("#tip");
   const ringGx = ringCv.getContext("2d");
 
@@ -100,16 +106,26 @@ export function mountRing(root) {
     root.__ringTeardown = null;
   };
 
-  /* ---- geometry: ring is desktop-only (see design spec) and viewport-centered -
-     mountRing(root) takes no layout/position argument (see the file header),
-     so the orb sits at the middle of the viewport rather than reading the
-     32-col grid's saved orb.c/orb.r (that integration is out of this task's
-     contract). A modest clamp keeps it from overflowing small windows. ---- */
-  const ringScale = () => Math.max(.5, Math.min(1, Math.min(innerWidth, innerHeight) / 900));
-  const orbCX = () => innerWidth / 2;
-  const orbCY = () => innerHeight / 2;
-  const RINGpx = () => RS.ring * ringScale();
-  const ballSize = () => RS.size * ringScale();
+  /* ---- geometry (dashboard.html:1015-1017, 1246-1250): the orb module lives on
+     the same 32-column grid as the widgets. Position (c, r) and module scale
+     (s) come from the saved layout's `orb` block (the SAME object boot.js
+     passes to the widget grid, so one debounced save carries both); zoom (z)
+     scales the three.js group. A bare mountRing(root) (devtools recipe) uses
+     the defaults and never saves. ---- */
+  const canSave = !!(layout && Array.isArray(layout.widgets));
+  const LAY = layout && typeof layout === "object" ? layout : {};
+  LAY.orb = normalizeOrb(LAY.orb);
+  const M = () => orbMetrics(LAY.orb, innerWidth, innerHeight);
+  const orbCX = () => M().cx;
+  const orbCY = () => M().cy;
+  const RINGpx = () => M().ring;
+  const ballSize = () => M().ball;
+  const FOOT_R = () => M().footR;
+  const kScale = () => M().k; // SCALE * module scale: replaces the old viewport-based ringScale()
+  window.__orbState = () => {
+    const m = M();
+    return { c: LAY.orb.c, r: LAY.orb.r, s: LAY.orb.s, z: LAY.orb.z, sEff: m.sEff, clamped: m.clamped, cx: m.cx, cy: m.cy, cell: m.cell, ring: m.ring, ob: m.ob };
+  };
   const REST = () => (RS.restDeg * Math.PI) / 180;
 
   /* ================= balls ================= */
@@ -218,7 +234,7 @@ export function mountRing(root) {
     ringGx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ringGx.clearRect(0, 0, innerWidth, innerHeight);
     const D = ballSize();
-    const BW = D + RS.gap * 2 + 12 * ringScale();
+    const BW = D + RS.gap * 2 + 12 * kScale();
     const cx = orbCX(), cy = orbCY(), r = RINGpx();
     const RC = LIGHT
       ? { base: "rgba(12,30,47,.10)", inner: "rgba(12,30,47,.16)", outer: "rgba(255,255,255,.55)" }
@@ -443,10 +459,6 @@ export function mountRing(root) {
      dashboard.html:1361 - "clicking the orb" is detected on the document by
      distance from center, not by a listener on #orbBox itself. */
   let portalBusy = false;
-  function inOrbCore(e) {
-    if (e.target.closest(".oi") || e.target.closest(".w") || e.target.closest("#ballMenu")) return false;
-    return Math.hypot(e.clientX - orbCX(), e.clientY - orbCY()) < RINGpx() * .55;
-  }
   function openNoteViewer() {
     // Task 13's boot.js is expected to define window.showNotesTab (the same
     // pattern public/employee.html already uses); before that exists, fall
@@ -454,6 +466,15 @@ export function mountRing(root) {
     // (#chat-root/#notes-root[data-tab-panel]) so this still works stand-alone.
     if (typeof window.showNotesTab === "function") { window.showNotesTab(); return; }
     document.querySelectorAll("[data-tab-panel]").forEach((p) => { p.hidden = p.dataset.tabPanel !== "notes"; });
+  }
+  async function openSecondBrain() {
+    if (portalBusy) return;
+    portalBusy = true;
+    try {
+      const up = await probeSecondBrain();
+      if (up) window.open(BRAIN_URL, "_blank");
+      else openNoteViewer();
+    } finally { portalBusy = false; }
   }
   function probeSecondBrain() {
     // dashboard.html:3960-3966's own probe: a no-cors fetch resolves if
@@ -467,26 +488,83 @@ export function mountRing(root) {
         .catch(() => { clearTimeout(timer); resolve(false); });
     });
   }
-  let orbDown = null;
-  on(document, "pointerdown", (e) => { orbDown = inOrbCore(e) ? { x: e.clientX, y: e.clientY } : null; });
-  on(document, "pointerup", async (e) => {
-    if (!orbDown) return;
-    const moved = Math.hypot(e.clientX - orbDown.x, e.clientY - orbDown.y) > 6;
-    orbDown = null;
-    if (moved || !inOrbCore(e) || portalBusy) return;
-    portalBusy = true;
-    try {
-      const up = await probeSecondBrain();
-      if (up) window.open(BRAIN_URL, "_blank");
-      else openNoteViewer();
-    } finally { portalBusy = false; }
+
+  /* ---- orb pointer modes (dashboard.html:1571-1590, 1632-1649, 1671-1673) ----
+     edit mode:  drag the module = move it (half-cell snap on release);
+                 drag #orbGrip = resize (s clamped to [.5, 1.7]).
+     use mode:   drag anywhere in the footprint = spin with momentum; a clean
+                 click (no movement) on the CORE (< 30% of the ring radius)
+                 opens the Second Brain / note viewer.
+     Anything on top of the orb (balls, widgets, the search bar, the header
+     toolbar, menus, form controls) never starts an orb drag. */
+  const NOT_ORB = ".oi, .w, #ballMenu, #searchBar, #owner-header, #tourCard, #chat-root, #notes-root, a, button, input, textarea, select";
+  const editOn = () => document.body.classList.contains("edit");
+  let orbDrag = null;
+  on(document, "pointerdown", (e) => {
+    if (e.button !== 0 || root.hidden) return;
+    if (e.target.id === "orbGrip") {
+      if (!editOn()) return;
+      const d0 = Math.hypot(e.clientX - orbCX(), e.clientY - orbCY());
+      orbDrag = { mode: "size", d0, s0: M().sEff };
+      document.body.classList.add("dragging");
+      e.preventDefault();
+      return;
+    }
+    const hit = e.target.closest(NOT_ORB);
+    // (the plain-circle fallback button lives inside #orbBox and still counts as the orb)
+    if ((hit && !orbBox.contains(hit)) || document.body.classList.contains("searchopen")) return;
+    const d = Math.hypot(e.clientX - orbCX(), e.clientY - orbCY());
+    if (d >= FOOT_R()) return;
+    if (editOn()) {
+      orbDrag = { mode: "move", ox: e.clientX - orbCX(), oy: e.clientY - orbCY() };
+      document.body.classList.add("dragging");
+    } else {
+      orbDrag = { mode: "spin", lx: e.clientX, ly: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, core: d < RINGpx() * .3 };
+    }
+    e.preventDefault();
   });
+  on(document, "pointermove", (e) => {
+    if (!orbDrag) return;
+    if (orbDrag.mode === "move") {
+      const m = M();
+      Object.assign(LAY.orb, dragPosition({ x: e.clientX, y: e.clientY, ox: orbDrag.ox, oy: orbDrag.oy, cell: m.cell, rows: rowsFor(innerHeight, m.cell) }));
+      relayoutOrb();
+    } else if (orbDrag.mode === "spin") {
+      if (Math.hypot(e.clientX - orbDrag.sx, e.clientY - orbDrag.sy) > 4) orbDrag.moved = true;
+      window.__orbSpin?.((e.clientX - orbDrag.lx) * .004, (e.clientY - orbDrag.ly) * .004); /* globe-style: the face under the cursor follows the hand */
+      orbDrag.lx = e.clientX; orbDrag.ly = e.clientY;
+    } else if (orbDrag.mode === "size") {
+      const d = Math.hypot(e.clientX - orbCX(), e.clientY - orbCY());
+      LAY.orb.s = resizeScale(orbDrag.s0, d, orbDrag.d0);
+      relayoutOrb();
+    }
+  });
+  function endOrbDrag(cancelled) {
+    if (!orbDrag) return;
+    const d = orbDrag;
+    orbDrag = null;
+    if (d.mode === "spin") { if (!cancelled && !d.moved && d.core) openSecondBrain(); return; }
+    LAY.orb.c = snapHalf(LAY.orb.c);
+    LAY.orb.r = snapHalf(LAY.orb.r);
+    document.body.classList.remove("dragging");
+    relayoutOrb();
+    if (canSave) scheduleLayoutSave(LAY);
+  }
+  on(document, "pointerup", () => endOrbDrag(false));
+  on(document, "pointercancel", () => endOrbDrag(true));
+
+  function relayoutOrb() { drawRail(); placeOrb(); syncBallSizes(); wakeRing(); }
 
   function placeOrb() {
-    const OB = Math.round(RINGpx() * 2.1);
+    const OB = M().ob;
     orbBox.style.width = OB + "px"; orbBox.style.height = OB + "px";
     orbBox.style.left = orbCX() - OB / 2 + "px"; orbBox.style.top = orbCY() - OB / 2 + "px";
     resizeThreeOrb?.(OB);
+    // Nothing is drawn outside the ring: clip the canvas to the ring's outer edge
+    // (the kit's own framing hides the cage there; ours is clipped explicitly).
+    orbBox.style.clipPath = `circle(${M().clipR}px at 50% 50%)`;
+    const g = gripPosition(orbCX(), orbCY(), FOOT_R());
+    orbGrip.style.left = g.x - 8 + "px"; orbGrip.style.top = g.y - 8 + "px";
   }
 
   /* ---- 3D orb: three.js particle sphere (dashboard.html:3483-3736), vendored
@@ -499,7 +577,7 @@ export function mountRing(root) {
   async function mountOrb() {
     try {
       const THREE = await import(THREE_URL);
-      resizeThreeOrb = buildThreeOrb(THREE, orbBox, LIGHT, teardown.stopped);
+      resizeThreeOrb = buildThreeOrb(THREE, orbBox, LIGHT, teardown.stopped, () => LAY.orb.z);
     } catch (err) {
       console.warn("ring.js: three.js orb unavailable, falling back to a plain portal circle", err);
       orbBox.classList.add("orb-fallback");
@@ -529,7 +607,7 @@ export function mountRing(root) {
   pullArtifacts();
   const pollId = setInterval(pullArtifacts, POLL_MS);
   teardown.timers.push(pollId);
-  on(window, "resize", () => { drawRail(); placeOrb(); wakeRing(); });
+  on(window, "resize", relayoutOrb);
   // Task 13: skills-deck.js dispatches this right after a run finishes, so a
   // fresh report shows up on the ring immediately instead of waiting up to
   // POLL_MS for the next scheduled poll.
@@ -542,14 +620,15 @@ export function mountRing(root) {
 }
 
 /* ---- 3D orb particle build, split out for readability. Ported from
-   dashboard.html:3494-3716; dropped: zoom/localStorage, the tweak-panel hue
-   dials, drag-to-spin momentum, the singularity collapse effect and the
+   dashboard.html:3494-3716; dropped: localStorage zoom (z comes from the saved
+   layout's orb block instead), the tweak-panel hue
+   dials, the singularity collapse effect and the
    spin-reward quote card (none of those hooks exist in this project). Kept:
    the swirling particle "arms" in the Second Brain's own domain palette, the
    icosahedron shell, the wireframe cage, and the small core cube mark -
    the visual identity that makes this read as a portal rather than a plain
-   button. Auto-rotates; no drag-to-spin (out of scope for this task). ---- */
-function buildThreeOrb(THREE, box, LIGHT, stopped) {
+   button. Auto-rotates, and window.__orbSpin adds the kit's drag-to-spin momentum. ---- */
+function buildThreeOrb(THREE, box, LIGHT, stopped, getZoom) {
   const sr2 = (i) => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
   const renderer = new THREE.WebGLRenderer({ alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
@@ -689,16 +768,33 @@ function buildThreeOrb(THREE, box, LIGHT, stopped) {
   for (let i = 0; i < 6; i++) { const j = (i + 1) % 6; seg.push(t6[i], t6[j], b6[i], b6[j], t6[i], b6[i]); }
   const cageMat = new THREE.LineBasicMaterial({ color: LIGHT ? 0x0c1e2f : 0xe8e2d2, transparent: true, opacity: LIGHT ? .18 : .26 });
   const cage = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(seg), cageMat);
-  group.add(cage);
+  // The reference screenshot (the owner's target look) shows no hexagonal cage at
+  // all: just the particle cloud inside the geodesic wireframe. At the zoom that
+  // reproduces its proportions the kit's cage (RH=19) lands inside the ring as a
+  // large hexagon, so it is built but not added to the scene.
+  const SHOW_CAGE = false;
+  if (SHOW_CAGE) group.add(cage);
 
+  /* drag-to-spin in use mode: the throw carries momentum, then eases back to
+     the idle drift (dashboard.html:3859-3870, 4068-4082). */
+  let spinX = 0, spinY = 0;
+  window.__orbSpin = (dx, dy) => { spinY += dx; spinX += dy; };
+  window.__orbRotY = () => group.rotation.y; // read-back for verification, same name as the kit
   let last2 = performance.now();
   (function loop(now) {
     if (stopped.value) return; // ring was torn down (a repeat mountRing() call) - stop rendering a detached canvas
     const dt = Math.min(.05, (now - last2) / 1000); last2 = now;
     const t = now / 1000;
-    group.rotation.y += dt * .06;
+    group.rotation.y += dt * .06 + spinY;
+    group.rotation.x += spinX;
+    spinX *= .9; spinY *= .9; // momentum decay after the throw
     cage.rotation.z += dt * .12;
-    group.scale.setScalar(1 + .018 * Math.sin(t * 1.3));
+    // zoom (saved orb.z, kit default 2.6) scales the group so the particle
+    // sphere fills the ring and the outer hex cage (RH=19) sits outside the
+    // camera frame, exactly as in the kit.
+    const zoom = getZoom();
+    box.classList.toggle("front", zoom > 1.02);
+    group.scale.setScalar(zoom * (1 + .018 * Math.sin(t * 1.3)));
     group.traverse((o) => { if (o.material?.uniforms) o.material.uniforms.uTime.value = t; });
     renderer.render(scene, camera);
     requestAnimationFrame(loop);

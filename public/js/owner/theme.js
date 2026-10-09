@@ -11,7 +11,7 @@ const themeBtn = document.getElementById("theme-btn");
 themeBtn.title = document.documentElement.classList.contains("light") ? "Switch to dark theme" : "Switch to light theme";
 themeBtn.addEventListener("click", async () => {
   const next = document.documentElement.classList.toggle("light") ? "light" : "dark";
-  layout = await saveLayout({ ...layout, theme: next });
+  layout = await saveLayout({ ...layout, theme: next }); // `layout` is the shared live object (see layout-client.js)
   location.reload(); // full reload, matching the reference kit's own theme-switch mechanic (canvas colors can't live-update)
 });
 
