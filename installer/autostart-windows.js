@@ -42,15 +42,22 @@ export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, launcherDi
 
 // WScript.Shell's CreateShortcut is the standard dependency-free way to make a
 // .lnk on Windows; cscript ships with every Windows install, no admin needed.
-export function createDesktopShortcut({ nodeBin, dashboardBin, vaultPath, desktopDir, spawnSyncImpl = defaultSpawnSync }) {
-  const shortcutPath = join(desktopDir, "Blueprint OS.lnk");
+//
+// name / extraArgs / description are optional so the same function writes the
+// second icon ("Blueprint OS Staff Chat", extraArgs ["--open", "/employee"]). Extra args are
+// appended after the two quoted paths; a plain token (letters, digits and / _ - . ? = & %) is
+// left bare, anything else is quoted like the paths.
+export function createDesktopShortcut({ nodeBin, dashboardBin, vaultPath, desktopDir, name = "Blueprint OS", extraArgs = [], description = name, spawnSyncImpl = defaultSpawnSync }) {
+  const shortcutPath = join(desktopDir, `${name}.lnk`);
+  const esc = (v) => String(v).replace(/\\/g, "\\\\");
+  const extra = extraArgs.map((a) => (/^[A-Za-z0-9/_\-.?=&%]+$/.test(a) ? esc(a) : vbsQuote(esc(a)))).join(" ");
   const vbs = `
 Set oShell = CreateObject("WScript.Shell")
 Set oShortcut = oShell.CreateShortcut("${shortcutPath.replace(/\\/g, "\\\\")}")
 oShortcut.TargetPath = "${nodeBin.replace(/\\/g, "\\\\")}"
-oShortcut.Arguments = """${dashboardBin.replace(/\\/g, "\\\\")}"" ""${vaultPath.replace(/\\/g, "\\\\")}"""
+oShortcut.Arguments = """${dashboardBin.replace(/\\/g, "\\\\")}"" ""${vaultPath.replace(/\\/g, "\\\\")}""${extra ? " " + extra : ""}"
 oShortcut.WorkingDirectory = "${vaultPath.replace(/\\/g, "\\\\")}"
-oShortcut.Description = "Blueprint OS"
+oShortcut.Description = "${description}"
 oShortcut.Save
 `.trim();
   // Best-effort per the plan's Global Constraints: a locked-down desktopDir,

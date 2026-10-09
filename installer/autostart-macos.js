@@ -60,16 +60,19 @@ export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, homeOverri
 
 // A minimal double-clickable .app: no Xcode, no bundler — just the three
 // files Finder/LaunchServices require to treat a folder as an application.
-export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir }) {
-  const appPath = join(desktopDir, "Blueprint OS.app");
+//
+// name / extraArgs / bundleId are optional so the same function writes the second icon
+// ("Blueprint OS Staff Chat", extraArgs ["--open", "/employee"], its own bundle identifier).
+export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir, name = "Blueprint OS", extraArgs = [], bundleId = LABEL }) {
+  const appPath = join(desktopDir, `${name}.app`);
   const macosDir = join(appPath, "Contents", "MacOS");
   const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Blueprint OS</string>
-  <key>CFBundleExecutable</key><string>Blueprint OS</string>
-  <key>CFBundleIdentifier</key><string>${xmlEscape(LABEL)}</string>
+  <key>CFBundleName</key><string>${xmlEscape(name)}</string>
+  <key>CFBundleExecutable</key><string>${xmlEscape(name)}</string>
+  <key>CFBundleIdentifier</key><string>${xmlEscape(bundleId)}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
 </dict>
 </plist>
@@ -81,14 +84,14 @@ export function createDesktopApp({ nodeBin, dashboardBin, vaultPath, desktopDir 
   // once it knows the real port, and this launcher passes no --no-browser.
   // Values are single-quoted: a $, backtick or " in a path would otherwise
   // expand or break out of the double-quoted form this used to use.
-  const launcher = `#!/bin/bash\nexec ${shQuote(nodeBin)} ${shQuote(dashboardBin)} ${shQuote(vaultPath)}\n`;
+  const launcher = `#!/bin/bash\nexec ${[nodeBin, dashboardBin, vaultPath, ...extraArgs].map(shQuote).join(" ")}\n`;
   // Best-effort per the plan's Global Constraints: this function previously had
   // no failure path at all despite three fallible fs calls — a locked-down
   // Desktop folder must report {ok:false}, not throw and abort the whole setup.
   try {
     mkdirSync(macosDir, { recursive: true });
     writeFileSync(join(appPath, "Contents", "Info.plist"), infoPlist, "utf8");
-    const exePath = join(macosDir, "Blueprint OS");
+    const exePath = join(macosDir, name);
     writeFileSync(exePath, launcher, "utf8");
     chmodSync(exePath, 0o755);
     return { ok: true, path: appPath };

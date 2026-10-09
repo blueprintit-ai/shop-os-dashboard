@@ -7,6 +7,9 @@ import { JsonStore } from "../../src/lib/store.js";
 import * as win from "../autostart-windows.js";
 import * as mac from "../autostart-macos.js";
 
+const STAFF_ICON = "Blueprint OS Staff Chat";
+const STAFF_BUNDLE_ID = "ai.blueprintit.shop-os-dashboard.staff-chat";
+
 // Windows zip: <dir>/node_modules/npm/bin/npm-cli.js. Mac tarball/Homebrew: <dir>/../lib/node_modules/npm/bin/npm-cli.js.
 export function findNpmCli(nodeBin, exists) {
   const dir = dirname(nodeBin);
@@ -69,6 +72,12 @@ export function dashboardStep(deps = {}) {
         ? win.createDesktopShortcut({ nodeBin: node.node, dashboardBin, vaultPath: ctx.vaultPath, desktopDir, ...spawnOpt })
         : mac.createDesktopApp({ nodeBin: node.node, dashboardBin, vaultPath: ctx.vaultPath, desktopDir });
       if (!sc.ok) problems.push(`Could not create the desktop shortcut: ${sc.error}`);
+      // Second icon next to it: opens the staff page (/employee) in the same running dashboard.
+      const staffArgs = { name: STAFF_ICON, extraArgs: ["--open", "/employee"] };
+      const staffSc = isWin
+        ? win.createDesktopShortcut({ nodeBin: node.node, dashboardBin, vaultPath: ctx.vaultPath, desktopDir, ...staffArgs, description: STAFF_ICON, ...spawnOpt })
+        : mac.createDesktopApp({ nodeBin: node.node, dashboardBin, vaultPath: ctx.vaultPath, desktopDir, ...staffArgs, bundleId: STAFF_BUNDLE_ID });
+      if (!staffSc.ok) problems.push(`Could not create the staff chat desktop shortcut: ${staffSc.error}`);
       ctx.dashboardBin = dashboardBin;
       ctx.nodeBin = node.node;
       if (problems.length) throw new StepError(problems.join(" "));

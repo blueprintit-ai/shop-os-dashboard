@@ -109,3 +109,37 @@ test("registerAutoStart: the launcher is overwritten on re-run and a write failu
   const bad = registerAutoStart({ nodeBin: "n", dashboardBin: "d", vaultPath: "v", launcherDir: join(launcherDir, "start-dashboard.vbs", "nope"), spawnSyncImpl: () => ({ status: 0 }) });
   assert.equal(bad.ok, false);
 });
+
+// ---- the second desktop icon: Blueprint OS Staff Chat ----
+function vbsFor(opts) {
+  const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
+  const calls = [];
+  const spawnSyncImpl = (cmd, args) => { calls.push([cmd, args]); return { status: 0 }; };
+  const result = createDesktopShortcut({ nodeBin: "C:\\node.exe", dashboardBin: "C:\\dash.js", vaultPath: "C:\\Vault", desktopDir, spawnSyncImpl, ...opts });
+  const vbsPath = calls[0][1].find((a) => a.endsWith(".vbs"));
+  return { result, text: readFileSync(vbsPath).subarray(2).toString("utf16le"), bytes: readFileSync(vbsPath) };
+}
+
+test("createDesktopShortcut defaults are unchanged: Blueprint OS.lnk, two quoted args, description Blueprint OS", () => {
+  const { result, text } = vbsFor({});
+  assert.equal(result.path.endsWith("Blueprint OS.lnk"), true);
+  assert.ok(text.includes('oShortcut.Arguments = """C:\\\\dash.js"" ""C:\\\\Vault"""\r\n') || text.includes('oShortcut.Arguments = """C:\\\\dash.js"" ""C:\\\\Vault"""\n'), text);
+  assert.ok(text.includes('oShortcut.Description = "Blueprint OS"'));
+});
+
+test("createDesktopShortcut: name + extraArgs write 'Blueprint OS Staff Chat.lnk' with --open /employee after the quoted paths", () => {
+  const { result, text } = vbsFor({ name: "Blueprint OS Staff Chat", extraArgs: ["--open", "/employee"], description: "Blueprint OS Staff Chat" });
+  assert.equal(result.ok, true);
+  assert.equal(result.path.endsWith("Blueprint OS Staff Chat.lnk"), true);
+  assert.ok(text.includes('Staff Chat.lnk")'));
+  assert.ok(text.includes('oShortcut.Arguments = """C:\\\\dash.js"" ""C:\\\\Vault"" --open /employee"'), text);
+  assert.ok(text.includes('oShortcut.Description = "Blueprint OS Staff Chat"'));
+});
+
+test("createDesktopShortcut: staff icon keeps quoting for spaces and non-ASCII, still UTF-16 LE with BOM", () => {
+  const vaultPath = "C:\\Users\\Jos\u00e9 Garc\u00eda\\Blueprint OS";
+  const dashboardBin = "C:\\Users\\Jos\u00e9 Garc\u00eda\\.shopos\\app\\bin\\shop-os-dashboard.js";
+  const { text, bytes } = vbsFor({ vaultPath, dashboardBin, name: "Blueprint OS Staff Chat", extraArgs: ["--open", "/employee"] });
+  assert.deepEqual([...bytes.subarray(0, 2)], [0xFF, 0xFE]);
+  assert.ok(text.includes('"""C:\\\\Users\\\\Jos\u00e9 Garc\u00eda\\\\.shopos\\\\app\\\\bin\\\\shop-os-dashboard.js"" ""C:\\\\Users\\\\Jos\u00e9 Garc\u00eda\\\\Blueprint OS"" --open /employee"'), text);
+});

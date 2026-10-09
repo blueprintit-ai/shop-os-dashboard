@@ -143,6 +143,12 @@ function claudeBin() {
   return existsSync(p) ? p : "claude";
 }
 
+// The installer makes two desktop icons: the owner dashboard and the staff chat page.
+export const DESKTOP_ICONS = { win32: ["Blueprint OS.lnk", "Blueprint OS Staff Chat.lnk"], other: ["Blueprint OS.app", "Blueprint OS Staff Chat.app"] };
+export function checkDesktopIcons({ platform, desktop, exists = existsSync }) {
+  for (const name of DESKTOP_ICONS[platform === "win32" ? "win32" : "other"]) assert.ok(exists(join(desktop, name)), `desktop icon ${name}`);
+}
+
 function checkMachine(vault) {
   const claude = claudeBin();
   const v = spawnSync(claude, ["--version"], { encoding: "utf8" });
@@ -157,9 +163,9 @@ function checkMachine(vault) {
     assert.equal(spawnSync("schtasks", ["/query", "/tn", "ShopOSDashboard"]).status, 0, "scheduled task ShopOSDashboard registered");
     const d = spawnSync("powershell", ["-NoProfile", "-Command", "[Environment]::GetFolderPath('Desktop')"], { encoding: "utf8" });
     const desktop = d.status === 0 && d.stdout.trim() ? d.stdout.trim() : join(homedir(), "Desktop");
-    assert.ok(existsSync(join(desktop, "Blueprint OS.lnk")), "desktop shortcut Blueprint OS.lnk");
+    checkDesktopIcons({ platform: "win32", desktop });
   } else {
-    assert.ok(existsSync(join(homedir(), "Desktop", "Blueprint OS.app")), "desktop app Blueprint OS.app");
+    checkDesktopIcons({ platform: process.platform, desktop: join(homedir(), "Desktop") });
     assert.ok(existsSync(join(homedir(), "Library", "LaunchAgents", "ai.blueprintit.shop-os-dashboard.plist")), "LaunchAgent plist");
   }
 }
