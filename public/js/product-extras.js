@@ -14,7 +14,7 @@
     if (!s.vault?.reachable) bad.push('vault not reachable');
     if (s.claude && !s.claude.present) bad.push('Claude Code not found');
     else if (s.claude?.signedIn === 'no') bad.push('Claude is signed out');
-    else if (s.claude?.signedIn === 'unknown') warn.push('Claude sign-in not confirmed yet');
+    else if (s.claude?.signedIn === 'unknown') warn.push('Claude sign-in not confirmed yet (turns green after your first chat reply)');
     update = s.update?.updateAvailable ? s.update : null;
     if (update) warn.push('update available' + (update.latest ? ' (' + update.latest + ')' : ''));
     state = bad.length ? 'bad' : warn.length ? 'warn' : 'ok';
@@ -70,7 +70,33 @@
     attach();
   }
 
+  // The kit sizes its hex background, orb ring and grid canvases (and the widget cell size) once, from the window
+  // size at load (`const W = innerWidth, H = innerHeight`). If the browser window grows afterwards (Brave on
+  // Windows often loads into a smaller window, then maximises) the canvases stop short and a flat band shows
+  // where they end. The kit does the same on the Mac app; here we reload once the window size has settled, so
+  // the page is laid out for the size it is really shown at. Never while a chat turn is streaming.
+  function reloadOnResize() {
+    const base = { w: innerWidth, h: innerHeight };
+    let timer = null;
+    const settle = () => {
+      timer = null;
+      if (Math.abs(innerWidth - base.w) <= 8 && Math.abs(innerHeight - base.h) <= 8) return;
+      if (document.querySelector('#chatSend.stop') || document.body.classList.contains('dragging')) { timer = setTimeout(settle, 1000); return; }
+      location.reload();
+    };
+    addEventListener('resize', () => { if (timer) clearTimeout(timer); timer = setTimeout(settle, 500); });
+  }
+
+  // The dot reads /api/status, which changes when a chat turn finishes (Claude sign-in 'unknown' -> 'yes') or a
+  // problem is fixed: re-check right after a turn ends and every 20 s while anything is amber or red.
+  function watchStatus() {
+    const send = document.getElementById('chatSend');
+    if (send) new MutationObserver(() => { if (!send.classList.contains('stop')) refresh(); }).observe(send, { attributes: true, attributeFilter: ['class'] });
+    setInterval(() => { if (state !== 'ok') refresh(); }, 20 * 1000);
+  }
+
   async function init() {
+    reloadOnResize();
     let me = null;
     try { me = await (await fetch('/api/me')).json(); } catch (_) { return; }
     if (me?.user?.role !== 'owner') return;
@@ -78,6 +104,7 @@
     attach();
     await refresh();
     setInterval(refresh, 5 * 60 * 1000);
+    watchStatus();
   }
   init();
 })();

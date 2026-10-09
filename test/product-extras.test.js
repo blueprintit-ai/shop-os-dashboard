@@ -248,3 +248,22 @@ test("license gate: owner-run pages (users, settings, status, update) keep worki
     assert.match(page, /Users, settings and updates still work/);
   } finally { b.cleanup(); }
 });
+
+test("toolbar extras: an unknown Claude sign-in is explained in the dot's title, and the dot re-checks when a chat turn ends", async () => {
+  let status = { ...goodStatus, claude: { present: true, signedIn: "unknown" } };
+  const dom = new JSDOM(`<!doctype html><body><div class="tbar"><button id="themeBtn"></button></div><button id="chatSend"></button></body>`, { runScripts: "outside-only", url: "http://dash.test/owner" });
+  doms.push(dom);
+  const w = dom.window;
+  w.fetch = async (url) => ({ ok: true, status: 200, json: async () => (url === "/api/me" ? { user: { role: "owner" } } : url === "/api/status" ? status : {}) });
+  w.eval(read("public/js/product-extras.js"));
+  await sleep(40);
+  const dot = () => w.document.getElementById("statusBtn");
+  assert.equal(dot().dataset.state, "warn");
+  assert.match(dot().title, /Claude sign-in not confirmed yet.*first chat reply/);
+  // a turn starts (SEND -> STOP) and ends: the server now knows Claude answered
+  const send = w.document.getElementById("chatSend");
+  send.classList.add("stop"); await sleep(10);
+  status = goodStatus;
+  send.classList.remove("stop"); await sleep(60);
+  assert.equal(dot().dataset.state, "ok");
+});

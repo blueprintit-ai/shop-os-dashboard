@@ -274,3 +274,130 @@ test("an artifact opens inline under the CSP sandbox: its script runs but cannot
     await expect(page.locator("body")).not.toBeEmpty();
   } finally { b.cleanup(); }
 });
+
+// ---- VM-like viewports (Brave on Windows at 125% / 150% display scaling) ----
+const VM_VIEWPORTS = [[1624, 910, 1.25], [1353, 758, 1.5]];
+
+async function openOwnerIn(browser, b, viewport, dpr) {
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor: dpr });
+  const page = await ctx.newPage(); // NOT pre-seeding os-tour-seen: a fresh browser profile runs the first-run tour
+  await openOwner(page, b, { tourSeen: false });
+  return { ctx, page };
+}
+
+// An element is "opaque cover" when it paints a non-transparent background over a big area of the viewport.
+const OPAQUE_COVER = () => {
+  const out = [];
+  for (const el of document.querySelectorAll("body *")) {
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || +cs.opacity < 0.5 || cs.pointerEvents === "none") continue;
+    if (cs.position !== "fixed" && cs.position !== "absolute") continue;
+    const m = cs.backgroundColor.match(/rgba?\(([^)]+)\)/); const p = m ? m[1].split(",").map(Number) : [0, 0, 0, 0];
+    if ((p.length > 3 ? p[3] : 1) < 0.5) continue;
+    const r = el.getBoundingClientRect();
+    out.push({ id: el.id, cls: String(el.className), x: r.x, y: r.y, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight });
+  }
+  return out;
+};
+
+for (const [w, h, dpr] of VM_VIEWPORTS) {
+  test(`${w}x${h}@${dpr}: nothing opaque covers the orb or the lower-left widgets; the STATS resize handle is hit-testable`, async ({ browser }) => {
+    const b = await bootAsOwner();
+    const { ctx, page } = await openOwnerIn(browser, b, { width: w, height: h }, dpr);
+    try {
+      await page.waitForTimeout(2500);
+      const covers = await page.evaluate(OPAQUE_COVER);
+      // the only opaque fixed layers are the chat bar (bottom 62px) and parked/hidden overlays
+      for (const c of covers) {
+        const overlapsOrb = c.y < c.vh - 70 && c.w > c.vw * 0.3 && c.h > 60;
+        expect(overlapsOrb, `${c.id || c.cls} covers [${c.x},${c.y},${c.w},${c.h}]`).toBe(false);
+      }
+      // points inside the old "band" resolve to the page background / canvases / widgets, never an opaque panel
+      for (const [fx, fy] of [[0.1, 0.8], [0.35, 0.78], [0.5, 0.8], [0.6, 0.85]]) {
+        const hit = await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e ? { tag: e.tagName, id: e.id, bg: getComputedStyle(e).backgroundColor } : null; }, [fx * w, fy * h]);
+        expect(["BODY", "HTML", "CANVAS", "DIV"]).toContain(hit.tag);
+        expect(hit.id).not.toMatch(/chatLog|brainWrap|brainFrame/);
+      }
+      // the hex background, ring and grid canvases cover the whole window (no flat band below them)
+      const sizes = await page.evaluate(() => ["hexCv", "ringCv", "gridCv"].map((id) => { const c = document.getElementById(id); return [parseFloat(c.style.width), parseFloat(c.style.height), innerWidth, innerHeight]; }));
+      for (const [cw, ch, iw, ih] of sizes) { expect(cw).toBe(iw); expect(ch).toBe(ih); }
+      // edit mode: the STATS widget's resize handle is the element under its own centre
+      await page.click("#editBtn");
+      const hit = await page.evaluate(() => {
+        const rs = document.querySelector("#w-yt .rs"); const r = rs.getBoundingClientRect();
+        const e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return { same: e === rs, tag: e && e.tagName, cls: e && String(e.className), w: r.width, h: r.height, inView: r.bottom <= innerHeight && r.right <= innerWidth };
+      });
+      expect(hit.same, JSON.stringify(hit)).toBe(true);
+    } finally { await ctx.close(); b.cleanup(); }
+  });
+}
+
+test("loading small and then growing the window re-lays the page out for the real size (no flat band under the orb ring)", async ({ browser }) => {
+  const b = await bootAsOwner();
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.25 });
+  const page = await ctx.newPage();
+  try {
+    await openOwner(page, b, { tourSeen: false });
+    await page.waitForTimeout(1500);
+    await page.setViewportSize({ width: 1624, height: 910 });
+    await expect.poll(() => page.evaluate(() => document.getElementById("ringCv").style.height).catch(() => ""), { timeout: 10000 }).toBe("910px");
+    const sizes = await page.evaluate(() => ["hexCv", "ringCv", "gridCv"].map((id) => document.getElementById(id).style.width + "x" + document.getElementById(id).style.height));
+    expect(sizes).toEqual(["1624pxx910px", "1624pxx910px", "1624pxx910px"]);
+    await page.screenshot({ path: join(process.env.PW_SHOTS || ".", "resized.png") }).catch(() => {});
+  } finally { await ctx.close(); b.cleanup(); }
+});
+
+test("an open chat log is the one opaque panel allowed over the lower page, and closing it clears it", async ({ browser }) => {
+  const b = await bootAsOwner();
+  const { ctx, page } = await openOwnerIn(browser, b, { width: 1624, height: 910 }, 1.25);
+  try {
+    await page.fill("#chatIn", "hi"); await page.click("#chatSend");
+    await expect(page.locator("#chatLog .cm.ai .body")).toContainText("ok");
+    expect(await page.evaluate(() => getComputedStyle(document.getElementById("chatLog")).display)).toBe("block");
+    await page.click("#chatTog");
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.getElementById("chatLog")).display)).toBe("none");
+    const covers = (await page.evaluate(OPAQUE_COVER)).filter((c) => c.y < c.vh - 70 && c.w > c.vw * 0.3 && c.h > 60);
+    expect(covers).toEqual([]);
+  } finally { await ctx.close(); b.cleanup(); }
+});
+
+// ---- the light/dark toggle must always draw ----
+test("the theme toggle holds an inline <svg> with a visible glyph in dark and in light, and toggles the theme", async ({ browser }) => {
+  const b = await bootAsOwner();
+  const { ctx, page } = await openOwnerIn(browser, b, { width: 1353, height: 758 }, 1.5);
+  try {
+    const glyph = () => page.evaluate(() => {
+      const svg = document.querySelector("#themeBtn svg");
+      const vis = [...svg.querySelectorAll("circle,path")].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 4 && r.height > 4 && getComputedStyle(e).display !== "none" && !e.closest("g[style*='none']"); });
+      const sun = svg.querySelector(".th-sun"), moon = svg.querySelector(".th-moon");
+      return { n: vis.length, sun: getComputedStyle(sun).display, moon: getComputedStyle(moon).display, light: document.documentElement.classList.contains("light") };
+    });
+    let g = await glyph();
+    expect(g.light).toBe(false); expect(g.sun).not.toBe("none"); expect(g.moon).toBe("none"); expect(g.n).toBeGreaterThan(0);
+    await page.click("#themeBtn");
+    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains("light"))).toBe(true);
+    await expect(page.locator("#w-rt .wh")).toBeVisible();
+    g = await glyph();
+    expect(g.sun).toBe("none"); expect(g.moon).not.toBe("none"); expect(g.n).toBeGreaterThan(0);
+    // still drawn (and clickable) after the kit rebuilds its title widget: the delegated handler and inline glyphs live in the markup
+    await page.evaluate(() => { const bar = document.querySelector(".tbar"); bar.parentElement.replaceChild(bar.cloneNode(true), bar); });
+    expect((await glyph()).n).toBeGreaterThan(0);
+    await page.click("#themeBtn");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("os-theme"))).toBe("dark");
+  } finally { await ctx.close(); b.cleanup(); }
+});
+
+// ---- status dot ----
+test("the status dot explains an unknown Claude sign-in and goes green after a successful chat turn", async ({ page }) => {
+  const b = await bootAsOwner();
+  try {
+    await openOwner(page, b);
+    const dot = page.locator("#statusBtn");
+    await expect(dot).toHaveAttribute("data-state", "warn");
+    await expect(dot).toHaveAttribute("title", /Claude sign-in not confirmed yet.*first chat reply/);
+    await page.fill("#chatIn", "hi"); await page.click("#chatSend");
+    await expect(page.locator("#chatLog .cm.ai .body")).toContainText("ok");
+    await expect(dot).toHaveAttribute("data-state", "ok", { timeout: 8000 });
+  } finally { b.cleanup(); }
+});

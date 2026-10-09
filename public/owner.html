@@ -176,6 +176,7 @@
   .tbar button svg { width:100%; height:100%; stroke:var(--mute); fill:none; stroke-width:2;
     stroke-linecap:round; stroke-linejoin:round; transition:stroke .15s; }
   .tbar button:hover svg { stroke:var(--accent); }
+  html.light #themeBtn .th-sun, html:not(.light) #themeBtn .th-moon { display:none; }
   body.edit #editBtn svg, body.searchopen #searchBtn svg { stroke:var(--accent); }
   /* the search floats dead-centre over the orb as a rounded pill-rect,
      and the orb behind it falls out of focus while it's open */
@@ -707,6 +708,7 @@
     scrollbar-color:rgba(var(--ink),.25) transparent; }
   #chatLog.on { display:block; }
   body.chatcollapsed #chatLog { display:none; }
+  body.edit #chatBar, body.edit #chatLog { pointer-events:none; opacity:.35; }
   .cm { max-width:920px; margin:0 auto 12px; padding:0 0 0 12px; border-left:2px solid rgba(var(--ink),.18); }
   .cm.user { border-left-color:var(--accent); }
   .cm .who { font-size:8.5px; letter-spacing:2.6px; color:var(--mute); margin-bottom:4px; text-transform:uppercase; }
@@ -1411,7 +1413,7 @@ function buildWidgets() {
           <button id="libBtn" title="Widget library"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="12" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="13" width="7" height="8" rx="1.5"/><rect x="3" y="18" width="8" height="3" rx="1.5"/></svg></button>
           <button id="profileBtn" title="Dashboard profile"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="1.8"/><path d="M8 21h8M12 17v4"/></svg></button>
           <button id="infoBtn" title="What is all this?"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/></svg></button>
-          <button id="themeBtn" title="Toggle light / dark"><svg viewBox="0 0 24 24"></svg></button>
+          <button id="themeBtn" title="Toggle light / dark"><svg viewBox="0 0 24 24"><g class="th-sun"><circle cx="12" cy="12" r="4.6"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5 5l1.9 1.9M17.1 17.1L19 19M19 5l-1.9 1.9M6.9 17.1L5 19"/></g><g class="th-moon"><path d="M20.4 14.2A8.6 8.6 0 0 1 9.8 3.6a8.6 8.6 0 1 0 10.6 10.6z"/></g></svg></button>
         </div>
         </div><div class="rs"></div>`;
     } else if (w.id === 'w-sk') {
@@ -4440,8 +4442,8 @@ window.CHATCFG = (() => { try { return JSON.parse(localStorage.getItem('os-chat-
   if (themeBtn) {
     const SUNPATH = '<circle cx="12" cy="12" r="4.6"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5 5l1.9 1.9M17.1 17.1L19 19M19 5l-1.9 1.9M6.9 17.1L5 19"/>';
     const MOONPATH = '<path d="M20.4 14.2A8.6 8.6 0 0 1 9.8 3.6a8.6 8.6 0 1 0 10.6 10.6z"/>';
-    themeBtn.querySelector('svg').innerHTML = LIGHT ? MOONPATH : SUNPATH;
-    themeBtn.addEventListener('click', () => {
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#themeBtn')) return;
       localStorage.setItem('os-theme', LIGHT ? 'dark' : 'light');
       location.reload();
     });
