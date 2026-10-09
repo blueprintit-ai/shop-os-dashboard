@@ -18,6 +18,22 @@ The script applies only the named, anchored rules in `RULES` (fonts to `public/c
 
 Everything below describes the kit's own reskin contract; read `public/owner.html` as "the kit's `dashboard.html`" and make the edit upstream.
 
+## The Second Brain page (`/brain`) is synced from its own kit
+
+`public/brain.html` and `public/brain/_core.js`, `_core.css`, `_flows2.js`, `_icons.js` are **generated** from the RoboNuggets `second-brain` kit (a modified Rubric Second Brain, CC BY 4.0; its `public/` folder; location not baked into the repo) by `tools/sync-brain.mjs`. It is a separate module with its own rule list and its own lock, so it never conflicts with `tools/sync-kit.mjs`. Do not hand-edit the generated files; change the kit and re-sync:
+
+```bash
+node tools/sync-brain.mjs <kit-folder>          # or set BRAIN_KIT_DIR; required, there is no default path
+node tools/sync-brain.mjs --check <kit-folder>  # exit 1 if the committed files are out of sync
+BRAIN_KIT_DIR=<kit-folder> node --test test/brain-parity.test.js  # fresh sync == committed; only the named rules differ; kit not moved on
+node --test test/brain-lock.test.js             # always on, no kit needed: tools/sync-brain.lock.json pins sha256 of the raw kit inputs,
+                                                # the generated files and the rule set
+```
+
+The kit folder is the second-brain root (it holds `public/index.html`). The kit files use CRLF; the sync normalizes text to LF first (the lock hashes the raw bytes). Only the kit's `public/` page files are used. The rules (`RULES` in the tool, each anchored to exact kit text, the sync fails loudly when an anchor moves or a replaced span exceeds its byte cap): Google Fonts to `public/css/brain-fonts.css` (Outfit and Source Serif 4 italic, local woff2); the d3 and marked CDN scripts to `/static/vendor/d3.min.js` and `marked.min.js`, plus `/static/js/brain-safe.js` (the viewer sanitizer); relative asset paths to `/static/brain/`; one rule per kit API literal, `/api/...` to `/api/brain/...` (graph, expand x2, tweak x3, file, bake, rescan, graph reload, search; `open` is inside the open rule); the title and HUD subtitle to the shop name (`__SHOP_NAME__`, `__BRAIN_TAGLINE_JS__`, filled by `src/routes/pages.js`); the brand word to BLUEPRINT OS; the DASHBOARD button to `/owner`; Open to the notes viewer URL instead of a server-side shell open; Copy path without the kit author's drive prefix; the viewer's markdown output through `brainSafeHtml`; no runtime icon-CDN fetch; and the kit author's own icon set in `_icons.js` emptied (the baked brand paths stay).
+
+The kit's `server.js` and `scan.js` are not used (and `brain.js`, its recall CLI, is out of scope). The product implements the same JSON in `src/routes/brain-routes.js` on `src/brain/` (`scan.js` the walker/graph builder with caps, `store.js` the cache + tweaks + bake, `files.js` the confined file reader, `skills.js` the Skills ring source, `defaults.js` the Blueprint OS departments). The map's departments follow the vault folders; to adjust them, add `Dashboard/brain/departments.json` (`departments`, `pathRules`, `default`, same shape as the kit's config; invalid rows are dropped). Tweaks (Remove/Edit) are stored in `Dashboard/brain/tweaks.json`, Bake in `Dashboard/brain/bake.json`.
+
 ## Where the look lives
 
 1. **CSS tokens** - the `:root` block at the very top of the page's `<style>`:
