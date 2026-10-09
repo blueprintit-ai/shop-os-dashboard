@@ -560,6 +560,9 @@ export function mountRing(root, layout) {
     orbBox.style.width = OB + "px"; orbBox.style.height = OB + "px";
     orbBox.style.left = orbCX() - OB / 2 + "px"; orbBox.style.top = orbCY() - OB / 2 + "px";
     resizeThreeOrb?.(OB);
+    // Nothing is drawn outside the ring: clip the canvas to the ring's outer edge
+    // (the kit's own framing hides the cage there; ours is clipped explicitly).
+    orbBox.style.clipPath = `circle(${M().clipR}px at 50% 50%)`;
     const g = gripPosition(orbCX(), orbCY(), FOOT_R());
     orbGrip.style.left = g.x - 8 + "px"; orbGrip.style.top = g.y - 8 + "px";
   }
@@ -765,7 +768,12 @@ function buildThreeOrb(THREE, box, LIGHT, stopped, getZoom) {
   for (let i = 0; i < 6; i++) { const j = (i + 1) % 6; seg.push(t6[i], t6[j], b6[i], b6[j], t6[i], b6[i]); }
   const cageMat = new THREE.LineBasicMaterial({ color: LIGHT ? 0x0c1e2f : 0xe8e2d2, transparent: true, opacity: LIGHT ? .18 : .26 });
   const cage = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(seg), cageMat);
-  group.add(cage);
+  // The reference screenshot (the owner's target look) shows no hexagonal cage at
+  // all: just the particle cloud inside the geodesic wireframe. At the zoom that
+  // reproduces its proportions the kit's cage (RH=19) lands inside the ring as a
+  // large hexagon, so it is built but not added to the scene.
+  const SHOW_CAGE = false;
+  if (SHOW_CAGE) group.add(cage);
 
   /* drag-to-spin in use mode: the throw carries momentum, then eases back to
      the idle drift (dashboard.html:3859-3870, 4068-4082). */

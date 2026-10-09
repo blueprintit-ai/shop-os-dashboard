@@ -151,7 +151,7 @@ test("LayoutStore.save() accepts a valid orb block and normalizes anything else"
 
   // junk values -> per-field defaults, out-of-range -> clamped, extra keys dropped
   const junk = store.save("u3", { ...defaultLayout(), orb: { c: "x", r: 9999, s: 50, z: null, evil: 1 } });
-  assert.deepEqual(junk.orb, { c: 16, r: 60, s: 1.7, z: 2.6 });
+  assert.deepEqual(junk.orb, { c: 16, r: 60, s: 1.7, z: 2.15 });
   assert.deepEqual(store.save("u4", { orb: "nope" }).orb, defaultLayout().orb);
   assert.deepEqual(store.save("u5", { orb: [1, 2] }).orb, defaultLayout().orb);
 
@@ -164,6 +164,13 @@ test("LayoutStore.get() repairs an orb block that an older/hand-edited file stor
   writeFileSync(join(home, "layouts", "u.json"), JSON.stringify({ ...defaultLayout(), orb: { c: 1, r: "q", s: 0, z: 2.6 } }));
   const got = new LayoutStore(home).get("u");
   assert.deepEqual(got.orb, { c: 1, r: 9, s: 0.5, z: 2.6 });
+  // the old default saved by every earlier install is "unset": new defaults on get
+  writeFileSync(join(home, "layouts", "legacy.json"), JSON.stringify({ ...defaultLayout(), orb: { c: 16, r: 9, s: 1.7, z: 2.6 } }));
+  assert.deepEqual(new LayoutStore(home).get("legacy").orb, defaultLayout().orb);
+  assert.deepEqual(defaultLayout().orb, { c: 16, r: 9, s: 1.12, z: 2.15 });
+  // a layout the user really changed keeps its values
+  writeFileSync(join(home, "layouts", "mine.json"), JSON.stringify({ ...defaultLayout(), orb: { c: 16, r: 9, s: 1.7, z: 2.2 } }));
+  assert.deepEqual(new LayoutStore(home).get("mine").orb, { c: 16, r: 9, s: 1.7, z: 2.2 });
   writeFileSync(join(home, "layouts", "old.json"), JSON.stringify({ theme: "dark", widgets: [], removed: [] })); // pre-orb file
   assert.deepEqual(new LayoutStore(home).get("old").orb, defaultLayout().orb);
   rmSync(home, { recursive: true, force: true });

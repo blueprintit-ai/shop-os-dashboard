@@ -12,7 +12,14 @@
 //   placeOrb box size (RINGpx * 2.1) .............. lines 2283-2290
 
 export const COLS = 32;
-export const ORB_DEFAULT = Object.freeze({ c: 16, r: 9, s: 1.7, z: 2.6 });
+// Defaults reproduce the reference screenshot's proportions (measured from
+// reference-look.png: ring outer edge = 20.1% of the viewport width, wireframe
+// radius = 60% of the ring's outer radius), i.e. the kit author's saved tweaks,
+// not the kit's raw s 1.7 / z 2.6.
+export const ORB_DEFAULT = Object.freeze({ c: 16, r: 9, s: 1.12, z: 2.15 });
+// What every install saved before the proportions fix (the old default). A
+// stored orb block equal to this is "never touched by the user": see migrateOrb.
+export const ORB_LEGACY_DEFAULT = Object.freeze({ c: 16, r: 9, s: 1.7, z: 2.6 });
 // [min, max] per field. c/r use the kit's drag clamp (an orb may sit up to 6
 // cells off screen); r's upper bound is generous because ROWS depends on the
 // screen. s is the kit's resize clamp; z (three.js zoom) is a sanity range.
@@ -42,6 +49,15 @@ export function normalizeOrb(orb) {
   return out;
 }
 
+// A saved block that is exactly the legacy default was never changed by the
+// user (the client saves the whole layout, orb included, on any edit), so it
+// moves to the new default. Anything the user actually changed is left alone.
+export function migrateOrb(orb) {
+  const o = normalizeOrb(orb);
+  const same = ["c", "r", "s", "z"].every((k) => o[k] === ORB_LEGACY_DEFAULT[k]);
+  return same ? { ...ORB_DEFAULT } : o;
+}
+
 export const rowsFor = (H, cell) => Math.max(6, Math.floor(H / cell + .001));
 
 export function orbMetrics(orb, W, H) {
@@ -61,6 +77,8 @@ export function orbMetrics(orb, W, H) {
     cx: orb.c * cell, cy: orb.r * cell,
     ring, ball, footR: ring + ball / 2 + FOOT_PAD * k,
     ob: Math.round(ring * 2.1), k,
+    // outer edge of the ring band (ring + half the band width, 30 cell-units): the orb canvas is clipped to this
+    clipR: ring + 30 * k,
   };
 }
 

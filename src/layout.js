@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { JsonStore } from "./lib/store.js";
-import { ORB_DEFAULT, normalizeOrb } from "../public/js/owner/orb-math.js";
+import { ORB_DEFAULT, normalizeOrb, migrateOrb } from "../public/js/owner/orb-math.js";
 
 export function defaultLayout() {
   return {
@@ -36,7 +36,7 @@ export class LayoutStore {
     const l = this.#storeFor(userId).load();
     // Older files have no orb block and hand edits can break it; the client
     // trusts this shape (ring.js feeds it straight into the orb geometry).
-    return l && typeof l === "object" ? { ...l, orb: normalizeOrb(l.orb) } : l;
+    return l && typeof l === "object" ? { ...l, orb: migrateOrb(l.orb) } : l;
   }
   // Post-review fix (finding 8): PUT /api/layout hands this whatever the
   // request body parsed to (src/routes/layout-routes.js does no validation

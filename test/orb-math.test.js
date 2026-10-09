@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  ORB_DEFAULT, ORB_LIMITS, COLS, normalizeOrb, orbMetrics, snapHalf, resizeScale, dragPosition, gripPosition, rowsFor,
+  ORB_DEFAULT, ORB_LEGACY_DEFAULT, migrateOrb, ORB_LIMITS, COLS, normalizeOrb, orbMetrics, snapHalf, resizeScale, dragPosition, gripPosition, rowsFor,
 } from "../public/js/owner/orb-math.js";
 
 test("normalizeOrb: missing or non-object input becomes the defaults (a fresh copy)", () => {
@@ -10,7 +10,7 @@ test("normalizeOrb: missing or non-object input becomes the defaults (a fresh co
     assert.deepEqual(o, ORB_DEFAULT);
     assert.notEqual(o, ORB_DEFAULT);
   }
-  assert.deepEqual(ORB_DEFAULT, { c: 16, r: 9, s: 1.7, z: 2.6 });
+  assert.deepEqual(ORB_DEFAULT, { c: 16, r: 9, s: 1.12, z: 2.15 });
 });
 
 test("normalizeOrb: keeps valid numbers, defaults non-numbers per field, clamps out-of-range, drops extra keys", () => {
@@ -48,11 +48,12 @@ test("orbMetrics: small-window clamp keeps the footprint inside 56% of the viewp
   assert.ok(m.sEff < 1.7);
   // the common desktop sizes are NOT clamped
   for (const [w, h] of [[1280, 720], [1366, 768], [1600, 900], [1920, 1080], [2560, 1440], [1440, 900]]) {
-    assert.equal(orbMetrics(ORB_DEFAULT, w, h).clamped, false, `${w}x${h}`);
+    assert.equal(orbMetrics(ORB_LEGACY_DEFAULT, w, h).clamped, false, `${w}x${h}`);
+    assert.equal(orbMetrics(ORB_DEFAULT, w, h).clamped, false, `${w}x${h} new default`);
   }
   // 2:1 and ultrawide windows would run the ring off the bottom: shrink to fit
   for (const [w, h] of [[2000, 1000], [3440, 1440]]) {
-    const m = orbMetrics(ORB_DEFAULT, w, h);
+    const m = orbMetrics(ORB_LEGACY_DEFAULT, w, h);
     assert.equal(m.clamped, true, `${w}x${h}`);
     assert.ok(m.footR <= 0.56 * h + 1e-6);
   }
@@ -85,4 +86,21 @@ test("gripPosition sits at 45 degrees on the footprint edge", () => {
   const g = gripPosition(800, 450, 100);
   assert.ok(Math.abs(g.x - (800 + 100 * Math.SQRT1_2)) < 1e-9);
   assert.ok(Math.abs(g.y - (450 + 100 * Math.SQRT1_2)) < 1e-9);
+});
+
+test("migrateOrb: the exact legacy default (never changed by the user) becomes the new default", () => {
+  assert.deepEqual(migrateOrb({ c: 16, r: 9, s: 1.7, z: 2.6 }), ORB_DEFAULT);
+  assert.deepEqual(migrateOrb(undefined), ORB_DEFAULT);
+});
+
+test("migrateOrb: any value the user changed is left alone", () => {
+  for (const o of [{ c: 16.5, r: 9, s: 1.7, z: 2.6 }, { c: 16, r: 9, s: 1.5, z: 2.6 }, { c: 16, r: 9, s: 1.7, z: 2.2 }, { c: 16, r: 8.5, s: 1.7, z: 2.6 }, { c: 16, r: 9, s: 1.12, z: 2.15 }]) {
+    assert.deepEqual(migrateOrb(o), o);
+  }
+});
+
+test("orbMetrics: clipR is the ring's outer edge (ring + half the band), not the whole footprint", () => {
+  const m = orbMetrics(ORB_DEFAULT, 1600, 900);
+  assert.ok(Math.abs(m.clipR - (m.ring + 30 * m.k)) < 1e-9);
+  assert.ok(m.clipR < m.footR);
 });

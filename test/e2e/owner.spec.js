@@ -193,13 +193,15 @@ test("orb honors the saved layout: centred on c/r on the 32-col grid, size follo
   const boot = await bootAsOwner();
   try {
     await loginOwner(page, boot);
-    // default layout: { c: 16, r: 9, s: 1.7, z: 2.6 } at 1600x900 -> CELL 50
+    // default layout: { c: 16, r: 9, s: 1.12, z: 2.15 } at 1600x900 -> CELL 50
     let st = await orbState(page);
-    expect(st).toMatchObject({ c: 16, r: 9, s: 1.7, z: 2.6, cell: 50, cx: 800, cy: 450 });
+    expect(st).toMatchObject({ c: 16, r: 9, s: 1.12, z: 2.15, cell: 50, cx: 800, cy: 450 });
     let b = await boxOf(page);
     expect(b.x + b.w / 2).toBeCloseTo(800, 0);
     expect(b.y + b.h / 2).toBeCloseTo(450, 0);
-    expect(b.w).toBe(Math.round(316 * (50 / 60) * 1.7 * 2.1));
+    expect(b.w).toBe(Math.round(316 * (50 / 60) * 1.12 * 2.1));
+    // canvas is clipped to the ring footprint (nothing drawn outside the ring)
+    expect(await page.locator("#orbBox").evaluate((el) => el.style.clipPath)).toMatch(/^circle\(/);
 
     await putOrb(page, boot.url, { c: 10, r: 6.5, s: 1, z: 2 });
     await page.reload();
@@ -219,6 +221,9 @@ test("orb re-places itself when the window is resized, and a 2:1 window shrinks 
   const boot = await bootAsOwner();
   try {
     await loginOwner(page, boot);
+    await putOrb(page, boot.url, { c: 16, r: 9, s: 1.7, z: 2.5 }); // a big ring (the old default would be migrated away)
+    await page.reload();
+    await page.waitForFunction(() => typeof window.__orbState === "function");
     await page.setViewportSize({ width: 2000, height: 1000 });
     const st = await orbState(page);
     expect(st).toMatchObject({ cell: 62.5, cx: 1000, cy: 562.5, s: 1.7, clamped: true });
@@ -286,8 +291,8 @@ test("edit mode: dragging the orb moves it (half-cell snap) and the saved layout
     const body = (await put).postDataJSON();
     expect(body.orb.c).toBe(18.5); // 16 + 2.26 = 18.26 -> snapped to the nearest half cell
     expect(body.orb.r).toBe(9.5);  // 9 + .74 = 9.74 -> 9.5
-    expect(body.orb.s).toBe(1.7);
-    expect(body.orb.z).toBe(2.6);
+    expect(body.orb.s).toBe(1.12);
+    expect(body.orb.z).toBe(2.15);
     expect(body.widgets.length).toBeGreaterThan(5); // same save as the widgets: one layout object
     const st = await orbState(page);
     expect(st).toMatchObject({ c: 18.5, r: 9.5 });
@@ -311,7 +316,7 @@ test("edit mode: the #orbGrip handle resizes the orb, s stays within [.5, 1.7] a
     const center = { x: 800, y: 450 };
     const gripPos = async () => { const g = await page.locator("#orbGrip").boundingBox(); return { x: g.x + g.width / 2, y: g.y + g.height / 2 }; };
 
-    // drag the grip half way to the centre -> s ~ 0.85
+    // drag the grip half way to the centre -> s ~ 0.56
     let g = await gripPos();
     let put = waitLayoutPut(page);
     await page.mouse.move(g.x, g.y);
@@ -319,12 +324,12 @@ test("edit mode: the #orbGrip handle resizes the orb, s stays within [.5, 1.7] a
     await page.mouse.move(center.x + (g.x - center.x) / 2, center.y + (g.y - center.y) / 2, { steps: 10 });
     await page.mouse.up();
     let body = (await put).postDataJSON();
-    expect(body.orb.s).toBeGreaterThan(0.8);
-    expect(body.orb.s).toBeLessThan(0.9);
+    expect(body.orb.s).toBeGreaterThan(0.52);
+    expect(body.orb.s).toBeLessThan(0.6);
     expect(body.orb.c).toBe(16);
     expect(body.orb.r).toBe(9);
     const small = await boxOf(page);
-    expect(small.w).toBeLessThan(940 * 0.6);
+    expect(small.w).toBeLessThan(620 * 0.6);
 
     // far past the grip's start, and to the centre: both clamp
     g = await gripPos();
