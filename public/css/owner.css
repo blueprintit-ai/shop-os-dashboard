@@ -1,3 +1,13 @@
+/* Fonts: Outfit (body) and Doto (display numerals) are bundled locally under
+   public/vendor/fonts (SIL OFL 1.1, licence texts alongside) so the dashboard
+   works offline and never calls a font CDN. */
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 300; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-300-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 400; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 500; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 600; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 700; font-display: swap; src: url('/static/vendor/fonts/outfit-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Doto'; font-style: normal; font-weight: 700; font-display: swap; src: url('/static/vendor/fonts/doto-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Doto'; font-style: normal; font-weight: 900; font-display: swap; src: url('/static/vendor/fonts/doto-latin-900-normal.woff2') format('woff2'); }
 :root {
   --accent: #1c6ea4; --cream: #e8e2d2; --mute: #8d8775; --warm: #b9b19c;
   --bg: #141310; --panel: #0d0c09;
@@ -7,7 +17,9 @@ html.light {
   --bg: #f2efe8; --panel: #ffffff;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--cream); font-family: system-ui, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--cream); font-family: 'Outfit', system-ui, sans-serif; }
+button, input, textarea, select { font-family: inherit; }
+.doto, .flap, .prog .tm { font-family: 'Doto', 'Outfit', monospace; }
 
 /* ============================================================================
    Structural/chrome CSS below is ported from the reference kit at
@@ -30,8 +42,7 @@ body { margin: 0; background: var(--bg); color: var(--cream); font-family: syste
      shadows, white text on the accent-colored button) -- these are graphic
      effects, not theme colors, and the kit does not route them through a
      token either.
-   - 'Doto'/'Outfit' font-family references were dropped (no font import was
-     added in this task); rules fall back to the body's existing font stack.
+   - 'Doto'/'Outfit' are bundled locally (see the @font-face block at the top).
 
    Deliberately NOT ported (out of scope for this project / later tasks own
    it, not this one): Google Calendar & email widgets (.w-mail/.w-cal), the
@@ -181,7 +192,7 @@ body.edit #orbGrip { display: block; }
 body.searchopen #searchBar { display: flex; }
 #searchIn {
   background: transparent; border: 0; outline: 0; color: var(--cream); width: 100%;
-  font: 500 12px/1 system-ui, sans-serif; letter-spacing: 2px; text-transform: uppercase;
+  font: 500 12px/1 'Outfit', system-ui, sans-serif; letter-spacing: 2px; text-transform: uppercase;
   caret-color: var(--accent); text-align: center;
 }
 #searchIn::placeholder { color: var(--mute); }
