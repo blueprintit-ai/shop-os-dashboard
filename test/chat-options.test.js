@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildQueryOptions, STAFF_TOOLS } from "../src/chat/options.js";
+import { buildQueryOptions, STAFF_TOOLS, STAFF_MCP_TOOLS } from "../src/chat/options.js";
 
 const VAULT = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "vault");
 const staff = { id: "s1", username: "marco", displayName: "Marco", role: "staff", switches: { folders: ["Projects"], teamFolder: null } };
@@ -11,7 +11,11 @@ const audit = { events: [], log(e, f) { this.events.push({ e, ...f }); } };
 
 test("staff options restrict tools, use default permission mode, no allowedTools", () => {
   const o = buildQueryOptions({ vaultPath: VAULT, user: staff, systemPrompt: "x", claudeSessionId: null, audit });
-  assert.deepEqual([...o.tools].sort(), [...STAFF_TOOLS].sort());
+  assert.deepEqual([...o.tools], ["Read"], "staff get Read plus the in-process vault tools, never the built-in Grep or Glob");
+  assert.deepEqual([...STAFF_MCP_TOOLS], ["mcp__vault__search", "mcp__vault__list"]);
+  assert.deepEqual(Object.keys(o.mcpServers), ["vault"]);
+  assert.equal(o.strictMcpConfig, true);
+  assert.equal(o.settings.autoMemoryEnabled, false);
   assert.equal(o.allowedTools, undefined);
   assert.equal(o.permissionMode, "default");
   assert.deepEqual(o.settingSources, []);
@@ -27,13 +31,9 @@ test("staff canUseTool allows in-scope reads and denies out-of-scope, non-whitel
   assert.equal(ok.behavior, "allow");
   const denied = await o.canUseTool("Read", { file_path: join(VAULT, "Context", "operator.md") }, {});
   assert.equal(denied.behavior, "deny");
-  const glob = await o.canUseTool("Glob", { pattern: "**/*.md", path: join(VAULT, "Intelligence") }, {});
-  assert.equal(glob.behavior, "deny");
-  const globNoPath = await o.canUseTool("Glob", { pattern: "*.md" }, {});
-  assert.equal(globNoPath.behavior, "deny", "Glob with no path would enumerate the whole vault by filename, including hidden dirs and other staff's data; deny like Grep");
-  const grep = await o.canUseTool("Grep", { pattern: "price", path: join(VAULT, "Projects") }, {});
-  assert.equal(grep.behavior, "allow");
-  assert.equal((await o.canUseTool("Grep", { pattern: "x" }, {})).behavior, "deny");
+  for (const [t, input] of [["Glob", { pattern: "**/*.md", path: join(VAULT, "Projects") }], ["Glob", { pattern: "*.md" }], ["Grep", { pattern: "price", path: join(VAULT, "Projects") }], ["Grep", { pattern: "x" }]]) {
+    assert.equal((await o.canUseTool(t, input, {})).behavior, "deny", `${t} is not offered to staff: it would search below the folder it is aimed at`);
+  }
   const bash = await o.canUseTool("Bash", { command: "ls" }, {});
   assert.equal(bash.behavior, "deny");
   const rel = await o.canUseTool("Read", { file_path: "Projects/../Context/operator.md" }, {});
