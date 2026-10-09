@@ -29,7 +29,9 @@ Blueprint OS Dashboard: one local Node server that becomes the center access poi
 
 ## Owner page
 
-`/owner` is the RoboNuggets "Rubric Agentic OS" page served essentially verbatim (CC BY 4.0, see NOTICE.md). It is not hand-maintained: `tools/sync-kit.mjs` regenerates `public/owner.html`, `widgets.html`, `assets.html` and `vendor/thinking-orbs.js` from the kit folder with a short list of named substitutions, and `test/kit-parity.test.js` keeps them honest. Its API is provided by `src/routes/kit-compat-routes.js` on top of the product's data (vault snapshots, runs, artifacts, assets, chat). Layout, look and dashboard profiles live in the browser's localStorage, as in the kit. How to re-sync is in REDESIGN.md.
+`/owner` is the RoboNuggets "Rubric Agentic OS" page served essentially verbatim (CC BY 4.0, see NOTICE.md). It is not hand-maintained: `tools/sync-kit.mjs` regenerates `public/owner.html`, `widgets.html`, `assets.html` and `vendor/thinking-orbs.js` from the kit folder with a short list of named substitutions, and `test/kit-parity.test.js` keeps them honest. Its API is provided by `src/routes/kit-compat-routes.js` on top of the product's data (vault snapshots, runs, artifacts, assets). Layout, look and dashboard profiles live in the browser's localStorage, as in the kit. How to re-sync is in REDESIGN.md.
+
+The deployed owner page has no in-page chat: the kit's bottom chat bar (and its account popover) is removed by sync rules, so there is no `/api/chat` kit endpoint either. To talk to Claude, use Claude Code from the vault folder (employees keep the Chat tab on `/employee`). Log out is the last icon on the owner page's toolbar, after Users and the status dot.
 
 ## Package
 
