@@ -3,6 +3,7 @@ import { statSync, createReadStream, existsSync } from "node:fs";
 import { requireUser } from "../auth.js";
 import { sendJson, readJsonBody } from "../lib/http.js";
 import { scanAssets, setFavorite, saveUpload, listedAssetPath, assetMime, MAX_UPLOAD } from "../assets.js";
+import { safeFileHeaders } from "../lib/safe-file-response.js";
 import { effectiveAssetsRoot } from "../settings.js";
 
 const FILE_PREFIX = "/assets/file/";
@@ -62,13 +63,7 @@ export function assetsRoutes({ auth, settingsStore, homeDir, audit }) {
       // PDFs are the exception to the sandbox: Chrome's built-in viewer refuses sandboxed documents.
       const ext = extname(asset.abs).slice(1).toLowerCase();
       const inline = INLINE_EXTS.has(ext) && !url.searchParams.has("download");
-      res.writeHead(200, {
-        "content-type": assetMime(asset.abs),
-        "content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(basename(asset.abs))}`,
-        "x-content-type-options": "nosniff",
-        "cross-origin-opener-policy": "same-origin",
-        ...(ext === "pdf" ? {} : { "content-security-policy": "sandbox" }),
-      });
+      res.writeHead(200, safeFileHeaders({ filename: basename(asset.abs), mime: assetMime(asset.abs), inline }));
       createReadStream(asset.abs).pipe(res);
       return true;
     }
