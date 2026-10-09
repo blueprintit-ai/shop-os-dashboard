@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs, buildSteps, runInstall, withTestFaults, splitSteps } from "../installer/run-install.js";
@@ -112,6 +112,12 @@ test("fault injection blocks listed hosts only when TEST_MODE and FAIL_HOSTS are
   assert.equal(withTestFaults(pass, { SHOPOS_TEST_MODE: "1" }), pass);
 });
 
+// A fake clock: sleep(ms) advances now() instantly, so a 60 s budget costs no real time.
+function fakeClock() {
+  let t = 0;
+  return { now: () => t, sleep: async (ms) => { t += ms; } };
+}
+
 function healthCtx(over = {}) {
   return {
     homeDir: "/h", platform: "darwin", exists: () => false, childEnv: () => ({}), vaultPath: "/nonexistent-vault", dashboardBin: "/d.js", nodeBin: "node", print: () => {},
@@ -126,7 +132,7 @@ test("health: dashboard check spawns on the found port, polls, and always kills 
   const deps = {
     findPort: async (a, b, h) => { assert.deepEqual([a, b, h], [50020, 50040, "127.0.0.1"]); return 50021; },
     spawnImpl: (cmd, args) => { spawned.push(args); return { kill: () => killed++, on() {} }; },
-    sleep: async () => {},
+    ...fakeClock(),
   };
   let n = 0;
   const ctx = healthCtx({ fetchImpl: async (u) => { urls.push(u); if (++n < 3) throw new Error("down"); return { status: 404 }; } });
@@ -138,8 +144,8 @@ test("health: dashboard check spawns on the found port, polls, and always kills 
 
 test("health: a 500 never counts, timeout reports and still kills", async () => {
   let killed = 0;
-  const deps = { findPort: async () => 50022, spawnImpl: () => ({ kill: () => killed++, on() {} }), sleep: async () => {}, tries: 3 };
-  await assert.rejects(() => healthStep(deps).action(healthCtx({ fetchImpl: async () => ({ status: 500 }) })), /did not answer within 20 seconds/);
+  const deps = { findPort: async () => 50022, spawnImpl: () => ({ kill: () => killed++, on() {} }), ...fakeClock(), budgetMs: 1500 };
+  await assert.rejects(() => healthStep(deps).action(healthCtx({ fetchImpl: async () => ({ status: 500 }) })), /did not answer within 2 seconds/);
   assert.equal(killed, 1);
 });
 
@@ -218,7 +224,7 @@ test("a phase 1 failure never runs launch", async () => {
 
 test("health: stalled fetch is aborted by the per-poll timeout signal", async () => {
   let signalSeen = false;
-  const deps = { findPort: async () => 50023, spawnImpl: () => ({ kill() {}, on() {} }), sleep: async () => {}, tries: 1 };
+  const deps = { findPort: async () => 50023, spawnImpl: () => ({ kill() {}, on() {} }), ...fakeClock(), budgetMs: 500 };
   const ctx = healthCtx({ fetchImpl: (u, init) => { signalSeen = init?.signal instanceof AbortSignal; return new Promise((_, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))); } });
   // AbortSignal.timeout timers are unref'd and this fake fetch holds no socket: keep the loop alive (Node 22 cancels otherwise).
   const keepAlive = setInterval(() => {}, 20);
@@ -231,16 +237,16 @@ test("health: stalled fetch is aborted by the per-poll timeout signal", async ()
 });
 
 test("health: spawn that throws and child error event give a clear message and kill/clean up", async () => {
-  await assert.rejects(() => healthStep({ findPort: async () => 50024, spawnImpl: () => { throw new Error("ENOENT node"); }, sleep: async () => {} }).action(healthCtx()), /could not be started \(ENOENT node\)/);
+  await assert.rejects(() => healthStep({ findPort: async () => 50024, spawnImpl: () => { throw new Error("ENOENT node"); }, ...fakeClock() }).action(healthCtx()), /could not be started \(ENOENT node\)/);
   let killed = 0;
   const spawnImpl = () => ({ kill: () => killed++, on(ev, cb) { if (ev === "error") cb(new Error("spawn EACCES")); } });
-  await assert.rejects(() => healthStep({ findPort: async () => 50025, spawnImpl, sleep: async () => {} }).action(healthCtx()), /could not be started \(spawn EACCES\)/);
+  await assert.rejects(() => healthStep({ findPort: async () => 50025, spawnImpl, ...fakeClock() }).action(healthCtx()), /could not be started \(spawn EACCES\)/);
   assert.equal(killed, 1);
 });
 
 test("health: passes --home temp dir to the throwaway dashboard", async () => {
   let args;
-  const deps = { findPort: async () => 50026, spawnImpl: (c, a) => { args = a; return { kill() {}, on() {} }; }, sleep: async () => {} };
+  const deps = { findPort: async () => 50026, spawnImpl: (c, a) => { args = a; return { kill() {}, on() {} }; }, ...fakeClock() };
   await healthStep(deps).action(healthCtx({ vaultPath: process.cwd() })).catch(() => {});
   assert.ok(args.includes("--home"));
 });
@@ -262,4 +268,89 @@ test("console prints '  > <title>...' when a step starts, before its 'ok' line; 
   assert.deepEqual(printed.slice(i, i + 3), ["  > Doing A...", "<action a>", "  ok Doing A"]);
   assert.ok(printed.includes("  - Doing B"));
   assert.ok(!printed.some((m) => m.includes("> Doing B")));
+});
+
+// ---- health budget (60 s), captured dashboard output, early exit ----
+const HEALTH_VAULT = mkdtempSync(join(tmpdir(), "bp-hv-"));
+writeFileSync(join(HEALTH_VAULT, "CLAUDE.md"), "x");
+function fakeChild() {
+  const h = {}; let killed = 0;
+  const stream = () => { const l = []; return { on: (ev, cb) => { if (ev === "data") l.push(cb); }, emit: (d) => l.forEach((cb) => cb(Buffer.from(d))) }; };
+  const out = stream(), err = stream();
+  const child = { stdout: out, stderr: err, kill: () => { killed++; }, on: (ev, cb) => { (h[ev] ??= []).push(cb); } };
+  return { child, out, err, emit: (ev, ...a) => (h[ev] ?? []).forEach((cb) => cb(...a)), killed: () => killed };
+}
+const healthDeps = (extra) => ({ findPort: async () => 50030, ...fakeClock(), ...extra });
+const dashMsg = async (deps, ctx = healthCtx({ vaultPath: HEALTH_VAULT })) => {
+  try { await healthStep(deps).action(ctx); return null; } catch (e) { return e; }
+};
+
+test("health: answers at poll 1 passes without waiting out the budget", async () => {
+  const f = fakeChild(); const clock = fakeClock();
+  const e = await dashMsg({ findPort: async () => 50030, spawnImpl: () => f.child, ...clock });
+  assert.equal(e, null);
+  assert.equal(clock.now(), 500, "returned after the first poll");
+  assert.equal(f.killed(), 1);
+});
+
+test("health: a dashboard that answers late (poll 50 of 120) passes with no warning", async () => {
+  const f = fakeChild(); let n = 0;
+  const e = await dashMsg(healthDeps({ spawnImpl: () => f.child }), healthCtx({ vaultPath: HEALTH_VAULT, fetchImpl: async () => { if (++n < 50) throw new Error("ECONNREFUSED"); return { status: 200 }; } }));
+  assert.equal(e, null);
+  assert.equal(n, 50);
+  assert.equal(f.killed(), 1);
+});
+
+test("health: answering at second 30 passes; the budget is 60 s at ~500 ms polls", async () => {
+  const f = fakeChild(); const clock = fakeClock(); let polls = 0;
+  const ctx = healthCtx({ vaultPath: HEALTH_VAULT, fetchImpl: async () => { polls++; if (clock.now() < 30000) throw new Error("down"); return { status: 200 }; } });
+  assert.equal(await dashMsg({ findPort: async () => 50030, spawnImpl: () => f.child, ...clock }, ctx), null);
+  const g = fakeChild(); const c2 = fakeClock(); let p2 = 0;
+  const e = await dashMsg({ findPort: async () => 50030, spawnImpl: () => g.child, ...c2 }, healthCtx({ vaultPath: HEALTH_VAULT, fetchImpl: async () => { p2++; throw new Error("down"); } }));
+  assert.ok(e);
+  assert.equal(p2, 120);
+  assert.ok(c2.now() >= 60000 && c2.now() < 61000);
+});
+
+test("health: never answers - exact message, redacted bounded tail, child killed", async () => {
+  const g = fakeChild(); const clock = fakeClock(); let first = true;
+  const sleep = async (ms) => {
+    if (first) { first = false; g.out.emit("x".repeat(5000) + "\nindexing /Users/alice/Vault key sk-abcdefghijklmnopqrstuvwxyz\n"); g.err.emit("warn: slow disk\n"); }
+    return clock.sleep(ms);
+  };
+  const e = await dashMsg({ findPort: async () => 50030, spawnImpl: () => g.child, now: clock.now, sleep }, healthCtx({ homeDir: "/Users/alice", vaultPath: HEALTH_VAULT, fetchImpl: async () => { throw new Error("down"); } }));
+  assert.equal(e.message, "Health check found: the dashboard did not answer within 60 seconds.");
+  assert.ok(!/alice/.test(e.outTail), e.outTail);
+  assert.ok(!/sk-abcdefghij/.test(e.outTail));
+  assert.match(e.outTail, /indexing (~|%USERPROFILE%)\/Vault/);
+  assert.match(e.outTail, /slow disk/);
+  assert.ok(e.outTail.length <= 2048, String(e.outTail.length));
+  assert.equal(g.killed(), 1);
+});
+
+test("health: child that exits early fails fast with the exit code and its output", async () => {
+  const f = fakeChild(); const clock = fakeClock(); let polls = 0;
+  const spawnImpl = () => { setImmediate(() => {}); return f.child; };
+  const sleep = async (ms) => { await clock.sleep(ms); if (clock.now() === 500) { f.err.emit("Error: EADDRINUSE\n"); f.emit("exit", 1, null); } };
+  const e = await dashMsg({ findPort: async () => 50030, spawnImpl, now: clock.now, sleep }, healthCtx({ vaultPath: HEALTH_VAULT, fetchImpl: async () => { polls++; throw new Error("down"); } }));
+  assert.match(e.message, /the dashboard exited with code 1 before it answered/);
+  assert.ok(!/within/.test(e.message));
+  assert.match(e.outTail, /EADDRINUSE/);
+  assert.equal(e.exitCode, 1);
+  assert.ok(clock.now() < 2000, "did not wait out the budget");
+  assert.equal(f.killed(), 1);
+});
+
+test("health: child killed by a signal is reported as such", async () => {
+  const f = fakeChild(); const clock = fakeClock();
+  const sleep = async (ms) => { await clock.sleep(ms); if (clock.now() === 500) f.emit("exit", null, "SIGKILL"); };
+  const e = await dashMsg({ findPort: async () => 50030, spawnImpl: () => f.child, now: clock.now, sleep }, healthCtx({ vaultPath: HEALTH_VAULT, fetchImpl: async () => { throw new Error("down"); } }));
+  assert.match(e.message, /the dashboard was stopped by signal SIGKILL before it answered/);
+});
+
+test("health: fetch that throws keeps polling and is not fatal on its own", async () => {
+  const f = fakeChild(); let n = 0;
+  const e = await dashMsg(healthDeps({ spawnImpl: () => f.child }), healthCtx({ vaultPath: HEALTH_VAULT, fetchImpl: async () => { if (++n === 1) throw new TypeError("fetch failed"); if (n === 2) throw Object.assign(new Error("x"), { name: "TimeoutError" }); return { status: 200 }; } }));
+  assert.equal(e, null);
+  assert.equal(n, 3);
 });
