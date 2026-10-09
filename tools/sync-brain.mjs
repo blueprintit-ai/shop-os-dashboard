@@ -77,7 +77,7 @@ export const RULES = [
     doc: "d3@7 jsdelivr CDN <script> -> vendored /static/vendor/d3.min.js (d3 7.9.0, ISC, LICENSE-d3.txt).",
     find: '<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>', replace: '<script src="/static/vendor/d3.min.js"></script>' },
   { id: "marked-cdn", file: "public/index.html",
-    doc: "marked@11.1.1 jsdelivr CDN <script> -> the product's vendored /static/vendor/marked.min.js, plus /static/js/brain-safe.js (module: window.brainSafeHtml, the sanitizer the viewer uses, see rule viewer-sanitize).",
+    doc: "marked@11.1.1 jsdelivr CDN <script> -> the product's vendored /static/vendor/marked.min.js, plus /static/js/brain-safe.js (module: window.brainSafeFragment, the sanitizer the viewer uses, see rule viewer-sanitize).",
     find: '<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>',
     replace: '<script src="/static/vendor/marked.min.js"></script>\n<script type="module" src="/static/js/brain-safe.js"></script>' },
   { id: "icons-path", file: "public/index.html",
@@ -118,13 +118,28 @@ export const RULES = [
     doc: "viewer message for non-text files: 'opening on device' -> the notes viewer.",
     find: "Binary file - opening on device instead.", replace: "Binary file - opening it in a new tab instead." },
   { id: "viewer-sanitize", file: "public/_core.js",
-    doc: "the viewer put marked's raw HTML into the page; notes can be written by staff and this is the owner's session, so it goes through window.brainSafeHtml (public/js/brain-safe.js: inert parse, active elements and on* attributes removed, javascript: URLs neutralized).",
-    find: "marked.parse(resolveWikilinks(d.content, path))", replace: "brainSafeHtml(marked.parse(resolveWikilinks(d.content, path)))" },
+    doc: "the viewer put marked's raw HTML into the page (innerHTML string concat); notes can be written by staff and this is the owner's session. Now (1) every '<' in the note is escaped BEFORE markdown runs (wikilink anchors are inserted after the escape), exactly like src/notes/render.js, and (2) marked's output is a backstop-sanitized, inert DOM fragment (public/js/brain-safe.js, window.brainSafeFragment) appended into a .md-body element: nothing is re-serialized and re-parsed.",
+    find: "body.innerHTML = '<div class=\"md-body\">' + marked.parse(resolveWikilinks(d.content, path)) + '</div>';",
+    replace: "body.innerHTML = ''; const mdBody = document.createElement('div'); mdBody.className = 'md-body';\n        mdBody.appendChild(brainSafeFragment(marked.parse(resolveWikilinks(d.content.replace(/</g, '&lt;'), path)))); body.appendChild(mdBody);" },
   { id: "no-icon-cdn", file: "public/_core.js",
     doc: "apps without a baked brand path fetched their icon from the simple-icons jsdelivr CDN at runtime; the product makes no external requests, so the fetch rejects immediately and the node keeps its fallback glyph.",
     find: "fetch('https://cdn.jsdelivr.net/npm/simple-icons@13/icons/' + n.iconSlug + '.svg')", replace: "Promise.reject(new Error('no external icon fetch'))" },
 
+  { id: "app-status-undefined", file: "public/_core.js",
+    doc: "the app card stats line printed '<KIND> · undefined' for apps without a status (the product's apps have none).",
+    find: "stats = `${n.kind.toUpperCase()} · ${n.status}`;", replace: "stats = `${n.kind.toUpperCase()}${n.status ? ' · ' + n.status : ''}`;" },
+  { id: "slider-defaults-dept-keys", file: "public/index.html",
+    doc: "the skin's default gravity/distance sliders were keyed by the kit author's own department keys (content, community, product, personal); the product's departments are business, context, intelligence, projects, team (same values).",
+    between: ["      grav_content: 0.86,", "\n      grav_S: 0.4"], maxBytes: 200,
+    replace: "      grav_business: 0.84, grav_context: 0.85, grav_intelligence: 0.84, grav_projects: 0.84, grav_team: 0.85," },
+  { id: "slider-dist-dept-keys", file: "public/index.html",
+    doc: "same for the distance sliders.",
+    find: "dist_content: 0, dist_community: 0, dist_product: 0, dist_personal: 0, dist_business: 0,", replace: "dist_business: 0, dist_context: 0, dist_intelligence: 0, dist_projects: 0, dist_team: 0," },
+
   // ---- _icons.js -> public/brain/_icons.js
+  { id: "icons-brand-paths-generic", file: "public/_icons.js",
+    doc: "window.BRAIN_ICON_PATHS held brand marks for the kit author's own tool inventory; only the generic set a shop's apps could plausibly use is kept (the rest cannot match a product node and name tools that are not ours).",
+    keepKeys: ["app:telegram", "app:gcal", "app:gdrive", "app:gh", "app:git", "app:slack", "app:stripe", "app:canva"], object: "window.BRAIN_ICON_PATHS = " },
   { id: "icons-drop-author-set", file: "public/_icons.js",
     doc: "window.BRAIN_ICONS is a set of hand-drawn icons keyed by the kit author's own routine/app ids; no product node has those ids, so the set is emptied (the baked brand paths in BRAIN_ICON_PATHS stay).",
     between: ["window.BRAIN_ICONS = {", "\n};\n"], maxBytes: 40000, replace: "window.BRAIN_ICONS = {" },
@@ -132,6 +147,20 @@ export const RULES = [
 
 function applyRule(rule, text) {
   let start, end;
+  if (rule.keepKeys) {
+    const a = rule.object;
+    start = text.indexOf(a);
+    if (start < 0 || text.indexOf(a, start + 1) >= 0) throw new Error(`sync-brain: anchor not found exactly once for rule ${rule.id} (${JSON.stringify(a)}) in ${rule.file}`);
+    const objStart = start + a.length;
+    const objEnd = text.indexOf("};", objStart);
+    if (objEnd < 0) throw new Error(`sync-brain: end of object not found for rule ${rule.id}`);
+    let obj;
+    try { obj = JSON.parse(text.slice(objStart, objEnd + 1)); } catch { throw new Error(`sync-brain: rule ${rule.id}: the object is not plain JSON any more`); }
+    const kept = {};
+    for (const k of rule.keepKeys) { if (!(k in obj)) throw new Error(`sync-brain: rule ${rule.id}: key ${k} no longer in the kit object`); kept[k] = obj[k]; }
+    const before = text.slice(objStart, objEnd + 1), after = JSON.stringify(kept);
+    return { text: text.slice(0, objStart) + after + text.slice(objEnd + 1), before, after };
+  }
   if (rule.between) {
     const [a, b] = rule.between;
     start = text.indexOf(a);
@@ -186,6 +215,7 @@ export function rulesDigest() {
     id: r.id, file: r.file, doc: r.doc, maxBytes: r.maxBytes ?? null,
     find: r.find instanceof RegExp ? { regex: r.find.source } : (r.find ?? null),
     between: r.between ?? null,
+    keepKeys: r.keepKeys ?? null, object: r.object ?? null,
     replace: typeof r.replace === "function" ? r.replace() : r.replace,
   }));
   return sha(JSON.stringify(ser));

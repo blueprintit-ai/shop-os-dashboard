@@ -1160,7 +1160,7 @@ window.BrainCore = (function () {
       stats = `${n.files} files · ${n.mdFiles} md · ${fmtBytes(n.size)}`;
       actions = `<button class="act" data-act="toggle">${n.expanded ? 'Collapse' : 'Expand'}</button><button class="act" data-act="open">Open folder</button><button class="act" data-act="copy">Copy path</button>`;
     } else if (n.type === 'app') {
-      stats = `${n.kind.toUpperCase()} · ${n.status}`;
+      stats = `${n.kind.toUpperCase()}${n.status ? ' · ' + n.status : ''}`;
     } else if (n.type === 'routine') {
       stats = `${n.schedule} · runs on ${n.runner}`;
     } else if (n.type === 'agent') {
@@ -1282,7 +1282,8 @@ window.BrainCore = (function () {
       if (d.error === 'binary') { body.innerHTML = '<div class="v-loading">Binary file - opening it in a new tab instead.</div>'; apiOpen(path); return; }
       if (d.error) { body.innerHTML = '<div class="v-loading">' + d.error + '</div>'; return; }
       if (ext === '.md' && window.marked) {
-        body.innerHTML = '<div class="md-body">' + brainSafeHtml(marked.parse(resolveWikilinks(d.content, path))) + '</div>';
+        body.innerHTML = ''; const mdBody = document.createElement('div'); mdBody.className = 'md-body';
+        mdBody.appendChild(brainSafeFragment(marked.parse(resolveWikilinks(d.content.replace(/</g, '&lt;'), path)))); body.appendChild(mdBody);
         body.querySelectorAll('a').forEach(a => {
           if (a.classList.contains('wikilink')) {
             a.onclick = ev => { ev.preventDefault(); jumpTo(a.dataset.target); };

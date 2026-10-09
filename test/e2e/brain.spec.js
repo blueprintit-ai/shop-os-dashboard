@@ -112,7 +112,16 @@ test("search finds a note and jumps to it; the viewer sanitizes hostile note HTM
   const b = await bootAsOwner();
   try {
     fatten(b.vault);
-    put(b.vault, "Context/hostile.md", "# Hostile\n\n<img src=x onerror=\"window.__pwned=1\">\n\n<script>window.__pwned=2</script>\n\n[bad](javascript:window.__pwned=3)\n");
+    const hostile = [
+      "# Hostile", "",
+      '<img src=x onerror="window.__pwned=1">', "",
+      "<script>window.__pwned=2</script>", "",
+      "[bad](javascript:window.__pwned=3)", "",
+      '<img usemap="#m" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width=900 height=900><map name="m"><area href="javascript:window.__pwned=4"></map>', "",
+      '<math><mtext><table><mglyph><svg><mtext><textarea><a title="</textarea><img src onerror=window.__pwned=5>">', "",
+      '<svg><script>window.__pwned=6</script></svg>', "",
+    ].join("\n");
+    put(b.vault, "Context/hostile.md", hostile);
     await page.setViewportSize({ width: 1650, height: 843 });
     await openBrain(page, b);
     await page.click("#fab-menu");
@@ -127,6 +136,8 @@ test("search finds a note and jumps to it; the viewer sanitizes hostile note HTM
     expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
     expect(await page.locator("#brain-viewer .md-body script").count()).toBe(0);
     expect(await page.locator("#brain-viewer .md-body a[href^='javascript']").count()).toBe(0);
+    expect(await page.locator("#brain-viewer .md-body img, #brain-viewer .md-body area, #brain-viewer .md-body svg, #brain-viewer .md-body textarea").count()).toBe(0);
+    await expect(page.locator("#brain-viewer .md-body")).toContainText("<script>window.__pwned=2</script>");
     await page.evaluate(() => BrainCore.openViewer("skill:quote-writer"));
     await expect(page.locator("#brain-viewer.open .md-body")).toContainText("quote-writer");
   } finally { b.cleanup(); }

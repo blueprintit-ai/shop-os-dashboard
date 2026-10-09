@@ -5,3 +5,7 @@ public/assets.html -text
 public/notes.html -text
 public/vendor/three.module.min.js -text
 tools/sync-kit.lock.json -text
+public/brain.html -text
+public/brain/* -text
+tools/sync-brain.lock.json -text
+public/vendor/d3.min.js -text
