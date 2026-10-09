@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
+import { marked } from "marked";
 
 const doc = new JSDOM("<!doctype html><html><body></body></html>").window.document;
 globalThis.document = doc;
@@ -66,3 +67,58 @@ test("notes.js opens ?path= deep links", () => {
   assert.match(js, /URLSearchParams\(location\.search\)\.get\("path"\)/);
   assert.match(js, /if \(deepLink\) openNote\(deepLink\)/);
 });
+
+// ---- reviewer payload corpus (round 2): the viewer pipeline = escape <, resolve wikilinks, marked, brainSafeFragment ----
+function grab(core, name) {
+  const i = core.indexOf("function " + name); let d = 0;
+  for (let k = core.indexOf("{", i); ; k++) { if (core[k] === "{") d++; else if (core[k] === "}") { d--; if (!d) return core.slice(i, k + 1); } }
+}
+const coreSrc = readFileSync(join(PUB, "brain", "_core.js"), "utf8");
+const S = { mdLinks: [["N/src.md", 'Folder/a"><img src=x onerror=alert(1)>.md'], ["N/src.md", "Folder/foo.md"], ["N/src.md", "Folder/java&#115;cript.md"]] };
+const resolveWikilinks = new Function("S", grab(coreSrc, "escapeAttr") + grab(coreSrc, "escapeHtml") + grab(coreSrc, "resolveWikilinks") + "; return resolveWikilinks;")(S);
+const pipeline = (md) => { const box = doc.createElement("div"); box.appendChild(brainSafeFragment(marked.parse(resolveWikilinks(md.replace(/</g, "&lt;"), "N/src.md")), doc)); return box; };
+
+const ALLOWED = new Set(["p", "a", "img", "code", "pre", "em", "strong", "del", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "blockquote", "table", "thead", "tbody", "tr", "th", "td", "hr", "br", "span", "input"]);
+const squashed = (v) => v.replace(/[\u0000-\u0020\u007f-\u009f\u00ad\u200b-\u200f\u2028\u2029\ufeff]/g, "").toLowerCase();
+function problems(box, { elements = true } = {}) {
+  const out = [];
+  for (const el of box.querySelectorAll("*")) {
+    if (elements && !ALLOWED.has(el.localName)) out.push("element " + el.localName);
+    for (const a of el.attributes) {
+      const v = squashed(a.value);
+      if (/^on/i.test(a.name) || ["style", "srcset", "formaction", "srcdoc", "usemap"].includes(a.name)) out.push("attr " + a.name);
+      if (["href", "src", "xlink:href", "action", "data", "background", "cite", "poster"].includes(a.name) && (/^(javascript|vbscript|livescript):/.test(v) || (v.startsWith("data:") && !/^data:image\/(png|gif|jpe?g|webp);/.test(v)))) out.push(a.name + "=" + a.value);
+      if (a.name === "src" && /^(https?:)?\/\//.test(v)) out.push("external src " + a.value);
+    }
+  }
+  return out;
+}
+
+const MD = {
+  js: "[x](javascript:alert(1))", jsCase: "[x](JaVaScRiPt:alert(1))", jsEnt: "[x](&#106;avascript:alert(1))", jsEnt2: "[x](javascript&colon;alert(1))",
+  jsTab: "[x](java\tscript:alert(1))", jsNl: "[x](java%0ascript:alert(1))", jsHexEnt: "[x](&#x6A;avascript:alert(1))", jsEntNoSemi: "[x](&#106avascript:alert(1))",
+  jsLeadSpace: "[x](%20javascript:alert(1))", jsRef: "[x][r]\n\n[r]: javascript:alert(1)", jsRefEnt: "[x][r]\n\n[r]: &#x6a;avascript:alert(1)",
+  vb: "[x](vbscript:msgbox)", data: "[x](data:text/html,hi)", dataImg: "![x](data:image/svg+xml,<svg onload=alert(1)>)", dataImgEnt: "![x](data&colon;text/html,x)",
+  protoRel: "[x](//evil.com)", backslash: "[x](\\\\evil.com)", imgExt: "![x](https://evil.com/beacon.png)", imgProtoRel: "![x](//evil.com/b.png)", imgTitle: '![x](a.png "t" onerror=alert(1))',
+  title: '[x](http://a "a\\" onmouseover=alert(1) b")', titleWiki: "[x](http://a '[[foo]]')", altWiki: "![[[foo]]](a.png)",
+  wikiAlias: '[[foo|x" onmouseover="alert(1)]]', wikiAliasMd: "[[foo|[y](javascript:alert(1))]]", wikiAliasAmp: "[[foo|&lt;img src=x onerror=alert(1)&gt;]]",
+  wikiTargetQuote: '[[a"><img src=x onerror=alert(1)>]]', wikiInLinkDest: "[x]([[foo]])", wikiInCode: "`[[foo]]`", wikiFence: "```\n[[foo]]\n```",
+  wikiJsEnt: "[[java&#115;cript]]", fenceLang: '```x" onclick=alert(1)\ncode\n```', autolinkLit: "www.evil.com javascript:alert(1)",
+  gtTrick: "&lt;img src=x onerror=alert(1)&gt;", entLt: "&#60;img src=x onerror=alert(1)&#62;", entLt2: "&#x3c;script&#x3e;alert(1)&#x3c;/script&#x3e;",
+  headingId: '# x" onclick="a', wikiNested: "[[foo|[[foo]]]]", nestedLinkWiki: "[[[foo]]](javascript:alert(1))", imgInLink: "[![a](x.png)](javascript:alert(1))",
+  linkHrefSpaces: "[x](<javascript:alert(1)>)", unicodeLs: "[x](java\u2028script:alert(1))", nulScheme: "[x](java\u0000script:alert(1))", zws: "[x](\u200bjavascript:alert(1))",
+  livescript: "[x](livescript:x)", wikiTargetJs: "[[java&#115;cript]] [[foo]]",
+};
+const RAW = ['<img srcset="javascript:alert(1) 1x, x.png 2x">', '<a href="&#14;javascript:alert(1)">x</a>', '<a href="java&#x0D;script:alert(1)">x</a>', '<a HREF="JAVASCRIPT:alert(1)">x</a>', '<a href="javascript&#58;alert(1)">x</a>', "<details open ontoggle=alert(1)>", '<a href=" javascript:alert(1)">x</a>', '<img src="data:image/png;base64,x" onload=alert(1)>', '<a href="data:image/png;base64,AAAA">x</a>', '<img src="DATA:image/svg+xml,<svg onload=alert(1)>">', '<portal src="javascript:alert(1)"></portal>', '<x-y is="foo" onclick=1>', '<img/src="x"/onerror=alert(1)>', '<table background="javascript:alert(1)">', '<blockquote cite="javascript:x">', '<a href="jav&Tab;ascript:alert(1)">', '<img src="https://evil.com/p.gif">', '<img src="//evil.com/p.gif">'];
+
+for (const [name, md] of Object.entries(MD)) {
+  test(`viewer pipeline, markdown payload ${name}: no script runs, no javascript: URL, no on* attribute, no external image`, () => {
+    assert.deepEqual(problems(pipeline(md)), []);
+  });
+}
+for (const raw of RAW) {
+  test(`backstop sanitizer, raw HTML ${JSON.stringify(raw).slice(0, 60)}: inert`, () => {
+    const box = doc.createElement("div"); box.appendChild(brainSafeFragment(raw, doc));
+    assert.deepEqual(problems(box, { elements: false }), []);
+  });
+}

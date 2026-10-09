@@ -4,7 +4,8 @@
 // Two stages, so cheap things stay live without a disk walk:
 //   scanVault()  walks the vault once and extracts note links (cached; refreshed by BrainStore on a rescan/watch)
 //   buildGraph() assembles nodes + links from that model plus apps, routines, skills and the owner's tweaks
-import { readdirSync, statSync, openSync, readSync, closeSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { open as openAsync } from "node:fs/promises";
 import { join, extname, posix } from "node:path";
 import { HIDDEN_DIRS } from "../scope.js";
 
@@ -57,8 +58,10 @@ export async function walk(root, limits = LIMITS, t0 = Date.now(), tick = makeYi
     try { entries = readdirSync(abs, { withFileTypes: true }); } catch { return; }
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const dnode = dirs.get(rel);
+    let n = 0;
     for (const e of entries) {
       if (truncated) return;
+      if ((++n & 63) === 0) await tick(); // a folder with 20,000 entries must not hold the event loop either
       const name = e.name;
       if (name.length > limits.nameMax || UNSAFE_NAME.test(name)) { skippedUnsafe++; continue; }
       if (Date.now() - t0 > limits.budgetMs || files.length >= limits.maxFiles || dirs.size >= limits.maxDirs) { truncated = true; return; }
@@ -89,14 +92,14 @@ export async function walk(root, limits = LIMITS, t0 = Date.now(), tick = makeYi
 }
 
 // ---------- markdown link extraction (cache keyed by path+mtime+size; holds raw references, resolved every scan) ----------
-function readHead(abs, bytes) {
-  let fd;
+async function readHead(abs, bytes) {
+  let fh;
   try {
-    fd = openSync(abs, "r");
+    fh = await openAsync(abs, "r");
     const buf = Buffer.alloc(bytes);
-    const n = readSync(fd, buf, 0, bytes, 0);
-    return buf.subarray(0, n).toString("utf8");
-  } catch { return null; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ } }
+    const { bytesRead } = await fh.read(buf, 0, bytes, 0);
+    return buf.subarray(0, bytesRead).toString("utf8");
+  } catch { return null; } finally { if (fh) try { await fh.close(); } catch { /* ignore */ } }
 }
 
 function refsOf(txt) {
@@ -143,7 +146,7 @@ export async function extractLinks(root, files, cache, limits = LIMITS, t0 = Dat
     if (c && c.m === f.mtime && c.s === f.size) { cached++; }
     else {
       if (read >= limits.maxMdReads) { partial = true; continue; }
-      const txt = readHead(join(root, f.rel), limits.mdReadBytes);
+      const txt = await readHead(join(root, f.rel), limits.mdReadBytes);
       if (txt === null) continue;
       read++; bytes += Math.min(f.size, limits.mdReadBytes);
       c = { m: f.mtime, s: f.size, ...refsOf(txt) };

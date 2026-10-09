@@ -1226,7 +1226,7 @@ window.BrainCore = (function () {
     });
   }
 
-  function escapeAttr(s) { return s.replace(/"/g, '&quot;'); }
+  function escapeAttr(s) { return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;'); }
   function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   /* Obsidian [[wiki links]] (and [[link|alias]], [[link#heading]]) aren't
@@ -1335,8 +1335,9 @@ window.BrainCore = (function () {
       <div id="brain-card" style="display:none"></div>
       <div id="brain-panel"></div>
       <div id="brain-legend"></div>
-      <div id="brain-viewer"><div class="v-head"><div class="v-meta"><div class="v-title"></div><div class="v-path"></div></div><div class="v-btns"><button class="v-open act">Open on device</button><button class="v-copy act">Copy path</button><button class="v-close act" onclick="this.closest('#brain-viewer').classList.remove('open')">×</button></div></div><div class="v-body"></div></div>
+      <div id="brain-viewer"><div class="v-head"><div class="v-meta"><div class="v-title"></div><div class="v-path"></div></div><div class="v-btns"><button class="v-open act">Open on device</button><button class="v-copy act">Copy path</button><button class="v-close act">×</button></div></div><div class="v-body"></div></div>
       <div id="brain-toast"></div>`);
+    document.querySelector('#brain-viewer .v-close').addEventListener('click', () => document.getElementById('brain-viewer').classList.remove('open'));
   }
 
   function splash(showFlag, text) {

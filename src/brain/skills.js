@@ -38,9 +38,11 @@ const realOrNull = (p) => { try { return realpathSync.native(p); } catch { retur
 export const insideDir = (rootReal, p) => { const r = realOrNull(p); return !!(r && rootReal && (r === rootReal || r.startsWith(rootReal + sep))); };
 
 // `dir` is a skills folder; every SKILL.md must be a regular file (not a link or junction) whose real path stays inside it.
-function fromDir(dir, source, out, seen) {
+// `within` = the real path the folder must stay inside (the vault for vault sources, the Claude home for the rest).
+function fromDir(dir, source, out, seen, within) {
+  try { if (lstatSync(dir).isSymbolicLink()) return; } catch { return; } // a linked or junctioned skills folder is refused
   const rootReal = realOrNull(dir);
-  if (!rootReal) return;
+  if (!rootReal || !insideDir(realOrNull(within), rootReal)) return;
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
   entries.sort((a, b) => (a.name < b.name ? -1 : 1));
@@ -73,10 +75,10 @@ export function installedPluginPaths(home) {
 
 export function listSkills(vaultPath, { home = claudeHome(), productSkills = SKILLS } = {}) {
   const out = [], seen = new Set();
-  fromDir(join(vaultPath, "Skills"), "vault", out, seen);
-  fromDir(join(vaultPath, ".claude", "skills"), "vault", out, seen);
-  fromDir(join(home, "skills"), "user", out, seen);
-  for (const p of installedPluginPaths(home)) fromDir(join(p, "skills"), "plugin", out, seen);
+  fromDir(join(vaultPath, "Skills"), "vault", out, seen, vaultPath);
+  fromDir(join(vaultPath, ".claude", "skills"), "vault", out, seen, vaultPath);
+  fromDir(join(home, "skills"), "user", out, seen, home);
+  for (const p of installedPluginPaths(home)) fromDir(join(p, "skills"), "plugin", out, seen, home);
   for (const s of productSkills) {
     if (out.length >= MAX_SKILLS) break;
     if (seen.has(s.id)) continue;

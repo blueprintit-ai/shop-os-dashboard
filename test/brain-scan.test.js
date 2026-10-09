@@ -234,3 +234,36 @@ test("skills: a symlinked SKILL.md, a link-out skill folder and a crafted instal
     assert.deepEqual(names, []);
   } finally { for (const d of [v, home, outside]) rmSync(d, { recursive: true, force: true }); }
 });
+
+test("scan: one folder with thousands of entries yields inside the folder, not only between folders", async () => {
+  const v = tmp();
+  try {
+    mkdirSync(join(v, "Daily"));
+    for (let i = 0; i < 1500; i++) writeFileSync(join(v, "Daily", `n${i}.md`), `# n${i}\n`);
+    let ticks = 0, stop = false;
+    const spin = () => { if (!stop) { ticks++; setImmediate(spin); } };
+    spin();
+    const m = await scanVault(v, new Map(), { ...LIMITS, yieldMs: 0 });
+    stop = true;
+    assert.equal(m.files.length, 1500);
+    assert.ok(ticks >= 20, "the walk handed the loop back inside the single folder: " + ticks);
+  } finally { rmSync(v, { recursive: true, force: true }); }
+});
+
+test("skills: a linked Skills folder (or .claude/skills, or user skills) pointing outside is refused", async (t) => {
+  const v = tmp(), home = tmp(), outside = tmp();
+  try {
+    put(outside, "evil/SKILL.md", "---\ndescription: outside\n---\n");
+    try {
+      symlinkSync(outside, join(v, "Skills"), "dir");
+      mkdirSync(join(v, ".claude"), { recursive: true });
+      symlinkSync(outside, join(v, ".claude", "skills"), "dir");
+      symlinkSync(outside, join(home, "skills"), "dir");
+    } catch { t.skip("symlinks unavailable"); return; }
+    assert.deepEqual(listSkills(v, { home, productSkills: [] }), []);
+    // and a skills folder that is a real folder inside the vault still works
+    rmSync(join(v, "Skills"));
+    put(v, "Skills/ok/SKILL.md", "---\ndescription: fine\n---\n");
+    assert.deepEqual(listSkills(v, { home, productSkills: [] }).map((s) => s.name), ["ok"]);
+  } finally { for (const d of [v, home, outside]) rmSync(d, { recursive: true, force: true }); }
+});

@@ -25,7 +25,9 @@ export function brainSafeFragment(html, doc = globalThis.document) {
     for (const a of [...el.attributes]) {
       const n = a.name.toLowerCase();
       if (n.startsWith("on") || n === "srcdoc" || n === "usemap" || n === "style") { el.removeAttribute(a.name); continue; }
-      if (URL_ATTRS.includes(n) && !urlOk(el, n, a.value)) el.removeAttribute(a.name);
+      if (URL_ATTRS.includes(n) && !urlOk(el, n, a.value)) { el.removeAttribute(a.name); continue; }
+      // a note must not make the owner's browser fetch from another site (tracking pixel): no absolute or protocol-relative image sources
+      if (n === "src" && el.localName === "img" && /^(https?:)?\/\//i.test(squash(a.value))) el.removeAttribute(a.name);
     }
   }
   const frag = doc.createDocumentFragment();

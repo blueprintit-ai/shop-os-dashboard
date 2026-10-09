@@ -86,6 +86,40 @@ test("the map loads: four rings, CLAUDE.md in the centre, product data, no conso
   } finally { b.cleanup(); }
 });
 
+test("CSP: the page renders fully under it; an external image in a note, or injected into the page, is never fetched", async ({ page }) => {
+  const b = await bootAsOwner();
+  const violations = [], requests = [], failed = [];
+  try {
+    fatten(b.vault);
+    put(b.vault, "Context/beacon.md", "# Beacon\n\n![x](https://tracker.invalid/pixel.png)\n\n<img src=\"https://tracker.invalid/raw.png\">\n");
+    await page.setViewportSize({ width: 1650, height: 843 });
+    await openBrain(page, b, () => {
+      page.on("console", (m) => { if (/Content Security Policy|Refused to/i.test(m.text())) violations.push(m.text()); });
+      page.on("request", (r) => { if (/tracker\.invalid/.test(r.url())) requests.push(r.url()); });
+      page.on("requestfailed", (r) => { if (/tracker\.invalid/.test(r.url())) failed.push(r.url()); });
+    });
+    expect(violations).toEqual([]); // the page itself needs nothing the policy forbids
+    expect(await page.evaluate(() => BrainCore.S.nodes.length)).toBeGreaterThan(20);
+    await page.evaluate(() => BrainCore.openViewer("Context/beacon.md"));
+    await expect(page.locator("#brain-viewer.open .md-body")).toContainText("Beacon");
+    await page.click("#brain-viewer .v-close"); // the close button works without an inline handler
+    await expect(page.locator("#brain-viewer.open")).toHaveCount(0);
+    await page.click("#fab-menu"); await page.fill("#brain-search", "warranty");
+    await expect(page.locator("#brain-results .res").first()).toContainText("Warranty");
+    // belt and braces: even script that injects an external image is stopped by the policy
+    const blocked = await page.evaluate(() => new Promise((res) => {
+      document.addEventListener("securitypolicyviolation", (e) => res(e.violatedDirective), { once: true });
+      const i = new Image(); i.src = "https://tracker.invalid/injected.png"; document.body.appendChild(i);
+      setTimeout(() => res("none"), 3000);
+    }));
+    expect(blocked).toBe("img-src");
+    await page.waitForTimeout(300);
+    // nothing from the notes was ever requested; the one injected image was attempted but blocked (failed, never answered)
+    expect(requests.filter((u) => !/injected\.png/.test(u))).toEqual([]);
+    expect(requests.filter((u) => /injected\.png/.test(u)).every((u) => failed.includes(u))).toBe(true);
+  } finally { b.cleanup(); }
+});
+
 test("clicking a note selects it, a second click opens the viewer with the note's text, Open goes to /notes", async ({ page, context }) => {
   const b = await bootAsOwner();
   try {

@@ -282,6 +282,19 @@ test("pages: /brain is owner-only, licence-gated, fills the shop name safely", a
     assert.match(html, /<title>Blueprint OS — .* · AI Brain<\/title>/);
     assert.match(html, /tagline: "\\u003cem>Acme Cabinets\\u003c\/em>",/);
     assert.doesNotMatch(html, /fonts\.googleapis|cdn\.jsdelivr/);
+    const csp = owner.headers.get("content-security-policy");
+    assert.match(csp, /^default-src 'self'; script-src 'self' 'nonce-[A-Za-z0-9+/=]+'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'$/);
+    assert.doesNotMatch(csp, /script-src[^;]*unsafe-inline/);
+    const nonce = /'nonce-([^']+)'/.exec(csp)[1];
+    const inline = html.match(/<script(?![^>]*\ssrc=)[^>]*>/g);
+    assert.equal(inline.length, 2, "the kit page's two inline blocks");
+    for (const tag of inline) assert.equal(tag, `<script nonce="${nonce}">`);
+    assert.doesNotMatch(html, /<script>/);
+    assert.doesNotMatch(html, /\son(click|load|error)=/i);
+    const again = (await (await page("owner")).text()).match(/nonce="([^"]+)"/)[1];
+    assert.notEqual(again, nonce, "a fresh nonce per response");
+    const notes = await requestAs(b.server, b.jar, "owner", "GET", "/notes");
+    assert.match(notes.headers.get("content-security-policy"), /^default-src 'self'; script-src 'self'; /);
     // a hostile shop name cannot break out of the title or the script string
     writeFileSync(join(b.vault, "Context", "organization.md"), "# Evil </script><script>alert(1)</script> \"q\" 'a'\n");
     const evil = await (await page("owner")).text();
