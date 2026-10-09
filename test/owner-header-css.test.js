@@ -31,14 +31,25 @@ test("owner.css makes widget headings (.wh) transparent with no bottom border", 
   assert.match(body, /color:\s*var\(--cream\)/);
 });
 
-test("owner.css themes the top bar (#owner-header) and its buttons from owner tokens", () => {
+test("owner.css restyles the top bar (#owner-header) as the kit's quiet icon row", () => {
   const bar = ruleBody(owner, "#owner-header");
   assert.match(bar, /background:\s*transparent/);
   assert.match(bar, /color:\s*var\(--cream\)/);
-  assert.match(bar, /border-bottom:[^;]*color-mix\(in srgb, var\(--cream\)/);
+  assert.match(bar, /border:\s*0/);
+  assert.match(bar, /position:\s*fixed/);
   const btn = ruleBody(owner, "#owner-header button, #owner-header a");
   assert.match(btn, /color:\s*var\(--cream\)/);
-  assert.match(btn, /border:[^;]*color-mix\(in srgb, var\(--cream\) 22%, transparent\)/);
+  assert.match(btn, /border:\s*0/);
+  const svg = ruleBody(owner, "#owner-header svg");
+  assert.match(svg, /stroke:\s*var\(--mute\)/);
+});
+
+test("top bar keeps every functional control, as icons with accessible names", () => {
+  const html = readFileSync(join(PUB, "owner.html"), "utf8");
+  for (const id of ["editBtn", "searchBtn", "users-link", "infoBtn", "theme-btn", "logout-btn"]) {
+    assert.match(html, new RegExp(`id="${id}"[^>]*aria-label="[^"]+"`), `${id} needs an aria-label`);
+  }
+  assert.match(html, /<a id="users-link" href="\/users"/);
 });
 
 test("theme toggle button holds inline SVG icons, and CSS shows one per theme", () => {

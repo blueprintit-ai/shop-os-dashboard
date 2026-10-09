@@ -2,7 +2,7 @@ import { getLayout, saveLayout } from "./layout-client.js";
 
 let layout = await getLayout();
 
-document.getElementById("owner-shop-name").textContent = document.title.replace("Blueprint OS — ", "");
+// The shop name in the title widget is built from document.title by title-widget.js.
 document.getElementById("logout-btn").addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" });
   location.href = "/login";

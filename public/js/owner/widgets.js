@@ -18,7 +18,27 @@
 //    actually renders instead of silently matching nothing.
 
 import { saveLayout } from "./layout-client.js";
+import { iconCanvasHtml, paintHeaderIcons } from "./icons.js";
+import { buildTitleHeading } from "./title-widget.js";
 
+// Small right-aligned hint in a widget header (the kit's .tick).
+const TICKS = { skills: "tap \u25B6 to run" };
+
+// The kit's title widget is chromeless: no header label, no remove button, a
+// big name with the icon row (this page's #owner-header: edit, search, users,
+// tour, theme, logout) directly underneath. #owner-header is position:fixed
+// (so the controls stay reachable when the chat/notes panel hides the grid);
+// this keeps it glued under the title widget as that widget is placed/dragged.
+function syncToolbar(el) {
+  const bar = document.getElementById("owner-header");
+  if (!bar) return;
+  // Read the target geometry from the inline style (place() sets it), not
+  // getBoundingClientRect(): .w animates left/top, so the rect lags behind.
+  const h1 = el.querySelector("h1");
+  bar.style.left = el.style.left;
+  bar.style.width = el.style.width;
+  bar.style.top = `${parseFloat(el.style.top) + 10 + (h1 ? h1.offsetHeight : 34) + 2}px`;
+}
 const COLS = 32;
 const MIN_SPAN = 2;
 let saveTimer = null;
@@ -39,18 +59,29 @@ export function mountGrid(root, layout, kindRenderers) {
     el.style.top = `${rect.top + w.r * c}px`;
     el.style.width = `${w.cs * c}px`;
     el.style.height = `${w.rs * c}px`;
+    if (w.kind === "title") syncToolbar(el);
   }
 
   function renderWidget(w) {
     const el = document.createElement("section");
-    el.className = "w";
+    const isTitle = w.kind === "title";
+    el.className = isTitle ? "w chromeless" : "w";
     el.id = w.id;
     el.dataset.id = w.id;
-    el.innerHTML = `<header class="wh">${w.name}<button class="wx" type="button" title="Remove">×</button><span class="rs" title="Resize"></span></header><div class="wb"></div>`;
+    if (isTitle) {
+      el.innerHTML = `<div class="wh tb"></div><button class="wx" type="button" title="Remove">×</button><span class="rs" title="Resize"></span>`;
+      el.querySelector(".wh").appendChild(buildTitleHeading());
+    } else {
+      const tick = TICKS[w.kind] ? `<span class="tick">${TICKS[w.kind]}</span>` : "";
+      el.innerHTML = `<header class="wh"><span class="g" aria-hidden="true">\u283F</span>${iconCanvasHtml(w.kind)}<span class="wt"></span>${tick}<button class="wx" type="button" title="Remove">×</button><span class="rs" title="Resize"></span></header><div class="wb"></div>`;
+      el.querySelector(".wt").textContent = w.name;
+      paintHeaderIcons(el);
+    }
     place(el, w);
     root.appendChild(el);
     mounted.push({ el, w });
-    kindRenderers[w.kind]?.(el.querySelector(".wb"));
+    if (isTitle) { syncToolbar(el); document.fonts?.ready.then(() => syncToolbar(el)); }
+    else kindRenderers[w.kind]?.(el.querySelector(".wb"));
 
     el.querySelector(".wx").addEventListener("click", () => {
       layout.widgets = layout.widgets.filter((x) => x.id !== w.id);
@@ -67,7 +98,7 @@ export function mountGrid(root, layout, kindRenderers) {
     let resize = null;
 
     el.querySelector(".wh").addEventListener("pointerdown", (e) => {
-      if (e.target.closest(".wx") || e.target.closest(".rs")) return;
+      if (e.target.closest(".wx") || e.target.closest(".rs") || e.target.closest("button, a")) return;
       if (!document.body.classList.contains("edit")) return;
       drag = { startX: e.clientX, startY: e.clientY, origC: w.c, origR: w.r };
     });
