@@ -255,8 +255,26 @@ test("business assets folder inside the vault: Private location, listed paths, f
       }
       for (const [cat, name] of [["Hidden", "new.txt"], ["Insurance", "payroll-new.txt"], ["Private", "x.txt"]].concat(dirRel.startsWith("Private") ? [["Insurance", "anything.txt"]] : [])) {
         const up = await fetch(`${ctx.base}/api/assets/upload?category=${cat}&name=${name}`, { method: "POST", headers: { cookie: ctx.jar?.staff ?? "", origin: ctx.base }, body: "x" }).catch(() => null);
-        assert.equal(up.status, 404, `${dirRel}: staff upload to ${cat}/${name}`);
+        assert.equal(up.status, 403, `${dirRel}: staff upload to ${cat}/${name}`);
       }
     } finally { ctx.cleanup(); }
   }
+});
+
+test("assets upload is owner-only, writes nothing for staff, and the assets page hides the upload control from staff", async () => {
+  const { existsSync } = await import("node:fs");
+  const ctx = await bootPrivate({ staffSwitches: { assetsView: true }, prepare: (vault, home) => { mkdirSync(join(home, "business-assets", "Insurance"), { recursive: true }); } });
+  try {
+    for (const q of ["category=Insurance&name=a.txt", "category=Resources&name=b.txt", "category=&name=c.txt"]) {
+      const r = await fetch(`${ctx.base}/api/assets/upload?${q}`, { method: "POST", headers: { cookie: ctx.jar.staff, origin: ctx.base }, body: "x" });
+      assert.equal(r.status, 403, q);
+    }
+    assert.ok(!existsSync(join(ctx.home, "business-assets", "Insurance", "a.txt")));
+    const o = await fetch(`${ctx.base}/api/assets/upload?category=Insurance&name=a.txt`, { method: "POST", headers: { cookie: ctx.jar.owner, origin: ctx.base }, body: "x" });
+    assert.equal(o.status, 200);
+    const staffPage = await get(ctx, "staff", "/assets");
+    const ownerPage = await get(ctx, "owner", "/assets");
+    assert.match(staffPage.text, /#upBtn,#drop,#upOv\{display:none!important\}/);
+    assert.ok(!/#upBtn,#drop,#upOv\{display:none/.test(ownerPage.text));
+  } finally { ctx.cleanup(); }
 });

@@ -1,6 +1,6 @@
 import { join, basename, extname } from "node:path";
 import { statSync, createReadStream, existsSync } from "node:fs";
-import { requireUser } from "../auth.js";
+import { requireUser, requireOwner } from "../auth.js";
 import { sendJson, readJsonBody } from "../lib/http.js";
 import { scanAssets, setFavorite, saveUpload, listedAssetPath, assetMime, MAX_UPLOAD } from "../assets.js";
 import { safeFileHeaders } from "../lib/safe-file-response.js";
@@ -45,8 +45,8 @@ export function assetsRoutes({ auth, settingsStore, homeDir, audit, vaultPath })
     }
 
     if (p === "/api/assets/upload" && req.method === "POST") {
-      const user = requireUser(req, res, auth); if (!user) return true;
-      if (!canSeeAssets(user)) return sendJson(res, 403, { error: "forbidden" }), true;
+      // assetsView is a view switch: only the owner writes (the folder may sit inside the vault)
+      const user = requireOwner(req, res, auth); if (!user) return true;
       const category = url.searchParams.get("category") || "";
       const name = url.searchParams.get("name") ?? "";
       if (user.role !== "owner" && (hiddenFromStaff(category) || hiddenFromStaff(join(category, String(name))))) return sendJson(res, 404, { error: "not-found" }), true;
