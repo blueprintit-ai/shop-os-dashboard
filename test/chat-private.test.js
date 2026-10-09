@@ -160,3 +160,15 @@ test("staff options switch off skills and bundled skills", () => {
     assert.equal(c.o.settings.disableBundledSkills, true);
   } finally { c.cleanup(); }
 });
+
+test("the hook's refusal and the vault tools' own refusal use the very same words", async () => {
+  const { vaultSearch } = await import("../src/chat/vault-tools.js");
+  const c = setup(OWNER_LIST);
+  try {
+    const own = vaultSearch(c.vault, STAFF, { query: "x", folder: "Resources/Private" }).content[0].text;
+    const hookMsg = (await c.viaCan("mcp__vault__search", { query: "x", folder: "Resources/Private" })).message;
+    const readMsg = (await c.viaCan("Read", { file_path: join(c.vault, "Resources/Private/hr.md") })).message;
+    assert.equal(hookMsg, own);
+    assert.equal(readMsg, own);
+  } finally { c.cleanup(); }
+});

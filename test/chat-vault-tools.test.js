@@ -157,3 +157,15 @@ test("server exposes exactly search and list under the vault name", async () => 
     assert.ok(srv.instance);
   } finally { cleanup(); }
 });
+
+test("every denial and failure of search and list reads the same, whatever the reason", () => {
+  const { vault, cleanup } = makeVault({ config: OWNER_LIST });
+  try {
+    const texts = new Set();
+    const folders = ["Resources/nope", "Resources/ok.md", "Resources/Private", "Context", "Resources/fm-true.md", "Resources/Payroll Notes", "..", "/", "x\0y", 5];
+    for (const folder of folders) {
+      for (const fn of [vaultSearch, vaultList]) { const r = fn(vault, STAFF, { query: "x", folder }); assert.equal(r.isError, true, String(folder)); texts.add(text(r)); }
+    }
+    assert.equal(texts.size, 1, [...texts].join(" | "));
+  } finally { cleanup(); }
+});

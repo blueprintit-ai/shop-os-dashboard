@@ -19,8 +19,10 @@ export const LIMITS = Object.freeze({
 });
 
 const TEXT_EXT = new Set([".md", ".markdown", ".txt", ".csv", ".json", ".yaml", ".yml", ".log", ".html", ".htm", ".xml", ".vtt", ".srt"]);
-// One answer for "no such folder", "not yours" and "private": a guessed name confirms nothing.
-const FOLDER_UNAVAILABLE = "That folder is not available to you. Use list with no folder to see the folders you can use.";
+// ONE answer for every refusal or failure (no such folder, a file instead of a folder, not yours, private, bad input, and
+// the hook's refusal of a Read): a guessed name confirms nothing.
+export const UNAVAILABLE = "That is not available to you. Answer from the other files you can read, and do not try to find or guess it.";
+const FOLDER_UNAVAILABLE = UNAVAILABLE;
 
 const reply = (text, isError = false) => ({ content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) });
 

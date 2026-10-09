@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 import { resolve, isAbsolute } from "node:path";
 import { isPathAllowed, isPrivatePath } from "../scope.js";
-import { VAULT_SERVER_NAME, VAULT_TOOL_NAMES, createVaultServer } from "./vault-tools.js";
+import { VAULT_SERVER_NAME, VAULT_TOOL_NAMES, UNAVAILABLE, createVaultServer } from "./vault-tools.js";
 
 // Staff get Read (path-checked below, on the real path, private rules included) and two in-process tools, search and
 // list (src/chat/vault-tools.js). They do NOT get the SDK's built-in Grep and Glob: those return matches from every
@@ -27,7 +27,6 @@ function pathFromInput(toolName, input, cwd) {
 // is exercised directly by the unit tests below, and covers any tool/mode
 // combination where the SDK does still invoke it). The vault tools check
 // every entry they return themselves too; the folder check here is a second lock.
-const UNAVAILABLE = "That file is not available to you. Answer from the other files you can read, and do not try to find or guess it.";
 function isRegularFile(p) { try { return statSync(p).isFile(); } catch { return false; } }
 
 function staffDecision(toolName, input, vaultPath, user) {
