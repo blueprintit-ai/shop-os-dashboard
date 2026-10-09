@@ -105,3 +105,12 @@ test("license gate: like the other /api/users routes, it keeps working with a fa
     assert.equal((await get(b, "anon", "?format=url")).status, 401);
   } finally { b.cleanup(); }
 });
+
+test("/api/status and the shortcut use the same address list, so the page and the file agree", async () => {
+  const b = await boot();
+  try {
+    const status = await (await requestAs(b.server, b.jar, "owner", "GET", "/api/status")).json();
+    assert.deepEqual(status.lan, ["192.168.1.20", "10.0.0.5"]);
+    assert.equal(status.port, 50003);
+  } finally { b.cleanup(); }
+});
