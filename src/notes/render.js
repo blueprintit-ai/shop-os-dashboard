@@ -54,10 +54,12 @@ function preprocess(body, resolveLink, links) {
     const r = resolveLink(target);
     const text = alias ?? (heading ? `${target} › ${heading}` : target);
     let html;
-    if (bang === "!" && r.exists && IMG_EXT.test(target)) html = `<img class="embed" src="${esc(r.href)}" alt="${esc(target)}">`;
+    // A link into a private note shows neither the note's name nor a hint of where it is: plain text, nothing to click.
+    if (r.private) html = `<span class="wikilink private">private note</span>`;
+    else if (bang === "!" && r.exists && IMG_EXT.test(target)) html = `<img class="embed" src="${esc(r.href)}" alt="${esc(target)}">`;
     else if (r.exists) html = `<a class="wikilink" href="${esc(r.href)}${heading ? "#" + slugHeading(heading) : ""}">${esc(text)}</a>`;
     else html = `<span class="wikilink missing">${esc(text)}</span>`;
-    links.push({ target, alias, heading, embed: bang === "!" });
+    if (!r.private) links.push({ target, alias, heading, embed: bang === "!" });
     tokens.push(html);
     return ` WL${tokens.length - 1} `;
   });

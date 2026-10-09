@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { UserStore } from "./users.js";
 import { Auth, sameOriginOk } from "./auth.js";
 import { Audit } from "./audit.js";
+import { configurePrivateAudit } from "./scope.js";
 import { LinkIndex } from "./notes/index.js";
 import { SessionsGuard } from "./sessions-guard.js";
 import { SessionStore } from "./chat/sessions.js";
@@ -48,6 +49,7 @@ export function defaultLicenseCheck() { return validateLicense(readLicense()); }
 export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = defaultRunTurn, licenseCheck = defaultLicenseCheck, guardMax = 3, port = null, appDir = null, npmBin = null, restart = () => {}, updateInfo = { updateAvailable: false }, applyUpdateImpl = undefined, lanImpl = lanAddresses }) {
   mkdirSync(homeDir, { recursive: true });
   const audit = new Audit(join(homeDir, "activity.jsonl"));
+  configurePrivateAudit(audit);
   const users = new UserStore(join(homeDir, "users.json"));
   const auth = new Auth({ users, sessionsPath: join(homeDir, "sessions.json"), audit });
   const index = new LinkIndex(vaultPath); index.build();

@@ -5,6 +5,7 @@ import { sendJson, readJsonBody } from "../lib/http.js";
 import { scanAssets, setFavorite, saveUpload, listedAssetPath, assetMime, MAX_UPLOAD } from "../assets.js";
 import { safeFileHeaders } from "../lib/safe-file-response.js";
 import { effectiveAssetsRoot } from "../settings.js";
+import { isPrivateRelPath } from "../scope.js";
 
 const FILE_PREFIX = "/assets/file/";
 const INLINE_EXTS = new Set(["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv"]);
@@ -13,21 +14,29 @@ function canSeeAssets(user) {
   return user.role === "owner" || user.switches?.assetsView === true;
 }
 
-export function assetsRoutes({ auth, settingsStore, homeDir, audit }) {
+export function assetsRoutes({ auth, settingsStore, homeDir, audit, vaultPath }) {
   return async (req, res, url) => {
     const p = url.pathname;
     const root = () => effectiveAssetsRoot(settingsStore, homeDir);
+    const hiddenFromStaff = (rel) => isPrivateRelPath(vaultPath, rel);
 
     if (p === "/api/assets" && req.method === "GET") {
       const user = requireUser(req, res, auth); if (!user) return true;
       if (!canSeeAssets(user)) return sendJson(res, 403, { error: "forbidden" }), true;
-      return sendJson(res, 200, scanAssets(root())), true;
+      const all = scanAssets(root());
+      if (user.role === "owner") return sendJson(res, 200, all), true;
+      // staff never see a Private category/file (or one the owner listed in Dashboard/private-paths.json)
+      const files = all.files.filter((f) => !hiddenFromStaff(f.category === "Uncategorized" ? f.name : join(f.category, f.name)));
+      const categories = all.categories.filter((c) => !hiddenFromStaff(c.name)).map((c) => ({ ...c, count: files.filter((f) => f.category === c.name).length }));
+      return sendJson(res, 200, { ...all, files, categories, favorites: all.favorites.filter((f) => files.some((x) => x.id === f.id)) }), true;
     }
 
     if (p === "/api/assets/favorite" && req.method === "POST") {
       const user = requireUser(req, res, auth); if (!user) return true;
       if (!canSeeAssets(user)) return sendJson(res, 403, { error: "forbidden" }), true;
       const { id, on } = await readJsonBody(req);
+      const target = user.role === "owner" ? null : listedAssetPath(root(), id);
+      if (target && hiddenFromStaff(target.rel)) return sendJson(res, 404, { error: "not-found" }), true;
       const result = setFavorite(root(), id, !!on);
       if (result.error) return sendJson(res, result.code, { error: result.error }), true;
       return sendJson(res, 200, result), true;
@@ -56,6 +65,7 @@ export function assetsRoutes({ auth, settingsStore, homeDir, audit }) {
       const id = p.slice(FILE_PREFIX.length);
       const asset = listedAssetPath(root(), id);
       if (!asset || !existsSync(asset.abs) || !statSync(asset.abs).isFile()) return sendJson(res, 404, { error: "not-found" }), true;
+      if (user.role !== "owner" && isPrivateRelPath(vaultPath, asset.rel)) return sendJson(res, 404, { error: "not-found" }), true;
       audit.log("asset.open", { userId: user.id, username: user.username, role: user.role, path: asset.rel });
       // Business documents are user-supplied and served from the dashboard's own origin, so only
       // types that cannot run script display inline; everything else (html, svg, xml, json, ...)

@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { readJsonBody, sendJson } from "../lib/http.js";
 import { requireOwner } from "../auth.js";
-import { HIDDEN_DIRS } from "../scope.js";
+import { HIDDEN_DIRS, isPrivateRelPath } from "../scope.js";
 import { readAll } from "../audit.js";
 import { staffUrl, buildStaffShortcut } from "../lib/staff-shortcut.js";
 
@@ -10,7 +10,7 @@ const CODE_STATUS = { USERNAME_TAKEN: 409, INVALID_USERNAME: 400, INVALID_ROLE: 
 function fail(res, e) { return sendJson(res, CODE_STATUS[e.code] ?? 500, { error: e.message, code: e.code ?? "ERROR" }); }
 
 function listFolders(vaultPath) {
-  const top = readdirSync(vaultPath, { withFileTypes: true }).filter((e) => e.isDirectory() && !HIDDEN_DIRS.includes(e.name)).map((e) => e.name).sort();
+  const top = readdirSync(vaultPath, { withFileTypes: true }).filter((e) => e.isDirectory() && !HIDDEN_DIRS.includes(e.name) && !isPrivateRelPath(vaultPath, e.name)).map((e) => e.name).sort();
   const team = [];
   const teamRoot = join(vaultPath, "Team");
   try {
