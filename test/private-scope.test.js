@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { mkdirSync, writeFileSync, statSync, renameSync, utimesSync } from "node:fs";
+import { mkdirSync, writeFileSync, statSync, existsSync, renameSync, utimesSync } from "node:fs";
 import { isPathAllowed, isPrivatePath, allowedRoots, configurePrivateAudit, privateListStatus } from "../src/scope.js";
 import { makeVault, writeConfig, link, STAFF, OWNER, OWNER_LIST } from "./helpers/private-vault.js";
 
@@ -348,13 +348,17 @@ test("Windows name aliases of a private-front-matter note are private everywhere
   const { searchNotes } = await import("../src/notes/search.js");
   const { vault, cleanup } = makeVault({ config: OWNER_LIST });
   try {
-    const aliases = ["fm-true.md::$DATA", "fm-true.md:stream", "fm-true.md.", "fm-true.md ", "fm-true.md...  ", "FM-TRUE.MD.", "fm-true.md. .", "fm-yes.md::$DATA", "salary-2025.md.", "bank-statement.txt "];
+    const aliases = ["fm-true.md::$DATA", "fm-true.md:stream", "fm-true.md.", "fm-true.md ", "fm-true.md...  ", "fm-true.md. .", "fm-yes.md::$DATA", "salary-2025.md.", "bank-statement.txt "];
     for (const a of aliases) {
       const p = join(vault, "Resources", a);
       assert.equal(isPathAllowed(vault, STAFF, p), false, `isPathAllowed ${a}`);
       assert.equal(isPrivatePath(vault, p), true, `isPrivatePath ${a}`);
       assert.equal(createScope(vault, STAFF).allowedNote(`Resources/${a}`), false, `allowedNote ${a}`);
       assert.equal(createScope(vault, STAFF).allowed(p), false);
+    }
+    // upper-case spelling only names the same file on a case-insensitive disk (macOS, Windows)
+    if (existsSync(join(vault, "Resources", "FM-TRUE.MD"))) {
+      assert.equal(isPathAllowed(vault, STAFF, join(vault, "Resources", "FM-TRUE.MD.")), false, "upper-case alias");
     }
     // aliases of public files stay as they were (nothing is private about them)
     assert.equal(isPrivatePath(vault, join(vault, "Resources", "ok.md.")), false);

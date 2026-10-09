@@ -347,7 +347,8 @@ export function createScope(vaultPath, user, { platform = process.platform } = {
 
   function allowed(candidatePath) {
     const lex = resolve(candidatePath);
-    if (!owner && hasWindowsAlias(lex, platform)) return false;
+    // only the part inside the vault counts: a vault that itself sits under "Notes." must still work
+    if (!owner && hasWindowsAlias(insideOf(root, lex) ? relative(root, lex) : lex, platform)) return false;
     const canon = canonAlias(lex);
     return allowedOne(lex) && (canon === lex || allowedOne(canon));
   }
@@ -370,6 +371,7 @@ export function createScope(vaultPath, user, { platform = process.platform } = {
     const abs = join(dirReal, ent.name);
     if (ent.isSymbolicLink()) return allowed(abs) ? { ok: true, segs: relSegs(root, realOf(abs)) } : { ok: false };
     if (hiddenName(ent.name)) return { ok: false };
+    if (!owner && (isAliasName(ent.name) || ent.name.includes("~"))) return allowed(abs) ? { ok: true, segs: relSegs(root, realOf(abs)) } : { ok: false }; // odd spellings: the full check
     const segs = [...dirSegs, ent.name];
     if (!owner && segsPrivate(config, segs)) return { ok: false };
     if (!owner && ent.isFile() && !config.failClosed && frontMatterPrivate(abs)) return { ok: false };
