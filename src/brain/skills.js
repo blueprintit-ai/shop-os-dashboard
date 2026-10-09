@@ -1,0 +1,78 @@
+import { readdirSync, readFileSync, openSync, readSync, closeSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { SKILLS } from "../runs.js";
+
+// Where the Second Brain's Skills ring comes from. Order = priority when two sources name the same skill:
+//   1. the vault's own skills        <vault>/Skills/<name>/SKILL.md and <vault>/.claude/skills/<name>/SKILL.md
+//   2. user-level skills             <claude home>/skills/<name>/SKILL.md
+//   3. installed plugins (user scope) <installPath>/skills/<name>/SKILL.md, installPaths from <claude home>/plugins/installed_plugins.json
+//   4. the product's own run list    src/runs.js SKILLS (so the Digest / Briefing / Optimizer skills always appear)
+// Only names and the first lines of each SKILL.md are read here; the viewer reads one file on demand.
+export const MAX_SKILLS = 200;
+const HEAD_BYTES = 4096;
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+export function claudeHome() { return process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"); }
+
+function head(abs) {
+  let fd;
+  try {
+    fd = openSync(abs, "r");
+    const buf = Buffer.alloc(HEAD_BYTES);
+    const n = readSync(fd, buf, 0, HEAD_BYTES, 0);
+    return buf.subarray(0, n).toString("utf8");
+  } catch { return null; } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* ignore */ } }
+}
+
+function describe(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  const front = m ? m[1] : "";
+  const d = /^description:\s*(.*)$/m.exec(front);
+  let desc = d ? d[1].trim().replace(/^["']|["']$/g, "") : "";
+  desc = desc.replace(/[<>"`\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim();
+  return desc.length > 240 ? desc.slice(0, 237) + "..." : desc;
+}
+
+function fromDir(dir, source, out, seen) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  entries.sort((a, b) => (a.name < b.name ? -1 : 1));
+  for (const e of entries) {
+    if (out.length >= MAX_SKILLS) return;
+    if (!e.isDirectory() || !SAFE_NAME.test(e.name) || seen.has(e.name)) continue;
+    const file = join(dir, e.name, "SKILL.md");
+    const text = head(file);
+    if (text === null) continue;
+    let size = 0, mtime = 0;
+    try { const st = statSync(file); size = st.size; mtime = st.mtimeMs; } catch { /* ignore */ }
+    seen.add(e.name);
+    out.push({ name: e.name, desc: describe(text), file, source, size, mtime });
+  }
+}
+
+export function installedPluginPaths(home) {
+  try {
+    const j = JSON.parse(readFileSync(join(home, "plugins", "installed_plugins.json"), "utf8"));
+    const out = [];
+    for (const list of Object.values(j.plugins ?? {})) {
+      for (const inst of Array.isArray(list) ? list : []) if (inst && typeof inst.installPath === "string") out.push(inst.installPath);
+    }
+    return out;
+  } catch { return []; }
+}
+
+export function listSkills(vaultPath, { home = claudeHome(), productSkills = SKILLS } = {}) {
+  const out = [], seen = new Set();
+  fromDir(join(vaultPath, "Skills"), "vault", out, seen);
+  fromDir(join(vaultPath, ".claude", "skills"), "vault", out, seen);
+  fromDir(join(home, "skills"), "user", out, seen);
+  for (const p of installedPluginPaths(home)) fromDir(join(p, "skills"), "plugin", out, seen);
+  for (const s of productSkills) {
+    if (out.length >= MAX_SKILLS) break;
+    if (seen.has(s.id)) continue;
+    seen.add(s.id);
+    out.push({ name: s.id, desc: s.label ?? "", file: null, source: "product", size: 0, mtime: 0 });
+  }
+  return out;
+}

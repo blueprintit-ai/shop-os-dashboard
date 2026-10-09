@@ -62,6 +62,19 @@ export function pageRoutes(ctx) {
         .replace("__SHOP_NAME_JS__", () => escapeForTemplate(shop));
       return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
     }
+    if (p === "/brain") {
+      // The Second Brain map: the RoboNuggets kit page synced by tools/sync-brain.mjs, data from /api/brain/*. Owner-only in v1.
+      if (!user) return redirect(res, "/login"), true;
+      if (user.role !== "owner") return redirect(res, "/notes"), true;
+      if (licenseGate(ctx, res)) return true;
+      const shop = readShopName(vaultPath);
+      // the HUD subtitle is a JS string literal holding HTML: the name is HTML-escaped, then JSON-quoted with < as \u003c
+      const tagline = JSON.stringify(`<em>${escapeHtml(shop)}</em>`).replace(/</g, "\\u003c");
+      const html = page("brain.html")
+        .replace("__SHOP_NAME__", () => escapeHtml(shop))
+        .replace("__BRAIN_TAGLINE_JS__", () => tagline);
+      return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
+    }
     if (p === "/widgets") {
       if (!user) return redirect(res, "/login"), true;
       if (user.role !== "owner") return redirect(res, "/"), true;
