@@ -59,3 +59,12 @@ test("every brain page asset path the HTML references exists", async () => {
   assert.ok(refs.length >= 8, refs.join(","));
   for (const r of refs) assert.ok(existsSync(join(ROOT, "public", r.replace("/static/", ""))), r);
 });
+
+test("the owner page never probes or frames a local Second Brain on :5210; its Second Brain links open /brain", () => {
+  const html = read("public/owner.html").toString("utf8");
+  assert.doesNotMatch(html, /fetch\('http:\/\/localhost:5210'/);
+  assert.match(html, /window\.probeSecondBrain = \(\) => Promise\.resolve\(false\);/);
+  assert.match(html, /function primeBrain\(\) \{\n  if \(brainPrimed \|\| true\) return;/);
+  assert.match(html, /window\.open\('\/brain', '_blank'\)/);
+  assert.doesNotMatch(html, /opens the dashboard's own notes/);
+});

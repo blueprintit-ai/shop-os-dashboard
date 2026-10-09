@@ -263,7 +263,7 @@ test("apps: owner replaces the list; it persists to Dashboard/apps.json and read
   const b = await bootAsOwner();
   try {
     const apps = [
-      { id: "sbRow", name: "Second Brain", sub: "notes", url: "/notes", icon: "brain" },
+      { id: "sbRow", name: "Second Brain", sub: "notes", url: "/brain", icon: "brain" },
       { id: "quotes", name: "Quotes", sub: "Estimates & invoices", url: "http://127.0.0.1:5055/", icon: "docs" },
       { id: "crm", name: "CRM", sub: "", url: "https://crm.example.com/app", icon: "links" },
     ];

@@ -2759,7 +2759,7 @@ async function renderAppRows() {
     r.dataset.wired = '1';
     r.addEventListener('click', () => {
       if (r.id !== 'sbRow') return openApp(r.dataset.url);
-      /* the Second Brain row re-checks live; with nothing on :5210 it opens the dashboard's own notes */
+      /* the Second Brain row opens the dashboard's own Second Brain page (/brain); the kit's :5210 probe is disabled */
       Promise.resolve(window.probeSecondBrain ? window.probeSecondBrain() : false)
         .then(up => openApp(up ? 'http://localhost:5210' : r.dataset.url));
     });
@@ -3457,7 +3457,7 @@ const brainSay = type => {
   try { fr.contentWindow.postMessage({ type }, '*'); } catch (_) {}
 };
 function primeBrain() {
-  if (brainPrimed) return;
+  if (brainPrimed || true) return; /* product: no framed external brain */
   brainPrimed = true;
   const wrap = document.getElementById('brainWrap'), fr = document.getElementById('brainFrame');
   fr.addEventListener('load', () => {
@@ -4150,19 +4150,11 @@ try {
   const city = (tz.split('/').pop() || 'LOCAL').replace(/_/g, ' ').toUpperCase();
   const cap = document.getElementById('homeTz');
   if (cap) cap.textContent = 'LOCAL · ' + city;
-  /* if a Second Brain answers on 5210, the orb + launcher row link it;
-     otherwise both point at the build-your-own classroom module. Exposed as
-     window.probeSecondBrain so a click can re-check live instead of trusting
-     a flag that may not have resolved yet (or resolved false before the
-     brain's server had finished starting up). */
+  /* The product ships its own Second Brain at /brain; the kit's probe of a separate brain on port 5210 is disabled
+     (anything listening there must never be framed into the owner page). The probe stays as a no-op so the kit's
+     callers keep working: nothing is ever 'up', so every Second Brain link opens /brain. */
   window.SB_UP = false;
-  window.probeSecondBrain = () => fetch('http://localhost:5210', { mode: 'no-cors' }).then(() => {
-    window.SB_UP = true;
-    const row = document.getElementById('sbRow');
-    if (row) { row.dataset.url = 'http://localhost:5210';
-      const sub = document.getElementById('sbSub'); if (sub) sub.textContent = 'Your whole workspace as a living map'; }
-    return true;
-  }).catch(() => { window.SB_UP = false; return false; });
+  window.probeSecondBrain = () => Promise.resolve(false);
   window.probeSecondBrain();
   /* the spotlight tour runs once on a fresh install; the info icon replays it */
   if (!localStorage.getItem('os-tour-seen')) {

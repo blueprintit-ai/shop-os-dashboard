@@ -32,8 +32,7 @@ test("loads with no console errors and no request that leaves the dashboard (fon
     // run) are not the dashboard's own, so they are excluded.
     page.on("request", (r) => {
       const u = r.url();
-      if (u.startsWith(b.url) || u.startsWith("data:") || u.startsWith("blob:") || /localhost:5210/.test(u)) return;
-      if (/localhost:5210/.test(r.frame()?.url() || "")) return;
+      if (u.startsWith(b.url) || u.startsWith("data:") || u.startsWith("blob:")) return;
       external.push(u);
     });
     await openOwner(page, b);
@@ -245,7 +244,7 @@ test("SHOP APPS rows come from /api/apps: default is Second Brain only; owner-wr
     await expect(page.locator("#w-apps")).not.toContainText("Reference Wall");
     await expect(page.locator("#w-apps [data-url*='127.0.0.1:5298']")).toHaveCount(0);
     const res = await page.evaluate(async () => (await fetch("/api/apps", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ apps: [
-      { id: "sbRow", name: "Second Brain", sub: "notes", url: "/notes", icon: "brain" },
+      { id: "sbRow", name: "Second Brain", sub: "notes", url: "/brain", icon: "brain" },
       { id: "quotes", name: 'Quotes <i>&"', sub: "Estimates", url: "http://127.0.0.1:59999/q", icon: "docs" } ] }) })).status);
     expect(res).toBe(200);
     await page.reload();
