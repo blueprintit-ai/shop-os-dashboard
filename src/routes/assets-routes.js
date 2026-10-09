@@ -5,7 +5,7 @@ import { sendJson, readJsonBody } from "../lib/http.js";
 import { scanAssets, setFavorite, saveUpload, listedAssetPath, assetMime, MAX_UPLOAD } from "../assets.js";
 import { safeFileHeaders } from "../lib/safe-file-response.js";
 import { effectiveAssetsRoot } from "../settings.js";
-import { isPrivateRelPath } from "../scope.js";
+import { isPrivateRelPath, isPrivatePath } from "../scope.js";
 
 const FILE_PREFIX = "/assets/file/";
 const INLINE_EXTS = new Set(["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv"]);
@@ -18,7 +18,9 @@ export function assetsRoutes({ auth, settingsStore, homeDir, audit, vaultPath })
   return async (req, res, url) => {
     const p = url.pathname;
     const root = () => effectiveAssetsRoot(settingsStore, homeDir);
-    const hiddenFromStaff = (rel) => isPrivateRelPath(vaultPath, rel);
+    // Names under the assets root, and (when the assets folder sits inside the vault) the same private rules on the real
+    // location: a Private folder, a listed path, a private-front-matter note, a link into Private.
+    const hiddenFromStaff = (rel) => isPrivateRelPath(vaultPath, rel) || isPrivatePath(vaultPath, join(root(), rel));
 
     if (p === "/api/assets" && req.method === "GET") {
       const user = requireUser(req, res, auth); if (!user) return true;
@@ -47,6 +49,7 @@ export function assetsRoutes({ auth, settingsStore, homeDir, audit, vaultPath })
       if (!canSeeAssets(user)) return sendJson(res, 403, { error: "forbidden" }), true;
       const category = url.searchParams.get("category") || "";
       const name = url.searchParams.get("name") ?? "";
+      if (user.role !== "owner" && (hiddenFromStaff(category) || hiddenFromStaff(join(category, String(name))))) return sendJson(res, 404, { error: "not-found" }), true;
       const declaredLength = Number(req.headers["content-length"] || 0);
       if (declaredLength > MAX_UPLOAD) return sendJson(res, 413, { error: "file over 50 MB" }), true;
       // content-length can be absent (chunked) or a lie: count what actually arrives and stop buffering at the limit
@@ -65,7 +68,7 @@ export function assetsRoutes({ auth, settingsStore, homeDir, audit, vaultPath })
       const id = p.slice(FILE_PREFIX.length);
       const asset = listedAssetPath(root(), id);
       if (!asset || !existsSync(asset.abs) || !statSync(asset.abs).isFile()) return sendJson(res, 404, { error: "not-found" }), true;
-      if (user.role !== "owner" && isPrivateRelPath(vaultPath, asset.rel)) return sendJson(res, 404, { error: "not-found" }), true;
+      if (user.role !== "owner" && hiddenFromStaff(asset.rel)) return sendJson(res, 404, { error: "not-found" }), true;
       audit.log("asset.open", { userId: user.id, username: user.username, role: user.role, path: asset.rel });
       // Business documents are user-supplied and served from the dashboard's own origin, so only
       // types that cannot run script display inline; everything else (html, svg, xml, json, ...)

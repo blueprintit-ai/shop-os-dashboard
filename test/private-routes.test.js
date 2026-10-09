@@ -223,3 +223,40 @@ test("stats and routines feeds are owner-only (they can carry text derived from 
     }
   } finally { ctx.cleanup(); }
 });
+
+test("business assets folder inside the vault: Private location, listed paths, front matter and links are all hidden from staff", async () => {
+  for (const dirRel of ["Private/Docs", "Resources/Docs"]) {
+    const ctx = await bootPrivate({
+      config: { paths: ["Resources/Docs/Hidden"], patterns: ["*payroll*"] },
+      staffSwitches: { assetsView: true },
+      prepare: (vault) => {
+        const d = join(vault, dirRel);
+        mkdirSync(join(d, "Hidden"), { recursive: true }); mkdirSync(join(d, "Insurance"), { recursive: true });
+        writeFileSync(join(d, "Insurance", "policy.txt"), "x");
+        writeFileSync(join(d, "Insurance", "payroll-2025.txt"), "x");
+        writeFileSync(join(d, "Insurance", "note.md"), "---\nprivate: true\n---\nx");
+        writeFileSync(join(d, "Hidden", "h.txt"), "x");
+        link(join(vault, "Resources", "Private", "hr.md"), join(d, "Insurance", "linked.md"));
+      },
+    });
+    try {
+      const set = await ctx.req("owner", "PUT", "/api/settings", { assetsDir: join(ctx.vault, dirRel) });
+      assert.equal(set.status, 200, await set.text());
+      const o = JSON.parse((await get(ctx, "owner", "/api/assets")).text);
+      assert.ok(o.files.length >= 4, "owner sees everything");
+      const s = JSON.parse((await get(ctx, "staff", "/api/assets")).text);
+      const names = s.files.map((f) => f.name);
+      if (dirRel.startsWith("Private")) assert.deepEqual(names, [], "the whole folder is private");
+      else assert.deepEqual(names, ["policy.txt"], names.join());
+      for (const f of o.files.filter((f) => !names.includes(f.name))) {
+        assert.equal((await get(ctx, "staff", `/assets/file/${f.id}`)).status, 404, f.name);
+        assert.equal((await ctx.req("staff", "POST", "/api/assets/favorite", { id: f.id, on: true })).status, 404, f.name);
+        if (f.name !== "linked.md") assert.equal((await get(ctx, "owner", `/assets/file/${f.id}`)).status, 200, "owner still opens " + f.name);
+      }
+      for (const [cat, name] of [["Hidden", "new.txt"], ["Insurance", "payroll-new.txt"], ["Private", "x.txt"]]) {
+        const up = await fetch(`${ctx.base}/api/assets/upload?category=${cat}&name=${name}`, { method: "POST", headers: { cookie: ctx.jar?.staff ?? "", origin: ctx.base }, body: "x" }).catch(() => null);
+        if (up && dirRel.startsWith("Resources")) assert.ok([401, 403, 404].includes(up.status), `${cat}/${name} -> ${up.status}`);
+      }
+    } finally { ctx.cleanup(); }
+  }
+});
