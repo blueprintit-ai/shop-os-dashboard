@@ -85,8 +85,8 @@ export function kitCompatRoutes(ctx) {
 
     if (get && p === "/api/calendar") { if (!requireUser(req, res, auth)) return true; return sendJson(res, 200, notWired({ events: [] })), true; }
     if (get && p === "/api/email") { if (!requireUser(req, res, auth)) return true; return sendJson(res, 200, notWired()), true; }
-    if (get && p === "/api/stats") { if (!requireUser(req, res, auth)) return true; return sendJson(res, 200, sanitizeStats(readStats(vaultPath))), true; }
-    if (get && p === "/api/routines") { if (!requireUser(req, res, auth)) return true; return sendJson(res, 200, sanitizeRoutines(readRoutines(vaultPath))), true; }
+    if (get && p === "/api/stats") { if (!requireOwner(req, res, auth)) return true; return sendJson(res, 200, sanitizeStats(readStats(vaultPath))), true; }
+    if (get && p === "/api/routines") { if (!requireOwner(req, res, auth)) return true; return sendJson(res, 200, sanitizeRoutines(readRoutines(vaultPath))), true; }
 
     if (get && p === "/api/skills") {
       if (!requireOwner(req, res, auth)) return true;

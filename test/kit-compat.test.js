@@ -40,8 +40,8 @@ test("every kit endpoint needs a session; owner-only ones refuse staff", async (
       // [method, path, body, anon, staff, owner]
       ["GET", "/api/calendar", undefined, 401, 200, 200],
       ["GET", "/api/email", undefined, 401, 200, 200],
-      ["GET", "/api/stats", undefined, 401, 200, 200],
-      ["GET", "/api/routines", undefined, 401, 200, 200],
+      ["GET", "/api/stats", undefined, 401, 403, 200],
+      ["GET", "/api/routines", undefined, 401, 403, 200],
       ["GET", "/api/skills", undefined, 401, 403, 200],
       ["POST", "/api/run", { id: "nope" }, 401, 403, 400],
       ["GET", "/api/run-status?job=zzz", undefined, 401, 403, 404],

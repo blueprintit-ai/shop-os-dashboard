@@ -213,3 +213,13 @@ test("one uniform answer: private, listed, private-folder, out-of-folder and mis
     assert.deepEqual([...seen], ['404 {"error":"Not available"}']);
   } finally { ctx.cleanup(); }
 });
+
+test("stats and routines feeds are owner-only (they can carry text derived from private notes)", async () => {
+  const ctx = await bootPrivate();
+  try {
+    for (const p of ["/api/stats", "/api/routines", "/api/snapshots/stats", "/api/snapshots/routines"]) {
+      assert.equal((await get(ctx, "staff", p)).status, 403, p);
+      assert.equal((await get(ctx, "owner", p)).status, 200, p);
+    }
+  } finally { ctx.cleanup(); }
+});
