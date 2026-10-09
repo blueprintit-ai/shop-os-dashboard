@@ -99,3 +99,21 @@ test("owner dashboard shows a status widget with the LAN address", async ({ page
     cleanup();
   }
 });
+
+test("owner header chrome is not base.css's white card in dark mode (regression)", async ({ page }) => {
+  const { url, username, password, cleanup } = await bootAsOwner();
+  try {
+    await page.goto(`${url}/login`);
+    await page.fill("input[name=username]", username);
+    await page.fill("input[name=password]", password);
+    await page.click("button[type=submit]");
+    await expect(page).toHaveURL(/\/owner$/);
+    await expect(page.locator("#w-rt .wh")).toBeVisible();
+    const bg = (sel) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(await bg("#w-rt .wh")).toBe("rgba(0, 0, 0, 0)");
+    expect(await bg("#owner-header")).toBe("rgba(0, 0, 0, 0)");
+    expect(await bg("#owner-header #logout-btn")).not.toBe("rgb(255, 255, 255)");
+  } finally {
+    cleanup();
+  }
+});
