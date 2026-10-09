@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { scanVault, buildGraph, expandDir, search, LIMITS, deptOf } from "../src/brain/scan.js";
+import { scanVault, isSecret, buildGraph, expandDir, search, LIMITS, deptOf } from "../src/brain/scan.js";
 import { mergeConfig, LAYERS, DEFAULT_DEPARTMENTS, ICON_KEYS } from "../src/brain/defaults.js";
 import { listSkills } from "../src/brain/skills.js";
 import { buildDemoVault, put } from "./helpers/brain-vault.js";
@@ -11,7 +11,7 @@ import { buildDemoVault, put } from "./helpers/brain-vault.js";
 const tmp = () => mkdtempSync(join(tmpdir(), "brain-"));
 const cfg = () => ({ ...mergeConfig(null), layers: LAYERS });
 
-test("default config uses the vault folder names, the kit's icon keys and neutral labels", () => {
+test("default config uses the vault folder names, the kit's icon keys and neutral labels", async () => {
   const c = mergeConfig(null);
   assert.deepEqual(c.departments.map((d) => d.key), ["business", "context", "intelligence", "projects", "team"]);
   for (const d of c.departments) { assert.ok(ICON_KEYS.includes(d.icon)); assert.match(d.color, /^#[0-9a-f]{6}$/i); }
@@ -22,7 +22,7 @@ test("default config uses the vault folder names, the kit's icon keys and neutra
   assert.equal(deptOf("whatever/x.md", c), "business");
 });
 
-test("a hand-edited departments.json is validated: bad rows dropped, unknown depts ignored", () => {
+test("a hand-edited departments.json is validated: bad rows dropped, unknown depts ignored", async () => {
   const c = mergeConfig({ departments: [{ key: "ok", label: "Okay", color: "#112233", icon: "book" }, { key: "Bad Key", label: "x", color: "#112233", icon: "book" }, { key: "evil", label: "<script>", color: "#112233", icon: "book" }, { key: "nocolor", label: "x", color: "red", icon: "book" }, { key: "noicon", label: "x", color: "#112233", icon: "rocket" }],
     pathRules: [{ prefix: "A/", dept: "ok" }, { prefix: "../x", dept: "ok" }, { prefix: "B/", dept: "ghost" }], default: "ok" });
   assert.deepEqual(c.departments.map((d) => d.key), ["ok"]);
@@ -31,11 +31,11 @@ test("a hand-edited departments.json is validated: bad rows dropped, unknown dep
   assert.deepEqual(mergeConfig("junk").departments, DEFAULT_DEPARTMENTS);
 });
 
-test("scan: hidden/system folders, secrets-by-dotfile, node_modules and Dashboard stay off the map", () => {
+test("scan: hidden/system folders, secrets-by-dotfile, node_modules and Dashboard stay off the map", async () => {
   const v = tmp();
   try {
     buildDemoVault(v);
-    const m = scanVault(v);
+    const m = await scanVault(v);
     const rels = m.files.map((f) => f.rel);
     for (const bad of [".obsidian/app.json", ".claude/settings.json", ".git/config", "Context/.hidden.md", "Context/.env", "node_modules/x/index.js", "Dashboard/apps.json"]) assert.ok(!rels.includes(bad), bad);
     assert.ok(rels.includes("Context/organization.md"));
@@ -45,7 +45,7 @@ test("scan: hidden/system folders, secrets-by-dotfile, node_modules and Dashboar
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
-test("scan: symlinks are never followed, unsafe names are skipped and counted", () => {
+test("scan: symlinks are never followed, unsafe names are skipped and counted", async () => {
   const v = tmp(), outside = tmp();
   try {
     put(v, "Context/a.md", "# a");
@@ -55,7 +55,7 @@ test("scan: symlinks are never followed, unsafe names are skipped and counted", 
     try { symlinkSync(join(outside, "secret.md"), join(v, "Context", "link.md")); symlinkSync(join(outside, "dir"), join(v, "linkdir")); } catch { linked = false; }
     put(v, 'Context/<img onerror=x>.md', "x");
     put(v, 'Context/say "hi".md', "x");
-    const m = scanVault(v);
+    const m = await scanVault(v);
     const rels = m.files.map((f) => f.rel);
     assert.deepEqual(rels, ["Context/a.md"]);
     assert.ok(m.skippedUnsafe >= 2);
@@ -64,11 +64,11 @@ test("scan: symlinks are never followed, unsafe names are skipped and counted", 
   } finally { rmSync(v, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
 });
 
-test("links: wikilinks and relative md links resolve; a self link and a link out of the vault do not", () => {
+test("links: wikilinks and relative md links resolve; a self link and a link out of the vault do not", async () => {
   const v = tmp();
   try {
     buildDemoVault(v);
-    const m = scanVault(v);
+    const m = await scanVault(v);
     const has = (a, b) => m.mdLinks.some(([x, y]) => x === a && y === b);
     assert.ok(has("CLAUDE.md", "Context/organization.md"));
     assert.ok(has("CLAUDE.md", "Projects/Acme Kitchen.md"));
@@ -76,17 +76,17 @@ test("links: wikilinks and relative md links resolve; a self link and a link out
     assert.ok(has("Intelligence/market/Trends.md", "Intelligence/competitors/Big Box.md"));
     assert.ok(!m.mdLinks.some(([a, b]) => a === b));
     // cache: second scan re-reads nothing, and a new note that an old wikilink names is picked up
-    const m2 = scanVault(v, m.cache);
+    const m2 = await scanVault(v, m.cache);
     assert.equal(m2.scanStats.read, 0);
     assert.equal(m2.mdLinks.length, m.mdLinks.length);
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
-test("graph: router, department hubs, the three layer hubs, folded folders, skills, apps and routines", () => {
+test("graph: router, department hubs, the three layer hubs, folded folders, skills, apps and routines", async () => {
   const v = tmp();
   try {
     buildDemoVault(v);
-    const m = scanVault(v);
+    const m = await scanVault(v);
     const skills = listSkills(v, { home: join(v, "nohome"), productSkills: [{ id: "bp-digest", label: "Digest" }] });
     const extras = { skills, apps: [{ id: "crm", name: "Shop CRM", sub: "Customers", url: "https://x" }], routines: [{ t: "07:00", d: "daily", src: "desktop", n: "Morning briefing", desc: "d" }], tweaks: { hidden: [], edits: {} } };
     const g = buildGraph(m, cfg(), extras);
@@ -104,11 +104,11 @@ test("graph: router, department hubs, the three layer hubs, folded folders, skil
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
-test("graph: the owner's hide and edit tweaks apply, with markup stripped", () => {
+test("graph: the owner's hide and edit tweaks apply, with markup stripped", async () => {
   const v = tmp();
   try {
     buildDemoVault(v);
-    const m = scanVault(v);
+    const m = await scanVault(v);
     const g = buildGraph(m, cfg(), { tweaks: { hidden: ["Context/operator.md"], edits: { "Context/organization.md": { label: "Org", desc: "d" } } } });
     assert.ok(!g.nodes.some((n) => n.id === "Context/operator.md"));
     assert.ok(!g.links.some((l) => l.s === "Context/operator.md"));
@@ -117,11 +117,11 @@ test("graph: the owner's hide and edit tweaks apply, with markup stripped", () =
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
-test("expand and search come from the cached scan", () => {
+test("expand and search come from the cached scan", async () => {
   const v = tmp();
   try {
     buildDemoVault(v);
-    const m = scanVault(v);
+    const m = await scanVault(v);
     const kids = expandDir(m, cfg(), "Intelligence/competitors");
     assert.deepEqual(kids.map((k) => k.id), ["Intelligence/competitors/Big Box.md"]);
     assert.equal(expandDir(m, cfg(), "nope"), null);
@@ -133,7 +133,7 @@ test("expand and search come from the cached scan", () => {
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
-test("caps: a vault with 5,000 notes keeps the walk, the graph and the link list bounded", () => {
+test("caps: a vault with 5,000 notes keeps the walk, the graph and the link list bounded", async () => {
   const v = tmp();
   try {
     for (let i = 0; i < 20; i++) mkdirSync(join(v, "Projects", "p" + i), { recursive: true });
@@ -142,7 +142,7 @@ test("caps: a vault with 5,000 notes keeps the walk, the graph and the link list
       const dir = i % 5 === 0 ? "Daily" : "Projects/p" + (i % 20);
       writeFileSync(join(v, dir, `note-${i}.md`), `# n${i}\n[[note-${(i + 1) % 5000}]] [[note-${(i + 7) % 5000}]]\n`);
     }
-    const m = scanVault(v);
+    const m = await scanVault(v);
     assert.equal(m.files.length, 5000);
     const g = buildGraph(m, cfg(), {});
     const files = g.nodes.filter((n) => n.type === "file");
@@ -151,7 +151,7 @@ test("caps: a vault with 5,000 notes keeps the walk, the graph and the link list
     assert.ok(g.capped.hiddenFiles >= 900, "Daily/ has 1000 notes, only perDirVisible are drawn");
     assert.ok(m.mdLinks.length <= LIMITS.maxMdLinks);
     const small = { ...LIMITS, maxFiles: 300, maxMdLinks: 50, maxMdReads: 100 };
-    const m2 = scanVault(v, new Map(), small);
+    const m2 = await scanVault(v, new Map(), small);
     assert.equal(m2.files.length, 300);
     assert.equal(m2.truncated, true);
     assert.ok(m2.mdLinks.length <= 50);
@@ -159,23 +159,23 @@ test("caps: a vault with 5,000 notes keeps the walk, the graph and the link list
     const exp = expandDir(m, cfg(), "Daily");
     assert.ok(exp.length <= LIMITS.expandFiles + LIMITS.expandDirs);
     const depth = { ...LIMITS, maxDirs: 5 };
-    assert.equal(scanVault(v, new Map(), depth).dirs.size <= 5, true);
+    assert.equal((await scanVault(v, new Map(), depth)).dirs.size <= 5, true);
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
-test("a note bigger than the read cap is only read up to the cap", () => {
+test("a note bigger than the read cap is only read up to the cap", async () => {
   const v = tmp();
   try {
     put(v, "Context/a.md", "# a\n");
     put(v, "Context/big.md", "[[a]]\n" + "x".repeat(2000) + "\n[[late-link-after-cap]]");
     put(v, "Context/late-link-after-cap.md", "# late");
-    const m = scanVault(v, new Map(), { ...LIMITS, mdReadBytes: 1000 });
+    const m = await scanVault(v, new Map(), { ...LIMITS, mdReadBytes: 1000 });
     assert.ok(m.mdLinks.some(([a, b]) => a === "Context/big.md" && b === "Context/a.md"));
     assert.ok(!m.mdLinks.some(([a, b]) => b === "Context/late-link-after-cap.md"));
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
-test("skills: vault, user and plugin sources, deduped by name, capped, descriptions cleaned", () => {
+test("skills: vault, user and plugin sources, deduped by name, capped, descriptions cleaned", async () => {
   const v = tmp(), home = tmp();
   try {
     put(v, "Skills/a-skill/SKILL.md", "---\nname: a-skill\ndescription: \"Does <b>things</b>\"\n---\nbody");
@@ -191,4 +191,44 @@ test("skills: vault, user and plugin sources, deduped by name, capped, descripti
     assert.doesNotMatch(list.find((s) => s.name === "a-skill").desc, /[<>"]/);
     assert.equal(list.find((s) => s.name === "bp-digest").file, null);
   } finally { rmSync(v, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); }
+});
+
+test("secret-looking paths are flagged at any depth (the kit's regex missed a / boundary)", () => {
+  for (const p of ["Context/secrets.md", "Context/secrets/api.md", "secrets/x.md", "Context/my-secret.md", "Context/id_rsa", "a/.env", "a/server.pem", "Context/api-token.json", "Team/credentials.md"]) assert.equal(isSecret(p), true, p);
+  for (const p of ["Context/secretary.md", "Context/organization.md", "Projects/Acme Kitchen.md"]) assert.equal(isSecret(p), false, p);
+});
+
+test("scan: the time budget covers link extraction, partial is reported, the bytes cap holds, and the loop yields", async () => {
+  const v = tmp();
+  try {
+    for (let i = 0; i < 400; i++) put(v, `Daily/n${i}.md`, `# n${i}\n[[n${(i + 1) % 400}]]\n` + "x".repeat(500));
+    const ticks = [];
+    const t = setInterval(() => ticks.push(1), 1); // proves other timers can run during the scan
+    const bytesCapped = await scanVault(v, new Map(), { ...LIMITS, maxBytesRead: 5000, yieldMs: 0 });
+    clearInterval(t);
+    assert.equal(bytesCapped.partial, true);
+    assert.ok(bytesCapped.scanStats.bytes <= 5000 + LIMITS.mdReadBytes);
+    assert.ok(bytesCapped.scanStats.read < 400);
+    const budget = await scanVault(v, new Map(), { ...LIMITS, budgetMs: -1 });
+    assert.equal(budget.partial, true);
+    const full = await scanVault(v);
+    assert.equal(full.partial, false);
+    assert.ok(ticks.length > 0, "a timer ran while the scan was in progress");
+  } finally { rmSync(v, { recursive: true, force: true }); }
+});
+
+test("skills: a symlinked SKILL.md, a link-out skill folder and a crafted installPath are refused", async (t) => {
+  const v = tmp(), home = tmp(), outside = tmp();
+  try {
+    writeFileSync(join(outside, "passwd.txt"), "root:x:0:0");
+    put(outside, "skills/stolen/SKILL.md", "---\ndescription: crafted\n---\n");
+    put(home, "plugins/installed_plugins.json", JSON.stringify({ version: 2, plugins: { "x@y": [{ scope: "user", installPath: outside }] } }));
+    try {
+      mkdirSync(join(v, "Skills", "linked"), { recursive: true });
+      symlinkSync(join(outside, "passwd.txt"), join(v, "Skills", "linked", "SKILL.md"));
+      symlinkSync(join(outside, "skills", "stolen"), join(v, "Skills", "linkdir"));
+    } catch { t.skip("symlinks unavailable"); return; }
+    const names = listSkills(v, { home, productSkills: [] }).map((s) => s.name);
+    assert.deepEqual(names, []);
+  } finally { for (const d of [v, home, outside]) rmSync(d, { recursive: true, force: true }); }
 });

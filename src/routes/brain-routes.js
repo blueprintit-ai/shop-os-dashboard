@@ -27,7 +27,7 @@ export function brainRoutes(ctx) {
       const raw = url.searchParams.get("path");
       if (typeof raw === "string" && raw.startsWith("skill:")) {
         if (user.role !== "owner") return sendJson(res, 403, { error: "Owner only" }), true;
-        const skill = brain.skill(raw.slice(6));
+        const skill = await brain.skill(raw.slice(6));
         const text = skill && readSkillText(skill);
         if (!text) return sendJson(res, 404, { error: "Not found" }), true;
         return sendJson(res, 200, text, { "cache-control": "no-store" }), true;
@@ -54,11 +54,11 @@ export function brainRoutes(ctx) {
     if (get && ["/api/brain/graph", "/api/brain/meta", "/api/brain/expand", "/api/brain/search"].includes(p)) {
       if (!requireOwner(req, res, auth)) return true;
       const noStore = { "cache-control": "no-store" };
-      if (p === "/api/brain/graph") return sendJson(res, 200, brain.graph({ fresh: url.searchParams.get("fresh") === "1" }), noStore), true;
-      if (p === "/api/brain/meta") return sendJson(res, 200, brain.meta(), noStore), true;
-      if (p === "/api/brain/search") return sendJson(res, 200, { q: String(url.searchParams.get("q") ?? "").slice(0, 100), results: brain.search(url.searchParams.get("q")) }, noStore), true;
+      if (p === "/api/brain/graph") return sendJson(res, 200, await brain.graph({ fresh: url.searchParams.get("fresh") === "1" }), noStore), true;
+      if (p === "/api/brain/meta") return sendJson(res, 200, await brain.meta(), noStore), true;
+      if (p === "/api/brain/search") return sendJson(res, 200, { q: String(url.searchParams.get("q") ?? "").slice(0, 100), results: await brain.search(url.searchParams.get("q")) }, noStore), true;
       const rel = (url.searchParams.get("path") || "").replace(/\\/g, "/");
-      const children = rel ? brain.expand(rel) : null;
+      const children = rel ? await brain.expand(rel) : null;
       if (!children) return sendJson(res, 404, { error: "Unknown folder" }, noStore), true;
       return sendJson(res, 200, { path: rel, nodes: children }, noStore), true;
     }
@@ -66,12 +66,12 @@ export function brainRoutes(ctx) {
     if (post && ["/api/brain/rescan", "/api/brain/tweak", "/api/brain/bake"].includes(p)) {
       const user = requireOwner(req, res, auth); if (!user) return true;
       if (p === "/api/brain/rescan") {
-        const r = brain.rescan();
+        const r = await brain.rescan();
         if (r.throttled) return sendJson(res, 429, { error: "A rescan just ran, try again in a few seconds" }, { "retry-after": "3" }), true;
-        return sendJson(res, 200, { ok: true, meta: brain.meta() }), true;
+        return sendJson(res, 200, { ok: true, meta: await brain.meta() }), true;
       }
       let body; try { body = await readJsonBody(req, p === "/api/brain/bake" ? 100_000 : 20_000); } catch { return sendJson(res, 400, { error: "Bad JSON" }), true; }
-      const r = p === "/api/brain/tweak" ? brain.applyTweak(body) : brain.saveBake(body);
+      const r = p === "/api/brain/tweak" ? await brain.applyTweak(body) : brain.saveBake(body);
       if (r.error) return sendJson(res, 400, { error: r.error }), true;
       audit.log(p === "/api/brain/tweak" ? "brain.tweak" : "brain.bake", { userId: user.id, username: user.username, role: user.role, action: body?.action });
       return sendJson(res, 200, r), true;

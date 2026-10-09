@@ -1,7 +1,8 @@
-import { statSync, realpathSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
+import { statSync, lstatSync, realpathSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
 import { join, extname, relative, sep } from "node:path";
 import { HIDDEN_DIRS, isPathAllowed } from "../scope.js";
 import { isSecret } from "./scan.js";
+import { insideDir } from "./skills.js";
 
 export const VIEW_MAX = 512 * 1024;
 // Same text types the kit's viewer accepts.
@@ -22,11 +23,12 @@ export function resolveVaultFile(vaultPath, user, raw) {
   if (isSecret(norm)) return { status: 403, error: "not available" };
   const abs = join(vaultPath, ...segs);
   let real;
-  try { real = realpathSync(abs); } catch { return { status: 404, error: "Not found" }; }
+  try { real = realpathSync.native(abs); } catch { return { status: 404, error: "Not found" }; }
   let root;
-  try { root = realpathSync(vaultPath); } catch { return { status: 404, error: "Not found" }; }
+  try { root = realpathSync.native(vaultPath); } catch { return { status: 404, error: "Not found" }; }
   const relReal = relative(root, real);
-  if (relReal === "" || relReal.startsWith("..") || relReal.split(sep).some((s) => s.startsWith(".") || HIDDEN_DIRS.includes(s))) return { status: 403, error: "not available" };
+  // the hidden / secret rules apply to where the file REALLY is, not only to the name that was asked for (links, 8.3 names)
+  if (relReal === "" || relReal.startsWith("..") || relReal.split(sep).some((s) => s.startsWith(".") || HIDDEN_DIRS.includes(s)) || isSecret(relReal.split(sep).join("/"))) return { status: 403, error: "not available" };
   if (!isPathAllowed(vaultPath, user, abs)) return { status: 403, error: "Outside your folders" };
   let st;
   try { st = statSync(real); } catch { return { status: 404, error: "Not found" }; }
@@ -37,13 +39,15 @@ export function resolveVaultFile(vaultPath, user, raw) {
 // Text for the in-page viewer (response shape = the kit's /api/file).
 export function readViewable(found) {
   const ext = extname(found.abs).toLowerCase();
-  if (!TEXT_EXT.has(ext) && ext !== "") return { status: 400, body: { error: "binary", ext, size: found.size } };
+  if (!TEXT_EXT.has(ext)) return { status: 400, body: { error: "binary", ext, size: found.size } };
   if (found.size > VIEW_MAX) return { status: 400, body: { error: "File too large for the viewer (" + Math.round(found.size / 1024) + " KB)" } };
   return { status: 200, body: { content: readFileSync(found.abs, "utf8"), ext, size: found.size } };
 }
 
 export function readSkillText(skill) {
   if (!skill.file) return { content: `# ${skill.name}\n\nA built-in Blueprint OS skill that the dashboard runs for you.${skill.desc ? "\n\n" + skill.desc : ""}\n`, ext: ".md", size: 0 };
+  // a skill file is read only if it is still a regular file (no link or junction) that stays inside the skills folder it was found in
+  try { if (!lstatSync(skill.file).isFile() || !insideDir(skill.root, skill.file)) return null; } catch { return null; }
   let fd;
   try {
     fd = openSync(skill.file, "r");

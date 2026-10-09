@@ -11,6 +11,7 @@ export const STALE_MS = 30 * 1000;    // GET /graph?fresh=1 rescans when the cac
 export const MAX_HIDDEN = 2000;
 export const MAX_EDITS = 500;
 const MAX_ROUTINES = 60;
+const FORBIDDEN_IDS = new Set(["__proto__", "constructor", "prototype"]);
 const BAKE_MAX_BYTES = 64 * 1024;
 
 const brainDir = (vault) => join(vault, "Dashboard", "brain");
@@ -43,10 +44,10 @@ export class BrainStore {
   tweaks() {
     const raw = readJson(join(brainDir(this.vaultPath), "tweaks.json"), null);
     const hidden = Array.isArray(raw?.hidden) ? raw.hidden.filter((x) => typeof x === "string" && x.length <= 300).slice(0, MAX_HIDDEN) : [];
-    const edits = {};
+    const edits = Object.create(null);
     if (raw?.edits && typeof raw.edits === "object" && !Array.isArray(raw.edits)) {
       for (const [id, e] of Object.entries(raw.edits).slice(0, MAX_EDITS)) {
-        if (id.length > 300 || !e || typeof e !== "object") continue;
+        if (id.length > 300 || FORBIDDEN_IDS.has(id) || !e || typeof e !== "object") continue;
         const label = typeof e.label === "string" ? plain(e.label, 120) : "", desc = typeof e.desc === "string" ? plain(e.desc, 500) : undefined;
         edits[id] = { ...(label ? { label } : {}), ...(desc !== undefined ? { desc } : {}) };
       }
@@ -57,14 +58,20 @@ export class BrainStore {
   // Scans when there is no model yet, when the notes watcher marked it dirty (and the last scan is not brand new),
   // when the page asked for a fresh one and the cached scan is stale, or on an explicit rescan (refused, with
   // throttled: true, inside MIN_REFRESH_MS of the previous scan). Returns { refreshed, throttled }.
-  ensure({ force = false, fresh = false } = {}) {
+  async ensure({ force = false, fresh = false } = {}) {
+    if (this.inflight) { await this.inflight; return { refreshed: false, throttled: false }; } // one scan at a time, callers share it
     const age = this.now() - this.lastRefresh;
     if (this.model && force && age < MIN_REFRESH_MS) return { refreshed: false, throttled: true };
     const wanted = !this.model || force || (this.dirty && age >= MIN_REFRESH_MS) || (fresh && age > STALE_MS);
     if (!wanted) return { refreshed: false, throttled: false };
-    this.model = scanVault(this.vaultPath, this.model?.cache, this.limits);
-    this.skills = this.skillsFor(this.vaultPath);
-    this.dirty = false; this.lastRefresh = this.now();
+    this.inflight = (async () => {
+      this.dirty = false; // a change during the scan sets it again
+      const model = await scanVault(this.vaultPath, this.model?.cache, this.limits);
+      this.model = model;
+      this.skills = this.skillsFor(this.vaultPath);
+      this.lastRefresh = this.now();
+    })();
+    try { await this.inflight; } finally { this.inflight = null; }
     return { refreshed: true, throttled: false };
   }
 
@@ -75,8 +82,8 @@ export class BrainStore {
     return { apps, routines, skills: this.skills, tweaks: this.tweaks() };
   }
 
-  graph({ fresh = false } = {}) {
-    this.ensure({ fresh });
+  async graph({ fresh = false } = {}) {
+    await this.ensure({ fresh });
     const cfg = this.config();
     const g = buildGraph(this.model, cfg, this.extras(), this.limits);
     const m = this.model;
@@ -85,21 +92,21 @@ export class BrainStore {
         scannedAt: m.scannedAt, scanMs: m.scanMs, totalFiles: m.files.length, totalDirs: m.dirs.size,
         mdParsed: m.scanStats.mdParsed, mdRead: m.scanStats.read, mdCached: m.scanStats.cached,
         visibleNodes: g.nodes.length, mdLinks: m.mdLinks.length, hiddenCount: g.hiddenCount,
-        truncated: m.truncated, skippedUnsafe: m.skippedUnsafe, hiddenFiles: g.capped.hiddenFiles, hiddenDirs: g.capped.hiddenDirs,
+        truncated: m.truncated, partial: m.partial, bytesRead: m.scanStats.bytes, skippedUnsafe: m.skippedUnsafe, hiddenFiles: g.capped.hiddenFiles, hiddenDirs: g.capped.hiddenDirs,
       },
       departments: cfg.departments, layers: cfg.layers, nodes: g.nodes, links: g.links, mdLinks: m.mdLinks,
     };
   }
 
-  meta() { const g = this.graph(); return g.meta; }
-  expand(rel) { this.ensure(); return expandDir(this.model, this.config(), rel, this.limits); }
-  search(q) { this.ensure(); return search(this.model, this.config(), q, this.skills, this.limits.searchLimit); }
-  skill(name) { this.ensure(); return this.skills.find((s) => s.name === name) ?? null; }
+  async meta() { return (await this.graph()).meta; }
+  async expand(rel) { await this.ensure(); return expandDir(this.model, this.config(), rel, this.limits); }
+  async search(q) { await this.ensure(); return search(this.model, this.config(), q, this.skills, this.limits.searchLimit); }
+  async skill(name) { await this.ensure(); return this.skills.find((s) => s.name === name) ?? null; }
 
-  rescan() { return this.ensure({ force: true }); }
+  rescan() { return this.ensure({ force: true }); } // a promise
 
-  knownIds() {
-    this.ensure();
+  async knownIds() {
+    await this.ensure();
     const ids = new Set(buildGraph(this.model, this.config(), { ...this.extras(), tweaks: { hidden: [], edits: {} } }, this.limits).nodes.map((n) => n.id));
     for (const f of this.model.files) ids.add(f.rel);
     for (const d of this.model.dirs.keys()) if (d) ids.add(d);
@@ -107,14 +114,14 @@ export class BrainStore {
   }
 
   // action: hide{id} | unhide-all | edit{id,label,desc}. Returns { error } or { ok, hidden }.
-  applyTweak(body) {
+  async applyTweak(body) {
     const tw = this.tweaks();
     const a = body?.action;
     if (a === "unhide-all") tw.hidden = [];
     else if (a === "hide" || a === "edit") {
       const id = body.id;
-      if (typeof id !== "string" || !id || id.length > 300) return { error: "bad id" };
-      if (!this.knownIds().has(id)) return { error: "unknown item" };
+      if (typeof id !== "string" || !id || id.length > 300 || FORBIDDEN_IDS.has(id)) return { error: "bad id" };
+      if (!(await this.knownIds()).has(id)) return { error: "unknown item" };
       if (a === "hide") {
         if (!tw.hidden.includes(id)) { if (tw.hidden.length >= MAX_HIDDEN) return { error: "too many hidden items" }; tw.hidden.push(id); }
       } else {

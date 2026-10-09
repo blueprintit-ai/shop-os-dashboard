@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, openSync, readSync, closeSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, openSync, readSync, closeSync, lstatSync, realpathSync } from "node:fs";
+import { join, sep } from "node:path";
 import { homedir } from "node:os";
 import { SKILLS } from "../runs.js";
 
@@ -34,7 +34,13 @@ function describe(text) {
   return desc.length > 240 ? desc.slice(0, 237) + "..." : desc;
 }
 
+const realOrNull = (p) => { try { return realpathSync.native(p); } catch { return null; } };
+export const insideDir = (rootReal, p) => { const r = realOrNull(p); return !!(r && rootReal && (r === rootReal || r.startsWith(rootReal + sep))); };
+
+// `dir` is a skills folder; every SKILL.md must be a regular file (not a link or junction) whose real path stays inside it.
 function fromDir(dir, source, out, seen) {
+  const rootReal = realOrNull(dir);
+  if (!rootReal) return;
   let entries;
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
   entries.sort((a, b) => (a.name < b.name ? -1 : 1));
@@ -42,21 +48,24 @@ function fromDir(dir, source, out, seen) {
     if (out.length >= MAX_SKILLS) return;
     if (!e.isDirectory() || !SAFE_NAME.test(e.name) || seen.has(e.name)) continue;
     const file = join(dir, e.name, "SKILL.md");
+    let st;
+    try { st = lstatSync(file); } catch { continue; }
+    if (!st.isFile() || st.isSymbolicLink() || !insideDir(rootReal, file)) continue;
     const text = head(file);
     if (text === null) continue;
-    let size = 0, mtime = 0;
-    try { const st = statSync(file); size = st.size; mtime = st.mtimeMs; } catch { /* ignore */ }
     seen.add(e.name);
-    out.push({ name: e.name, desc: describe(text), file, source, size, mtime });
+    out.push({ name: e.name, desc: describe(text), file, root: rootReal, source, size: st.size, mtime: st.mtimeMs });
   }
 }
 
+// installPath values come from a JSON file: only those that really live under <claude home>/plugins are used.
 export function installedPluginPaths(home) {
   try {
     const j = JSON.parse(readFileSync(join(home, "plugins", "installed_plugins.json"), "utf8"));
+    const pluginsReal = realOrNull(join(home, "plugins"));
     const out = [];
     for (const list of Object.values(j.plugins ?? {})) {
-      for (const inst of Array.isArray(list) ? list : []) if (inst && typeof inst.installPath === "string") out.push(inst.installPath);
+      for (const inst of Array.isArray(list) ? list : []) if (inst && typeof inst.installPath === "string" && insideDir(pluginsReal, inst.installPath)) out.push(inst.installPath);
     }
     return out;
   } catch { return []; }

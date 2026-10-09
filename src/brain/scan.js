@@ -15,6 +15,8 @@ export const LIMITS = Object.freeze({
   budgetMs: 4000,         // wall-clock budget for the walk
   mdReadBytes: 256 * 1024, // bytes read from the head of one note to find its links
   maxMdReads: 4000,       // notes parsed per scan (the rest still appear on the map, without link edges)
+  maxBytesRead: 64 * 1024 * 1024, // total bytes read from notes in one scan
+  yieldMs: 12,            // the scan hands the event loop back (setImmediate) at least this often
   maxMdLinks: 6000,       // link edges sent to the page
   perDirVisible: 60,      // files shown per folder on the map (newest first); the rest stay searchable
   perDirFolded: 80,       // sub-folders shown per folder
@@ -30,21 +32,27 @@ const EXCLUDE_TOP = new Set(["Dashboard"]); // the dashboard's own generated dat
 const EXCLUDE_FILES = /^(thumbs\.db|desktop\.ini|\.ds_store|~\$|\.syncthing\.)/i;
 // Names the page would put into innerHTML unescaped (search rows, cards): such entries are left off the map.
 const UNSAFE_NAME = /[<>"`\u0000-\u001f]/;
-const SECRET_RE = /(^|\/)\.env(\.|$)|\.pem$|\.key$|(^|[-_.])secrets?([-_.]|$)|credential|token\.json$|apikey/i;
+const SECRET_RE = /(^|\/)\.env(\.|$)|\.pem$|\.key$|(^|[-_./])secrets?([-_./]|$)|credential|token\.json$|apikey|(^|\/)id_(rsa|dsa|ecdsa|ed25519)/i;
 export const isSecret = (rel) => SECRET_RE.test(rel);
 
 const topOf = (rel) => (rel.includes("/") ? rel.split("/")[0] : "(root)");
 
 // ---------- filesystem walk ----------
-export function walk(root, limits = LIMITS) {
+// Hands the event loop back (setImmediate) when the scan has held it for yieldMs, so chat and other requests are not stalled.
+function makeYielder(limits) {
+  let last = Date.now();
+  return async () => { if (Date.now() - last >= limits.yieldMs) { await new Promise((r) => setImmediate(r)); last = Date.now(); } };
+}
+
+export async function walk(root, limits = LIMITS, t0 = Date.now(), tick = makeYielder(limits)) {
   const files = [];   // { rel, name, ext, size, mtime, parent }
   const dirs = new Map();
   dirs.set("", { rel: "", name: "", parent: null, files: 0, mdFiles: 0, bytes: 0, childDirs: [], childFiles: [] });
-  const t0 = Date.now();
   let truncated = false, skippedUnsafe = 0;
 
-  function rec(abs, rel, depth) {
+  async function rec(abs, rel, depth) {
     if (truncated) return;
+    await tick();
     let entries;
     try { entries = readdirSync(abs, { withFileTypes: true }); } catch { return; }
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -59,7 +67,7 @@ export function walk(root, limits = LIMITS) {
         const crel = rel ? rel + "/" + name : name;
         dirs.set(crel, { rel: crel, name, parent: rel, files: 0, mdFiles: 0, bytes: 0, childDirs: [], childFiles: [] });
         dnode.childDirs.push(crel);
-        rec(join(abs, name), crel, depth + 1);
+        await rec(join(abs, name), crel, depth + 1);
       } else if (e.isFile()) {
         if (name.startsWith(".") || EXCLUDE_FILES.test(name)) continue;
         let st; try { st = statSync(join(abs, name)); } catch { continue; }
@@ -69,7 +77,7 @@ export function walk(root, limits = LIMITS) {
       }
     }
   }
-  rec(root, "", 0);
+  await rec(root, "", 0);
 
   // roll up recursive counts, deepest first
   const byDepth = [...dirs.values()].sort((a, b) => b.rel.split("/").length - a.rel.split("/").length);
@@ -115,7 +123,7 @@ function pickClosest(fromRel, candidates) {
   return best;
 }
 
-export function extractLinks(root, files, cache, limits = LIMITS) {
+export async function extractLinks(root, files, cache, limits = LIMITS, t0 = Date.now(), tick = makeYielder(limits)) {
   const mdFiles = files.filter((f) => f.ext === ".md");
   const base = new Map();
   for (const f of mdFiles) {
@@ -125,17 +133,19 @@ export function extractLinks(root, files, cache, limits = LIMITS) {
   }
   const relSet = new Set(files.map((f) => f.rel));
   const out = [], newCache = new Map();
-  let read = 0, cached = 0, parsed = 0;
+  let read = 0, cached = 0, parsed = 0, bytes = 0, partial = false;
   for (const f of mdFiles) {
-    if (out.length >= limits.maxMdLinks) break;
+    if (out.length >= limits.maxMdLinks) { partial = true; break; }
+    await tick();
+    if (Date.now() - t0 > limits.budgetMs || bytes >= limits.maxBytesRead) { partial = true; break; }
     const key = f.rel;
     let c = cache.get(key);
     if (c && c.m === f.mtime && c.s === f.size) { cached++; }
     else {
-      if (read >= limits.maxMdReads) continue;
+      if (read >= limits.maxMdReads) { partial = true; continue; }
       const txt = readHead(join(root, f.rel), limits.mdReadBytes);
       if (txt === null) continue;
-      read++;
+      read++; bytes += Math.min(f.size, limits.mdReadBytes);
       c = { m: f.mtime, s: f.size, ...refsOf(txt) };
     }
     newCache.set(key, c);
@@ -152,7 +162,7 @@ export function extractLinks(root, files, cache, limits = LIMITS) {
     targets.delete(f.rel);
     for (const t of targets) { if (out.length >= limits.maxMdLinks) break; out.push([f.rel, t]); }
   }
-  return { links: out, newCache, stats: { mdParsed: parsed, read, cached } };
+  return { links: out, newCache, stats: { mdParsed: parsed, read, cached, bytes }, partial };
 }
 
 // ---------- classification ----------
@@ -162,11 +172,12 @@ export function deptOf(rel, cfg) {
   return best ? best.dept : cfg.default;
 }
 
-export function scanVault(root, cache = new Map(), limits = LIMITS) {
-  const t0 = Date.now();
-  const model = walk(root, limits);
-  const { links, newCache, stats } = extractLinks(root, model.files, cache, limits);
-  return { ...model, mdLinks: links, cache: newCache, scanStats: stats, scanMs: Date.now() - t0, scannedAt: new Date().toISOString() };
+// One time budget (limits.budgetMs) covers the walk AND the link extraction; `partial` is true when any cap cut the scan short.
+export async function scanVault(root, cache = new Map(), limits = LIMITS) {
+  const t0 = Date.now(), tick = makeYielder(limits);
+  const model = await walk(root, limits, t0, tick);
+  const { links, newCache, stats, partial } = await extractLinks(root, model.files, cache, limits, t0, tick);
+  return { ...model, mdLinks: links, cache: newCache, scanStats: stats, partial: partial || model.truncated, scanMs: Date.now() - t0, scannedAt: new Date().toISOString() };
 }
 
 // ---------- graph ----------

@@ -223,35 +223,35 @@ test("rescan: owner only and throttled", async () => {
   } finally { b.cleanup(); }
 });
 
-test("BrainStore: rescan throttle, stale and watcher invalidation, with a fake clock", () => {
+test("BrainStore: rescan throttle, stale and watcher invalidation, with a fake clock", async () => {
   const v = mkdtempSync(join(tmpdir(), "brain-store-"));
   try {
     buildDemoVault(v);
     let t = 1_000_000;
     const s = new BrainStore(v, { now: () => t, skillsFor: () => [] });
-    assert.deepEqual(s.ensure(), { refreshed: true, throttled: false });
+    assert.deepEqual(await s.ensure(), { refreshed: true, throttled: false });
     const scanned = s.model;
-    assert.deepEqual(s.ensure(), { refreshed: false, throttled: false });
-    assert.deepEqual(s.rescan(), { refreshed: false, throttled: true });
+    assert.deepEqual(await s.ensure(), { refreshed: false, throttled: false });
+    assert.deepEqual(await s.rescan(), { refreshed: false, throttled: true });
     t += MIN_REFRESH_MS + 1;
-    assert.equal(s.rescan().refreshed, true);
+    assert.equal((await s.rescan()).refreshed, true);
     assert.notEqual(s.model, scanned);
     // watcher says something changed: the next request rescans, but not inside the minimum interval
     s.invalidate();
-    assert.equal(s.ensure().refreshed, false);
+    assert.equal((await s.ensure()).refreshed, false);
     t += MIN_REFRESH_MS + 1;
     put(v, "Context/new-note.md", "# new");
-    assert.equal(s.graph().nodes.some((n) => n.id === "Context/new-note.md"), true);
+    assert.equal((await s.graph()).nodes.some((n) => n.id === "Context/new-note.md"), true);
     // ?fresh=1 only rescans when the cached scan is older than STALE_MS
     const m = s.model;
-    s.graph({ fresh: true });
+    await s.graph({ fresh: true });
     assert.equal(s.model, m);
     t += STALE_MS + 1;
-    s.graph({ fresh: true });
+    await s.graph({ fresh: true });
     assert.notEqual(s.model, m);
     // the default Second Brain launcher row is not drawn as a node
     put(v, "Dashboard/apps.json", JSON.stringify([{ id: "sbRow", name: "Second Brain", url: "/notes", icon: "brain" }]));
-    assert.equal(s.graph().nodes.some((n) => n.type === "app"), false);
+    assert.equal((await s.graph()).nodes.some((n) => n.type === "app"), false);
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
@@ -259,7 +259,7 @@ test("the server wires the notes watcher to the brain cache", async () => {
   const b = await boot();
   try {
     assert.equal(typeof b.server.ctx.brain.invalidate, "function");
-    b.server.ctx.brain.ensure();
+    await b.server.ctx.brain.ensure();
     b.server.ctx.brain.dirty = false;
     b.server.ctx.index.watch; // eslint-disable-line no-unused-expressions
     assert.ok(b.server.ctx.brain.model);
@@ -320,5 +320,54 @@ test("a vault with 5,000 notes: the graph stays small and quick", async () => {
     assert.ok(g.mdLinks.length <= 6000);
     assert.ok(text.length < 1_000_000, String(text.length));
     assert.ok(Date.now() - t0 < 5000);
+  } finally { b.cleanup(); }
+});
+
+test("file: secrets at any depth, a link to a secret, and extensionless files are not served", async (t) => {
+  const b = await boot();
+  try {
+    put(b.vault, "Context/secrets.md", "# s");
+    put(b.vault, "Context/secrets/api.md", "# api");
+    put(b.vault, "Context/id_rsa", "-----BEGIN PRIVATE KEY-----");
+    put(b.vault, "Context/LICENSE", "plain");
+    const f = (p) => get(b, "owner", "/api/brain/file?path=" + encodeURIComponent(p));
+    assert.equal((await f("Context/secrets.md")).status, 403);
+    assert.equal((await f("Context/secrets/api.md")).status, 403);
+    assert.equal((await f("Context/id_rsa")).status, 403);
+    const lic = await f("Context/LICENSE");
+    assert.equal(lic.status, 400);
+    assert.equal((await json(lic)).error, "binary");
+    try { symlinkSync(join(b.vault, "Context", "secrets.md"), join(b.vault, "Context", "innocent.md")); }
+    catch { t.diagnostic("symlinks unavailable"); return; }
+    const viaLink = await f("Context/innocent.md");
+    assert.equal(viaLink.status, 403, "the real path is a secret");
+    assert.doesNotMatch(await viaLink.text(), /# s/);
+  } finally { b.cleanup(); }
+});
+
+test("tweaks: __proto__ / constructor / prototype ids are refused and a stored __proto__ edit is ignored", async () => {
+  const b = await boot();
+  try {
+    mkdirSync(join(b.vault, "Projects", "constructor"), { recursive: true });
+    put(b.vault, "Projects/constructor/a.md", "# a");
+    const tw = (body) => post(b, "owner", "/api/brain/tweak", body);
+    for (const id of ["__proto__", "constructor", "prototype", "Projects/constructor"]) {
+      const r = await tw({ action: "edit", id, label: "x" });
+      assert.equal(r.status, id === "Projects/constructor" ? 200 : 400, id);
+    }
+    mkdirSync(join(b.vault, "Dashboard", "brain"), { recursive: true });
+    writeFileSync(join(b.vault, "Dashboard", "brain", "tweaks.json"), '{"hidden":[],"edits":{"__proto__":{"label":"pwned","desc":"x"},"constructor":{"label":"c"}}}');
+    const g = await json(await get(b, "owner", "/api/brain/graph"));
+    assert.equal(g.nodes.some((n) => n.label === "pwned" || n.label === "c"), false);
+    assert.equal({}.label, undefined);
+  } finally { b.cleanup(); }
+});
+
+test("graph meta reports partial scans", async () => {
+  const b = await boot();
+  try {
+    const g = await json(await get(b, "owner", "/api/brain/graph?fresh=1"));
+    assert.equal(g.meta.partial, false);
+    assert.equal(typeof g.meta.bytesRead, "number");
   } finally { b.cleanup(); }
 });
