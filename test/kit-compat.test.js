@@ -33,11 +33,6 @@ function gatedRunTurn() {
   return { runTurn, calls, release };
 }
 
-async function readSse(res) {
-  const text = await res.text();
-  return text.split("\n\n").map((c) => c.split("\n").find((l) => l.startsWith("data: "))).filter(Boolean).map((l) => JSON.parse(l.slice(6)));
-}
-
 test("every kit endpoint needs a session; owner-only ones refuse staff", async () => {
   const b = await bootAsOwner();
   try {
@@ -54,9 +49,6 @@ test("every kit endpoint needs a session; owner-only ones refuse staff", async (
       ["POST", "/api/artifact-remove", { file: "missing.html" }, 401, 403, 404],
       ["POST", "/api/assets/scan", { id: "zzz" }, 401, 403, 404],
       ["POST", "/api/assets/remind", { id: "zzz" }, 401, 403, 404],
-      ["POST", "/api/chat", { text: "" }, 401, 400, 400],
-      ["POST", "/api/chat/stop", undefined, 401, 200, 200],
-      ["POST", "/api/chat/render", { md: "hi" }, 401, 200, 200],
       ["POST", "/api/open", { target: "/tmp" }, 401, 400, 400],
     ];
     for (const [m, p, body, anon, staff, owner] of rows) {
@@ -230,101 +222,10 @@ test("assets: kit fields on the listing; scan stores the expiry the engine reads
   } finally { b.cleanup(); }
 });
 
-test("chat: streams session/text/tool/done in the kit's event shapes and resumes the same Claude session", async () => {
-  const g = gatedRunTurn(); g.release();
-  const b = await bootAsOwner({ runTurn: g.runTurn });
-  try {
-    const res = await b.http("POST", "/api/chat", { as: "owner", body: { text: "hello there", sessionId: null, model: "OPUS", effort: "HIGH" } });
-    assert.equal(res.status, 200);
-    assert.match(res.headers.get("content-type"), /text\/event-stream/);
-    const evs = await readSse(res);
-    assert.equal(evs[0].type, "session");
-    assert.ok(evs[0].sessionId);
-    assert.deepEqual(evs.filter((e) => e.type === "text").map((e) => e.text), ["working ", "done"]);
-    const tool = evs.find((e) => e.type === "tool");
-    assert.equal(tool.label, "Read notes.md");
-    assert.ok(tool.id);
-    const done = evs.at(-1);
-    assert.equal(done.type, "done");
-    assert.equal(done.sessionId, evs[0].sessionId);
-    assert.equal(done.isError, false);
-    assert.equal(done.result, "working done");
-    assert.equal(done.ms, 1234);
-    assert.equal(g.calls[0].prompt, "hello there");
-    assert.match(String(g.calls[0].options.model), /opus/);
-    // second message with the returned session id resumes the SAME Claude session
-    const evs2 = await readSse(await b.http("POST", "/api/chat", { as: "owner", body: { text: "and again", sessionId: done.sessionId } }));
-    assert.equal(evs2.at(-1).sessionId, done.sessionId);
-    assert.equal(g.calls[1].options.resume, "cc-1");
-    // the transcript lands in the vault's Chats folder
-    const chats = readdirSync(join(b.vault, "Chats")).filter((f) => f.endsWith(".md") && f !== "CLAUDE.md");
-    assert.equal(chats.length, 1);
-    assert.match(readFileSync(join(b.vault, "Chats", chats[0]), "utf8"), /and again/);
-  } finally { b.cleanup(); }
-});
-
-test("chat: an engine error ends the stream with an isError done carrying the message; empty text is a 400", async () => {
-  async function* runTurn() { yield { type: "error", message: "boom" }; }
-  const b = await bootAsOwner({ runTurn });
-  try {
-    const evs = await readSse(await b.http("POST", "/api/chat", { as: "owner", body: { text: "hi" } }));
-    const done = evs.at(-1);
-    assert.equal(done.type, "done");
-    assert.equal(done.isError, true);
-    assert.equal(done.note, "boom");
-    const empty = await b.http("POST", "/api/chat", { as: "owner", body: { text: "   " } });
-    assert.equal(empty.status, 400);
-    assert.deepEqual(await empty.json(), { error: "empty message" });
-  } finally { b.cleanup(); }
-});
-
-test("chat/stop aborts the run in flight; chat refuses a second concurrent run; staff chat stays read-scoped", async () => {
-  let aborted = false;
-  async function* runTurn({ options }) {
-    yield { type: "text", delta: "partial" };
-    await new Promise((r) => { options.abortController.signal.addEventListener("abort", () => { aborted = true; r(); }); });
-    yield { type: "error", message: "aborted" };
-  }
-  const b = await bootAsOwner({ runTurn });
-  try {
-    assert.deepEqual(await json(await b.http("POST", "/api/chat/stop", { as: "owner", body: {} })), { stopped: false });
-    const pending = b.http("POST", "/api/chat", { as: "owner", body: { text: "go" } });
-    await sleep(150);
-    const second = await b.http("POST", "/api/chat", { as: "owner", body: { text: "again" } });
-    assert.equal(second.status, 409);
-    assert.deepEqual(await json(await b.http("POST", "/api/chat/stop", { as: "owner", body: {} })), { stopped: true });
-    const evs = await readSse(await pending);
-    assert.ok(aborted);
-    assert.equal(evs.at(-1).type, "done");
-    assert.equal(evs.at(-1).note, "stopped");
-  } finally { b.cleanup(); }
-});
-
-test("staff chat through the kit endpoint gets the staff options (no model override, read-only tools)", async () => {
-  const g = gatedRunTurn(); g.release();
-  const b = await bootAsOwner({ runTurn: g.runTurn });
-  try {
-    await readSse(await b.http("POST", "/api/chat", { as: "staff", body: { text: "hi", model: "OPUS" } }));
-    const o = g.calls[0].options;
-    assert.deepEqual(o.tools, ["Read", "Glob", "Grep"]);
-    assert.equal(o.model, undefined);
-  } finally { b.cleanup(); }
-});
-
-test("chat/render turns markdown into escaped kit HTML", async () => {
+test("endpoints the synced page no longer calls are gone (no chat bar; logout uses /api/me + /api/logout; documents open via /assets/file)", async () => {
   const b = await bootAsOwner();
   try {
-    const { html } = await json(await b.http("POST", "/api/chat/render", { as: "owner", body: { md: "## Hi\n\n- **a** <script>x</script>\n- `b`" } }));
-    assert.match(html, /<h3>Hi<\/h3>/);
-    assert.match(html, /<li><strong>a<\/strong> &lt;script&gt;x&lt;\/script&gt;<\/li>/);
-    assert.match(html, /<code>b<\/code>/);
-  } finally { b.cleanup(); }
-});
-
-test("endpoints the synced page no longer calls are gone (account popover uses /api/me + /api/logout; documents open via /assets/file)", async () => {
-  const b = await bootAsOwner();
-  try {
-    for (const [m, p] of [["GET", "/api/account"], ["POST", "/api/account/login"], ["POST", "/api/account/logout"], ["POST", "/api/assets/open"]]) {
+    for (const [m, p] of [["GET", "/api/account"], ["POST", "/api/account/login"], ["POST", "/api/account/logout"], ["POST", "/api/assets/open"], ["POST", "/api/chat"], ["POST", "/api/chat/stop"], ["POST", "/api/chat/render"]]) {
       const r = await b.http(m, p, { as: "owner", body: m === "POST" ? {} : undefined });
       assert.equal(r.status, 404, `${m} ${p}`);
       await r.arrayBuffer();
@@ -508,12 +409,12 @@ test("a malformed or oversized JSON body is a 400, never silently treated as {}"
   const b = await bootAsOwner();
   try {
     const raw = (path, payload) => fetch(b.url + path, { method: "POST", headers: { cookie: b.jar.owner, origin: b.url, "content-type": "application/json" }, body: payload });
-    for (const path of ["/api/run", "/api/chat", "/api/chat/render", "/api/artifact-remove", "/api/apps", "/api/assets/scan"]) {
+    for (const path of ["/api/run", "/api/artifact-remove", "/api/apps", "/api/assets/scan"]) {
       const bad = await raw(path, "{not json");
       assert.equal(bad.status, 400, path);
       assert.deepEqual(await bad.json(), { error: "bad request body" });
     }
-    const big = await raw("/api/chat/render", JSON.stringify({ md: "x".repeat(1_100_000) }));
+    const big = await raw("/api/run", JSON.stringify({ id: "x".repeat(1_100_000) }));
     assert.equal(big.status, 400);
     await big.arrayBuffer();
   } finally { b.cleanup(); }
@@ -554,18 +455,6 @@ test("JobStore: unique ids, at most 50 kept, finished jobs older than an hour pr
     assert.ok(!store.jobs.has(old.jobId));
     assert.ok(store.jobs.has("r"));
   } finally { rmSync(vault, { recursive: true, force: true }); }
-});
-
-test("a transcript that cannot be written is logged to the audit trail, not swallowed", async () => {
-  const g = gatedRunTurn(); g.release();
-  const b = await bootAsOwner({ runTurn: g.runTurn });
-  try {
-    rmSync(join(b.vault, "Chats"), { recursive: true, force: true });
-    writeFileSync(join(b.vault, "Chats"), "a file where the folder should be");
-    const evs = await readSse(await b.http("POST", "/api/chat", { as: "owner", body: { text: "hi" } }));
-    assert.equal(evs.at(-1).type, "done", "the chat itself is unaffected");
-    assert.match(readFileSync(join(b.home, "activity.jsonl"), "utf8"), /chat\.transcript\.error/);
-  } finally { b.cleanup(); }
 });
 
 test("feeds: __proto__/constructor/prototype keys and a routine without a string d are dropped", async () => {

@@ -1,7 +1,7 @@
 // The API the RoboNuggets kit page (public/owner.html, synced by tools/sync-kit.mjs) expects,
 // implemented on the product's own data and engines. Response SHAPES follow the kit's
 // server.js / dashboard.html; behaviour is the product's: its session auth and roles, its
-// vault feeds, its Agent-SDK runner and chat engine. Nothing here shells out.
+// vault feeds, its Agent-SDK runner. (The owner page has no chat bar any more; the product's own chat is /api/chat/* in chat-routes.js.) Nothing here shells out.
 //
 //   kit endpoint            product source                      notes
 //   /api/calendar, /email   -                                   not wired: {needsSetup:true}
@@ -13,101 +13,29 @@
 //   /api/artifact-remove    src/artifacts.js removeArtifact     owner only
 //   /api/assets/scan        chat engine (Read tool only)        owner only
 //   /api/assets/remind      -                                   not wired (needs Google Calendar)
-//   /api/chat, /stop        src/chat/turn.js runChatTurn        SSE in the kit's event shapes
-//   /api/chat/render        src/kit-compat/md-to-html.js
 //   /api/apps               Dashboard/apps.json (src/apps.js)    GET any role, POST owner: SHOP APPS rows
 //   /api/open               400, the server never opens local paths
 import { requireUser, requireOwner } from "../auth.js";
 import { sendJson, readJsonBody } from "../lib/http.js";
 import { readStats, readRoutines } from "../snapshots.js";
 import { listArtifacts, removeArtifact } from "../artifacts.js";
-import { SKILLS, MODELS, EFFORTS, MODEL_IDS, EFFORT_HINTS, readRunHistory } from "../runs.js";
+import { SKILLS, MODELS, EFFORTS, MODEL_IDS, readRunHistory } from "../runs.js";
 import { listedAssetPath, getDocMeta, setDocMeta, isScannable } from "../assets.js";
 import { effectiveAssetsRoot } from "../settings.js";
-import { runChatTurn } from "../chat/turn.js";
-import { writeTranscript } from "../chat/transcript.js";
 import { readApps, writeApps, validateApps } from "../apps.js";
 import { sanitizeStats, sanitizeRoutines } from "../kit-compat/sanitize-feeds.js";
-import { mdToHtml } from "../kit-compat/md-to-html.js";
 import { JobStore } from "../kit-compat/jobs.js";
-import { basename, extname, join, resolve } from "node:path";
-
-const SSE_HEADERS = { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive", "x-accel-buffering": "no" };
-
-// short human label for a tool call, e.g. "Read dashboard.html" or "Bash ls -la" (kit server.js toolLabel)
-function toolLabel(name, input) {
-  const i = input || {};
-  const brief = i.file_path ? basename(String(i.file_path))
-    : i.command ? String(i.command).slice(0, 60)
-    : i.pattern ? String(i.pattern).slice(0, 40)
-    : i.description ? String(i.description).slice(0, 60)
-    : i.skill ? "/" + i.skill : "";
-  return brief ? `${name} ${brief}` : name;
-}
+import { extname, resolve } from "node:path";
 
 const notWired = (extra = {}) => ({ needsSetup: true, note: "not wired", ...extra });
 
 export function kitCompatRoutes(ctx) {
-  const { vaultPath, auth, audit, guard, chatSessions, settingsStore, homeDir } = ctx;
+  const { vaultPath, auth, audit, guard, settingsStore, homeDir } = ctx;
   const jobs = new JobStore();
-  const chatRuns = new Map(); // userId -> AbortController of the chat run in flight
   const assetsRoot = () => effectiveAssetsRoot(settingsStore, homeDir);
   // A body that is not valid JSON, or is over the limit, is the caller's mistake: 400, not "{}".
   const body = (req) => readJsonBody(req).catch(() => { throw Object.assign(new Error("bad request body"), { badBody: true }); });
   const logUser = (user) => ({ userId: user.id, username: user.username, role: user.role });
-
-  async function chat(req, res, user) {
-    const b = await body(req);
-    const text = String(b.text || "").trim();
-    if (!text) return sendJson(res, 400, { error: "empty message" });
-    if (chatRuns.has(user.id)) return sendJson(res, 409, { error: "a chat run is already in flight" });
-
-    // The kit page keeps one sessionId per browser and sends it back each message.
-    let session = b.sessionId ? chatSessions.get(String(b.sessionId)) : null;
-    if (session && session.userId !== user.id) session = null;
-    if (!session) {
-      session = chatSessions.create({ name: user.displayName, userId: user.id });
-      audit.log("chat.session.start", { ...logUser(user), sessionId: session.id });
-    }
-    const abortController = new AbortController();
-    res.writeHead(200, SSE_HEADERS);
-    const send = (ev) => { try { res.write("data: " + JSON.stringify(ev) + "\n\n"); } catch { /* client gone */ } };
-    res.on("close", () => { if (!res.writableFinished) abortController.abort(); });
-    let collected = "", failure = null, stats = null, toolN = 0;
-    try {
-      chatRuns.set(user.id, abortController);
-      send({ type: "session", sessionId: session.id });
-      const release = await guard.acquire(session.id);
-      try {
-        const model = MODEL_IDS[String(b.model || "").toUpperCase()] || null;
-        const hint = EFFORT_HINTS[String(b.effort || "").toUpperCase()] || "";
-        await runChatTurn({
-          ctx, user, session, prompt: text, abortController, model, systemAppend: hint,
-          onEvent: (ev) => {
-            if (ev.type === "text") { collected += ev.delta; send({ type: "text", text: ev.delta }); }
-            else if (ev.type === "tool_use") send({ type: "tool", id: `t${++toolN}`, label: toolLabel(ev.name, ev.input), final: true });
-            else if (ev.type === "done") stats = ev.stats || null;
-            else if (ev.type === "error") failure = ev.message;
-          },
-        });
-      } finally {
-        release();
-      }
-      const stopped = abortController.signal.aborted && !res.destroyed && failure !== "Claude took too long. Try again.";
-      send({
-        type: "done", sessionId: session.id, isError: !!failure || stopped, result: collected,
-        ...(stats?.duration_ms ? { ms: stats.duration_ms } : {}),
-        ...(stopped ? { note: "stopped" } : failure ? { note: failure } : {}),
-      });
-      if (session.turns.length) {
-        try { writeTranscript(vaultPath, { ...session, name: user.username }); }
-        catch (e) { audit.log("chat.transcript.error", { ...logUser(user), sessionId: session.id, error: String(e.message).slice(0, 200) }); }
-      }
-    } finally {
-      chatRuns.delete(user.id);
-      res.end();
-    }
-  }
 
   async function scanOne(user, abs, rel) {
     const ext = extname(abs).slice(1).toLowerCase();
@@ -215,20 +143,6 @@ export function kitCompatRoutes(ctx) {
       const dm = getDocMeta(assetsRoot(), a.rel);
       if (!dm || !dm.expires) return sendJson(res, 400, { error: "no expiration date set for this document yet" }), true;
       return sendJson(res, 501, { error: "Google Calendar isn't connected in Blueprint OS yet, so reminders can't be added" }), true;
-    }
-
-    // ---- chat bar ----
-    if (post && p === "/api/chat") { const user = requireUser(req, res, auth); if (!user) return true; await chat(req, res, user); return true; }
-    if (post && p === "/api/chat/stop") {
-      const user = requireUser(req, res, auth); if (!user) return true;
-      const ac = chatRuns.get(user.id);
-      if (ac) { ac.abort(); return sendJson(res, 200, { stopped: true }), true; }
-      return sendJson(res, 200, { stopped: false }), true;
-    }
-    if (post && p === "/api/chat/render") {
-      if (!requireUser(req, res, auth)) return true;
-      const b = await body(req);
-      return sendJson(res, 200, { html: mdToHtml(String(b.md || "")) }), true;
     }
 
     // ---- SHOP APPS rows ----

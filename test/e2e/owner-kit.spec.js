@@ -119,32 +119,88 @@ test("edit mode: dragging a widget moves it and the new layout survives a reload
   } finally { b.cleanup(); }
 });
 
-test("the chat bar sends a message to the product chat engine and shows the reply", async ({ page }) => {
-  const b = await bootAsOwner(); // fake engine replies "ok"
+test("the owner page has no chat bar: none of its elements exist and the page is clean on load", async ({ page }) => {
+  const b = await bootAsOwner();
+  const errors = [];
   try {
+    page.on("console", (m) => { if (m.type() === "error" && !/localhost:5210|ERR_CONNECTION_REFUSED/.test(m.text() + (m.location()?.url || ""))) errors.push(m.text()); });
+    page.on("pageerror", (e) => errors.push(e.message));
     await openOwner(page, b);
-    await page.fill("#chatIn", "hello from the kit page");
-    await page.click("#chatSend");
-    await expect(page.locator("#chatLog .cm.ai .body")).toContainText("ok");
-    expect((await ls(page, "os-chat-v1")).sessionId).toBeTruthy();
+    await page.waitForTimeout(1500);
+    for (const id of ["chatBar", "chatLog", "acctpop", "chatIn", "chatSend", "chatNew", "chatTog", "chatAcct", "chatModelSel", "chatEffortSel"]) {
+      await expect(page.locator("#" + id), id).toHaveCount(0);
+    }
+    expect(await page.evaluate(() => typeof window.CHATCFG)).toBe("undefined");
+    expect(await page.evaluate(() => /CLAUDE CODE|NEW CHAT/.test(document.body.innerText))).toBe(false);
+    expect(errors).toEqual([]);
   } finally { b.cleanup(); }
 });
 
-test("account popover shows the signed-in user, links Users for owners, and Logout signs out to /login", async ({ page }) => {
+test("keyboard: '/' still opens search and focuses the search box, Escape closes it; there is no chat input to steal focus", async ({ page }) => {
+  const b = await bootAsOwner();
+  const errors = [];
+  try {
+    page.on("pageerror", (e) => errors.push(e.message));
+    await openOwner(page, b);
+    await page.locator("body").click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("/");
+    await expect(page.locator("body")).toHaveClass(/searchopen/);
+    expect(await page.evaluate(() => document.activeElement && document.activeElement.id)).toBe("searchIn");
+    await page.keyboard.press("Escape");
+    await expect(page.locator("body")).not.toHaveClass(/searchopen/);
+    await page.keyboard.press("t");   // the kit's other single-key shortcut must not throw either
+    expect(errors).toEqual([]);
+  } finally { b.cleanup(); }
+});
+
+test("toolbar: pencil, search, grid, screen, info, theme, Users, status, Log out - and Log out signs out to /login", async ({ page }) => {
   const b = await bootAsOwner();
   try {
     await openOwner(page, b);
-    await page.click("#chatAcct");
-    await expect(page.locator("#acctpop")).toHaveClass(/show/);
-    await expect(page.locator("#acctRows")).toContainText("Pat");
-    await expect(page.locator("#acctRows")).toContainText("owner");
-    await expect(page.locator('#acctRows a[href="/users"]')).toBeVisible();
-    await expect(page.locator("#acctSwitch")).toHaveCount(0); // the kit's machine-wide Claude logout is not shipped
-    await page.click("#acctLogout");
+    await expect(page.locator("#logoutBtn")).toBeVisible();
+    const ids = await page.evaluate(() => [...document.querySelector(".tbar").children].map((e) => e.id));
+    expect(ids.slice(-4)).toEqual(["themeBtn", "usersBtn", "statusBtn", "logoutBtn"]);
+    expect(ids.length).toBeGreaterThanOrEqual(9);
+    await expect(page.locator("#logoutBtn")).toHaveAttribute("title", /^Log out \(.+\)$/);
+    expect(await page.locator("#logoutBtn svg").evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThan(8);
+    await expect(page.locator("#usersBtn")).toBeVisible();
+    await page.click("#logoutBtn");
     await expect(page).toHaveURL(/\/login$/);
-    const me = await page.request.get(`${b.url}/api/me`);
-    expect(me.status()).toBe(401);
+    expect((await page.request.get(`${b.url}/api/me`)).status()).toBe(401);
   } finally { b.cleanup(); }
+});
+
+test("a widget can be dragged to the very bottom edge (no bar below it) and stays there after a reload", async ({ browser }) => {
+  const b = await bootAsOwner();
+  const { ctx, page } = await openOwnerIn(browser, b, { width: 1650, height: 843 }, 1);
+  try {
+    await page.click("#editBtn");
+    const cell = await page.evaluate(() => CELL);
+    const rows = await page.evaluate(() => ROWS);
+    const header = page.locator("#w-rt .wh");
+    const box = await header.boundingBox();
+    const wb = await page.locator("#w-rt").boundingBox();
+    // drag so the widget's bottom lands as low as the grid allows
+    const dy = (rows * cell - (wb.y + wb.height)) + 2 * cell;
+    await page.mouse.move(box.x + 40, box.y + 12);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 40 - 10 * cell, box.y + 12 + dy, { steps: 14 });   // the free middle columns: dropping on a widget swaps instead
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const lay = await ls(page, LAYKEY);
+    const w = lay.widgets.find((x) => x.id === "w-rt");
+    expect(w.r + w.rs, JSON.stringify(w)).toBe(rows);
+    const after = await page.locator("#w-rt").boundingBox();
+    expect(after.y + after.height).toBeGreaterThan(rows * cell - 16)   // the widget is inset a few px inside its cell;
+    expect(after.y + after.height).toBeLessThanOrEqual(843 + 1);
+    // leave edit mode (the edit-only "restore widgets" chip floats near the bottom), then reload: the spot is kept and
+    // nothing sits over the widget's bottom row - the point just inside its bottom edge is the widget itself
+    await page.click("#editBtn");
+    await page.reload();
+    await expect(page.locator("#w-rt .wh")).toBeVisible();
+    const hit = await page.evaluate(() => { const r = document.getElementById("w-rt").getBoundingClientRect(); const e = document.elementFromPoint(r.x + r.width / 2, r.bottom - 6); return e ? (e.closest("#w-rt") ? "w-rt" : e.tagName + "#" + e.id + "." + e.className) : null; });
+    expect(hit).toBe("w-rt");
+  } finally { await ctx.close(); b.cleanup(); }
 });
 
 test("tour still ends on the CC BY credit card for RoboNuggets", async ({ page }) => {
@@ -209,7 +265,7 @@ test("toolbar extras (Users, status dot) render for an owner, after the theme ic
     await expect(page.locator("#statusBtn")).toBeVisible();
     await expect(page.locator("#usersBtn")).toBeVisible();
     const order = await page.locator(".tbar > button").evaluateAll((els) => els.map((e) => e.id));
-    expect(order.slice(-3)).toEqual(["themeBtn", "usersBtn", "statusBtn"]);
+    expect(order.slice(-4)).toEqual(["themeBtn", "usersBtn", "statusBtn", "logoutBtn"]);
     // they look like the kit's own toolbar buttons (same size, ghost background)
     const size = await page.evaluate(() => { const r = (id) => { const b = document.getElementById(id).getBoundingClientRect(); return [b.width, b.height]; }; return [r("themeBtn"), r("usersBtn")]; });
     expect(size[0]).toEqual(size[1]);
@@ -230,6 +286,7 @@ test("toolbar extras (Users, status dot) render for an owner, after the theme ic
     await staff.waitForTimeout(800);
     await expect(staff.locator("#usersBtn")).toHaveCount(0);
     await expect(staff.locator("#statusBtn")).toHaveCount(0);
+    await expect(staff.locator("#logoutBtn")).toHaveCount(0);
     await ctx.close();
   } finally { b.cleanup(); }
 });
@@ -307,16 +364,16 @@ for (const [w, h, dpr] of VM_VIEWPORTS) {
     try {
       await page.waitForTimeout(2500);
       const covers = await page.evaluate(OPAQUE_COVER);
-      // the only opaque fixed layers are the chat bar (bottom 62px) and parked/hidden overlays
+      // no opaque fixed layer at all (the chat bar that used to own the bottom 62px is gone)
       for (const c of covers) {
-        const overlapsOrb = c.y < c.vh - 70 && c.w > c.vw * 0.3 && c.h > 60;
+        const overlapsOrb = c.w > c.vw * 0.3 && c.h > 60;
         expect(overlapsOrb, `${c.id || c.cls} covers [${c.x},${c.y},${c.w},${c.h}]`).toBe(false);
       }
       // points inside the old "band" resolve to the page background / canvases / widgets, never an opaque panel
       for (const [fx, fy] of [[0.1, 0.8], [0.35, 0.78], [0.5, 0.8], [0.6, 0.85]]) {
         const hit = await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e ? { tag: e.tagName, id: e.id, bg: getComputedStyle(e).backgroundColor } : null; }, [fx * w, fy * h]);
         expect(["BODY", "HTML", "CANVAS", "DIV"]).toContain(hit.tag);
-        expect(hit.id).not.toMatch(/chatLog|brainWrap|brainFrame/);
+        expect(hit.id).not.toMatch(/brainWrap|brainFrame/);
       }
       // the hex background, ring and grid canvases cover the whole window (no flat band below them)
       const sizes = await page.evaluate(() => ["hexCv", "ringCv", "gridCv"].map((id) => { const c = document.getElementById(id); return [parseFloat(c.style.width), parseFloat(c.style.height), innerWidth, innerHeight]; }));
@@ -340,29 +397,11 @@ test("loading small and then growing the window re-lays the page out for the rea
   try {
     await openOwner(page, b, { tourSeen: false });
     await page.waitForTimeout(1500);
-    await page.fill("#chatIn", "half-written question");   // unsent draft, input NOT focused
-    await page.evaluate(() => document.getElementById("chatIn").blur());
     await page.setViewportSize({ width: 1624, height: 910 });
     await expect.poll(() => page.evaluate(() => document.getElementById("ringCv").style.height).catch(() => ""), { timeout: 10000 }).toBe("910px");
     const sizes = await page.evaluate(() => ["hexCv", "ringCv", "gridCv"].map((id) => document.getElementById(id).style.width + "x" + document.getElementById(id).style.height));
     expect(sizes).toEqual(["1624pxx910px", "1624pxx910px", "1624pxx910px"]);
-    await expect(page.locator("#chatIn")).toHaveValue("half-written question");
-    expect(await page.evaluate(() => sessionStorage.getItem("bp-resize-draft"))).toBeNull();
     await page.screenshot({ path: join(process.env.PW_SHOTS || ".", "resized.png") }).catch(() => {});
-  } finally { await ctx.close(); b.cleanup(); }
-});
-
-test("an open chat log is the one opaque panel allowed over the lower page, and closing it clears it", async ({ browser }) => {
-  const b = await bootAsOwner();
-  const { ctx, page } = await openOwnerIn(browser, b, { width: 1624, height: 910 }, 1.25);
-  try {
-    await page.fill("#chatIn", "hi"); await page.click("#chatSend");
-    await expect(page.locator("#chatLog .cm.ai .body")).toContainText("ok");
-    expect(await page.evaluate(() => getComputedStyle(document.getElementById("chatLog")).display)).toBe("block");
-    await page.click("#chatTog");
-    await expect.poll(() => page.evaluate(() => getComputedStyle(document.getElementById("chatLog")).display)).toBe("none");
-    const covers = (await page.evaluate(OPAQUE_COVER)).filter((c) => c.y < c.vh - 70 && c.w > c.vw * 0.3 && c.h > 60);
-    expect(covers).toEqual([]);
   } finally { await ctx.close(); b.cleanup(); }
 });
 
@@ -393,37 +432,30 @@ test("the theme toggle holds an inline <svg> with a visible glyph in dark and in
 });
 
 // ---- status dot ----
-test("the status dot explains an unknown Claude sign-in and goes green after a successful chat turn", async ({ page }) => {
+test("the status dot explains an unknown Claude sign-in", async ({ page }) => {
   const b = await bootAsOwner();
   try {
     await openOwner(page, b);
     const dot = page.locator("#statusBtn");
     await expect(dot).toHaveAttribute("data-state", "warn");
-    await expect(dot).toHaveAttribute("title", /Claude sign-in not confirmed yet.*first chat reply/);
-    await page.fill("#chatIn", "hi"); await page.click("#chatSend");
-    await expect(page.locator("#chatLog .cm.ai .body")).toContainText("ok");
-    await expect(dot).toHaveAttribute("data-state", "ok", { timeout: 8000 });
+    await expect(dot).toHaveAttribute("title", /Claude sign-in not confirmed yet/);
   } finally { b.cleanup(); }
 });
 
-test("resize reload waits while the chat box is focused with unsent text (until the window is still for 3 s), and not while a popover is open", async ({ browser }) => {
+test("resize reload waits while a popover is open, and then reloads once the window is still", async ({ browser }) => {
   const b = await bootAsOwner();
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
   try {
     await openOwner(page, b, { tourSeen: false });
-    await page.click("#chatIn"); await page.keyboard.type("typing now");
-    await page.evaluate(() => { window.__still = true; });
-    await page.setViewportSize({ width: 1500, height: 850 });
-    await page.waitForTimeout(2000);
-    expect(await page.evaluate(() => window.__still)).toBe(true);          // not reloaded after 2 s
-    await expect.poll(() => page.evaluate(() => window.__still === true).catch(() => false), { timeout: 8000 }).toBe(false); // reloaded once still for 3 s
-    await expect(page.locator("#chatIn")).toHaveValue("typing now");
-    // a popover open: no reload
     await page.evaluate(() => { window.__still = true; });
     await page.click("#profileBtn");
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.waitForTimeout(2000);
-    expect(await page.evaluate(() => window.__still)).toBe(true);
+    expect(await page.evaluate(() => window.__still)).toBe(true);          // popover open: held back
+    await page.keyboard.press("Escape");
+    await page.mouse.click(5, 5);                                          // closes the popover
+    await expect.poll(() => page.evaluate(() => window.__still === true).catch(() => false), { timeout: 10000 }).toBe(false);
+    await expect(page.locator("#w-rt .wh")).toBeVisible();
   } finally { await ctx.close(); b.cleanup(); }
 });

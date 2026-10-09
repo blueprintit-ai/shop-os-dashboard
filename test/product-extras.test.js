@@ -1,5 +1,5 @@
 // Product-only features the kit page has no UI for, restored around the (byte-identical modulo rules) kit page:
-// toolbar extras (Users link, status dot, Update), a license gate, the Business Assets folder setting and the
+// toolbar extras (Users link, status dot, Update, Log out), a license gate, the Business Assets folder setting and the
 // phone-access QR on /users.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -30,7 +30,7 @@ test("the kit page loads product-extras.js exactly once, last, and the script is
 const doms = [];
 after(() => doms.forEach((d) => d.window.close())); // the script polls on an interval
 
-function extrasDom({ role = "owner", status, updateOk = true } = {}) {
+function extrasDom({ role = "owner", status, updateOk = true, username = "g" } = {}) {
   const dom = new JSDOM(`<!doctype html><body><div class="tbar"><button id="editBtn"></button><button id="themeBtn"></button></div></body>`, { runScripts: "outside-only", url: "http://dash.test/owner" });
   doms.push(dom);
   const w = dom.window;
@@ -40,7 +40,7 @@ function extrasDom({ role = "owner", status, updateOk = true } = {}) {
   w.fetch = async (url, opts = {}) => {
     calls.push([opts.method || "GET", url]);
     const ok = (data, st = 200) => ({ ok: st < 400, status: st, json: async () => data });
-    if (url === "/api/me") return ok({ user: { role, displayName: "G" } });
+    if (url === "/api/me") return ok({ user: { role, displayName: "G", username } });
     if (url === "/api/status") return ok(status);
     if (url === "/api/update") return updateOk ? ok({ ok: true }) : ok({ error: "npm failed" }, 500);
     if (url === "/api/ping") return ok({ app: "x" });
@@ -55,7 +55,7 @@ test("toolbar extras: owner gets Users + status dot after the theme button; no U
   const { w } = extrasDom({ status: goodStatus });
   await sleep(30);
   const ids = [...w.document.querySelectorAll(".tbar > *")].map((e) => e.id);
-  assert.deepEqual(ids, ["editBtn", "themeBtn", "usersBtn", "statusBtn"]);
+  assert.deepEqual(ids, ["editBtn", "themeBtn", "usersBtn", "statusBtn", "logoutBtn"]);
   assert.equal(w.document.getElementById("statusBtn").dataset.state, "ok");
   assert.equal(w.document.getElementById("updateBtn"), null);
 });
@@ -64,6 +64,7 @@ test("toolbar extras: staff get nothing and make no status/update calls", async 
   const { w, calls } = extrasDom({ role: "staff", status: goodStatus });
   await sleep(30);
   assert.equal(w.document.querySelectorAll(".tbar > *").length, 2);
+  assert.equal(w.document.getElementById("logoutBtn"), null);
   assert.deepEqual(calls.map((c) => c[1]), ["/api/me"]);
 });
 
@@ -103,7 +104,7 @@ test("toolbar extras survive the kit rebuilding its toolbar", async () => {
   w.document.querySelector(".tbar").remove();
   w.document.body.insertAdjacentHTML("beforeend", `<div class="tbar"><button id="editBtn"></button><button id="themeBtn"></button></div>`);
   await sleep(60);
-  assert.deepEqual([...w.document.querySelectorAll(".tbar > *")].map((e) => e.id), ["editBtn", "themeBtn", "usersBtn", "statusBtn"]);
+  assert.deepEqual([...w.document.querySelectorAll(".tbar > *")].map((e) => e.id), ["editBtn", "themeBtn", "usersBtn", "statusBtn", "logoutBtn"]);
 });
 
 // ---- (b) license gate ----
@@ -243,27 +244,31 @@ test("license gate: owner-run pages (users, settings, status, update) keep worki
     assert.equal((await requestAs(b.server, b.jar, "anon", "POST", "/api/update", {})).status, 401);
     assert.equal((await requestAs(b.server, b.jar, "owner", "POST", "/api/update", undefined)).status === 402, false);
     for (const path of ["/api/artifacts", "/api/stats", "/api/skills", "/api/assets"]) { const r = await b.http("GET", path, { as: "owner" }); assert.equal(r.status, 402, path); await r.arrayBuffer(); }
-    const chat = await b.http("POST", "/api/chat", { as: "owner", body: { text: "hi" } }); assert.equal(chat.status, 402); await chat.arrayBuffer();
     const page = await (await requestAs(b.server, b.jar, "owner", "GET", "/owner")).text();
     assert.match(page, /Users, settings and updates still work/);
   } finally { b.cleanup(); }
 });
 
-test("toolbar extras: an unknown Claude sign-in is explained in the dot's title, and the dot re-checks when a chat turn ends", async () => {
-  let status = { ...goodStatus, claude: { present: true, signedIn: "unknown" } };
-  const dom = new JSDOM(`<!doctype html><body><div class="tbar"><button id="themeBtn"></button></div><button id="chatSend"></button></body>`, { runScripts: "outside-only", url: "http://dash.test/owner" });
-  doms.push(dom);
-  const w = dom.window;
-  w.fetch = async (url) => ({ ok: true, status: 200, json: async () => (url === "/api/me" ? { user: { role: "owner" } } : url === "/api/status" ? status : {}) });
-  w.eval(read("public/js/product-extras.js"));
+test("toolbar extras: an unknown Claude sign-in is explained in the dot's title; the page has no chat bar to wait for", async () => {
+  const { w } = extrasDom({ status: { ...goodStatus, claude: { present: true, signedIn: "unknown" } } });
   await sleep(40);
-  const dot = () => w.document.getElementById("statusBtn");
-  assert.equal(dot().dataset.state, "warn");
-  assert.match(dot().title, /Claude sign-in not confirmed yet.*first chat reply/);
-  // a turn starts (SEND -> STOP) and ends: the server now knows Claude answered
-  const send = w.document.getElementById("chatSend");
-  send.classList.add("stop"); await sleep(10);
-  status = goodStatus;
-  send.classList.remove("stop"); await sleep(60);
-  assert.equal(dot().dataset.state, "ok");
+  const dot = w.document.getElementById("statusBtn");
+  assert.equal(dot.dataset.state, "warn");
+  assert.match(dot.title, /Claude sign-in not confirmed yet/);
+});
+
+test("toolbar extras: Log out is the last icon, titled with the user name, POSTs /api/logout then goes to /login", async () => {
+  const { w, calls } = extrasDom({ status: goodStatus, username: "boss" });
+  await sleep(30);
+  const btn = w.document.getElementById("logoutBtn");
+  assert.equal(btn.title, "Log out (boss)");
+  assert.equal(w.document.querySelector(".tbar").lastElementChild, btn);
+  assert.ok(btn.querySelector("svg"));
+  btn.click(); await sleep(30);
+  assert.ok(calls.some((c) => c[0] === "POST" && c[1] === "/api/logout"));
+});
+
+test("product-extras.js: no chat-bar ids are referenced any more", () => {
+  const src = read("public/js/product-extras.js");
+  assert.doesNotMatch(src, /chatIn|chatLog|chatSend|acctpop|bp-resize-draft/);
 });

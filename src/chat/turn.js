@@ -6,10 +6,9 @@ export const CHAT_TURN_TIMEOUT_MS = 5 * 60 * 1000;
 // One chat turn against the product's chat engine: records the turn, builds the
 // role-scoped system prompt + SDK options, streams the engine's events to
 // `onEvent`, and writes the assistant reply back into the session. Shared by
-// /api/chat/turn (employee + owner chat) and the kit compat layer's /api/chat,
-// so the staff read-scope rules live in exactly one place.
-// `model` / `effort` are owner-only knobs (the kit page's chat popover); staff are
-// always pinned to the engine defaults.
+// /api/chat/turn (employee + owner chat), so the staff read-scope rules live in
+// exactly one place. `model` / `systemAppend` are optional knobs; staff are always
+// pinned to the engine defaults.
 export async function runChatTurn({ ctx, user, session, prompt, onEvent, abortController = new AbortController(), model = null, systemAppend = "" }) {
   const { vaultPath, audit, chatSessions, runTurn, statusStore } = ctx;
   let timedOut = false;
