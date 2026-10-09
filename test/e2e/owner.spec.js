@@ -113,6 +113,8 @@ test("owner header chrome is not base.css's white card in dark mode (regression)
     expect(await bg("#w-rt .wh")).toBe("rgba(0, 0, 0, 0)");
     expect(await bg("#owner-header")).toBe("rgba(0, 0, 0, 0)");
     expect(await bg("#owner-header #logout-btn")).not.toBe("rgb(255, 255, 255)");
+    await expect(page.locator("#theme-btn svg:visible")).toHaveCount(1);
+    await expect(page.locator("#theme-btn")).toHaveAttribute("title", "Switch to light theme");
   } finally {
     cleanup();
   }

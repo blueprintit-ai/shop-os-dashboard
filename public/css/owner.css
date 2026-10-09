@@ -94,6 +94,9 @@ body { overflow: hidden; height: 100vh; }
   color: var(--cream); background: none;
   border: 1px solid color-mix(in srgb, var(--cream) 22%, transparent);
 }
+#theme-btn svg { display: block; margin: 3px 0; }
+#theme-btn .ti-moon, html.light #theme-btn .ti-sun { display: none; }
+html.light #theme-btn .ti-moon { display: block; }
 #owner-header button:hover, #owner-header a:hover { border-color: var(--accent); color: var(--accent); }
 body.edit .wh { cursor: move; }
 .wh .g {

@@ -40,3 +40,13 @@ test("owner.css themes the top bar (#owner-header) and its buttons from owner to
   assert.match(btn, /color:\s*var\(--cream\)/);
   assert.match(btn, /border:[^;]*color-mix\(in srgb, var\(--cream\) 22%, transparent\)/);
 });
+
+test("theme toggle button holds inline SVG icons, and CSS shows one per theme", () => {
+  const html = readFileSync(join(PUB, "owner.html"), "utf8");
+  const btn = html.match(/<button id="theme-btn"[^>]*>([\s\S]*?)<\/button>/);
+  assert.ok(btn, "#theme-btn exists");
+  assert.match(btn[1], /<svg[^>]*class="ti-sun"/);
+  assert.match(btn[1], /<svg[^>]*class="ti-moon"/);
+  assert.match(owner, /html\.light #theme-btn \.ti-sun\s*\{[^}]*display:\s*none/);
+  assert.match(owner, /html\.light #theme-btn \.ti-moon\s*\{[^}]*display:\s*block/);
+});
