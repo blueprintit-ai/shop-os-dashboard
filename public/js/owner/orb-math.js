@@ -18,9 +18,12 @@ export const ORB_DEFAULT = Object.freeze({ c: 16, r: 9, s: 1.7, z: 2.6 });
 // screen. s is the kit's resize clamp; z (three.js zoom) is a sanity range.
 export const ORB_LIMITS = Object.freeze({ c: [-6, COLS + 6], r: [-6, 60], s: [.5, 1.7], z: [.5, 5] });
 
-// Share of the short viewport side the orb footprint may occupy before the
-// module scale is reduced for display (small windows only; s is never changed).
-export const FOOT_MAX_FRAC = 0.65;
+// Largest orb footprint radius, as a share of the viewport HEIGHT, before the
+// module scale is reduced for display (the saved s is never changed). 0.56 is
+// just above what the kit's default (s 1.7) uses on a 16:9 screen (0.553), so
+// 16:9 desktops render exactly like the kit and only wider/shorter windows
+// (2:1, ultrawide, a half-height browser) get a smaller ring that still fits.
+export const FOOT_MAX_FRAC = 0.56;
 
 // Kit constants (RS.ring / RS.size) and footprint padding, all in 60px-cell units.
 const RING = 316, BALL = 48, FOOT_PAD = 10;
@@ -45,9 +48,9 @@ export function orbMetrics(orb, W, H) {
   const cell = W / COLS;
   const scale = cell / 60;
   let sEff = orb.s;
-  // Containment clamp for small / very wide windows: the kit has none, but a
-  // 700px-tall window would otherwise cut the ring off.
-  const maxFoot = FOOT_MAX_FRAC * Math.min(W, H);
+  // Containment clamp: the kit has none (it assumes ~16:9), but on a short or
+  // very wide window the ring would run off the bottom of the screen.
+  const maxFoot = FOOT_MAX_FRAC * H;
   const footAtS = (RING + BALL / 2 + FOOT_PAD) * scale * sEff;
   let clamped = false;
   if (footAtS > maxFoot) { sEff = orb.s * (maxFoot / footAtS); clamped = true; }

@@ -41,14 +41,20 @@ test("orbMetrics: scales with s and with the viewport width", () => {
   assert.ok(Math.abs(wide.ring / a.ring - 1.5) < 1e-9);
 });
 
-test("orbMetrics: small-window clamp keeps the footprint inside 65% of the short side, never touches s itself", () => {
+test("orbMetrics: small-window clamp keeps the footprint inside 56% of the viewport height, never touches s itself", () => {
   const m = orbMetrics({ c: 16, r: 9, s: 1.7, z: 2.6 }, 1900, 600);
   assert.equal(m.clamped, true);
-  assert.ok(m.footR <= 0.65 * 600 + 1e-6);
+  assert.ok(m.footR <= 0.56 * 600 + 1e-6);
   assert.ok(m.sEff < 1.7);
   // the common desktop sizes are NOT clamped
-  for (const [w, h] of [[1280, 720], [1366, 768], [1600, 900], [1920, 1080], [2000, 1000], [2560, 1440]]) {
+  for (const [w, h] of [[1280, 720], [1366, 768], [1600, 900], [1920, 1080], [2560, 1440], [1440, 900]]) {
     assert.equal(orbMetrics(ORB_DEFAULT, w, h).clamped, false, `${w}x${h}`);
+  }
+  // 2:1 and ultrawide windows would run the ring off the bottom: shrink to fit
+  for (const [w, h] of [[2000, 1000], [3440, 1440]]) {
+    const m = orbMetrics(ORB_DEFAULT, w, h);
+    assert.equal(m.clamped, true, `${w}x${h}`);
+    assert.ok(m.footR <= 0.56 * h + 1e-6);
   }
 });
 
