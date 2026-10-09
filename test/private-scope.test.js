@@ -193,7 +193,7 @@ test("every dropped list entry is audited once per file change and counted in th
     const ig = events.filter((x) => x.e === "private.config-entry-ignored");
     assert.equal(ig.length, 10, JSON.stringify(ig.map((x) => x.entry)));
     assert.ok(ig.some((x) => x.entry === "path" && /unknown top-level key/.test(x.reason)));
-    assert.ok(ig.some((x) => /\.\./.test(x.reason)) && ig.some((x) => /drive letter/.test(x.reason)) && ig.some((x) => /slash/.test(x.reason)));
+    assert.ok(ig.some((x) => /\.\./.test(x.reason)) && ig.some((x) => /drive letter/.test(x.reason)) && ig.some((x) => /slash/.test(x.reason) && x.reason.includes('patterns match one file or folder name, use "paths" for folders')));
     assert.equal(privateListStatus(vault).ignoredEntries, 10);
     assert.equal(privateListStatus(vault).state, "ok");
     events.length = 0;

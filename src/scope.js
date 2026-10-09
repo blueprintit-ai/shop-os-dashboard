@@ -167,7 +167,7 @@ function parseConfig(text) {
     if (e.length > MAX_PATTERN_LENGTH) { dropped.push({ entry: e.slice(0, 40) + "...", reason: "pattern is too long" }); continue; }
     const p = e.normalize("NFC").trim().toLowerCase();
     if (!p) { dropped.push({ entry: e, reason: "pattern is empty" }); continue; }
-    if (/[\\/]/.test(p)) { dropped.push({ entry: e, reason: "pattern contains a slash (patterns match one name; use paths for folders)" }); continue; }
+    if (/[\\/]/.test(p)) { dropped.push({ entry: e, reason: 'pattern contains a slash: patterns match one file or folder name, use "paths" for folders' }); continue; }
     if (!/[^*]/.test(p)) { dropped.push({ entry: e, reason: "pattern would match everything" }); continue; }
     patterns.push(p.replace(/\*+/g, "*"));
   }

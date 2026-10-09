@@ -278,3 +278,23 @@ test("assets upload is owner-only, writes nothing for staff, and the assets page
     assert.ok(!/#upBtn,#drop,#upOv\{display:none/.test(ownerPage.text));
   } finally { ctx.cleanup(); }
 });
+
+test("GET /api/status tells the owner (only) whether the private-files list works", async () => {
+  const ctx = await bootPrivate({ config: OWNER_LIST });
+  try {
+    const status = async (as) => JSON.parse((await get(ctx, as, "/api/status")).text);
+    assert.deepEqual((await status("owner")).privateList, { state: "ok", ignoredEntries: 0 });
+    assert.equal("privateList" in (await status("staff")), false, "staff are never told");
+    writeConfig(ctx.vault, { paths: ["../x"], patterns: ["a/b"], path: [] });
+    assert.deepEqual((await status("owner")).privateList, { state: "ok", ignoredEntries: 3 });
+    writeConfig(ctx.vault, "{ half");
+    assert.deepEqual((await status("owner")).privateList, { state: "keptLastGood", ignoredEntries: 3 });
+  } finally { ctx.cleanup(); }
+});
+
+test("with no good list ever, status says failClosed", async () => {
+  const ctx = await bootPrivate({ config: '{ "paths": [], }' });
+  try {
+    assert.equal(JSON.parse((await get(ctx, "owner", "/api/status")).text).privateList.state, "failClosed");
+  } finally { ctx.cleanup(); }
+});
