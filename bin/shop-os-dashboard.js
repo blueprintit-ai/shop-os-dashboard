@@ -7,6 +7,7 @@ import { createServer } from "../src/server.js";
 import { checkForUpdate, makeRestart } from "../src/updater.js";
 import { findFreePort, lanAddresses } from "../src/lib/net.js";
 import { decideStartup } from "../src/lib/instance.js";
+import { validateOpenPath } from "../src/lib/open-path.js";
 import { dashboardHome, shoposAppDir, shoposRuntimeFile } from "../src/lib/paths.js";
 import { JsonStore } from "../src/lib/store.js";
 import { UserStore } from "../src/users.js";
@@ -28,13 +29,14 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const a = { vault: null, port: null, noBrowser: false, home: null, resetOwner: false, newPassword: null, help: false };
+  const a = { vault: null, port: null, noBrowser: false, home: null, resetOwner: false, newPassword: null, help: false, open: null, openGiven: false };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === "--help" || x === "-h") a.help = true;
     else if (x === "--no-browser") a.noBrowser = true;
     else if (x === "--port") a.port = parseInt(argv[++i], 10);
     else if (x === "--home") a.home = argv[++i];
+    else if (x === "--open") { a.openGiven = true; a.open = argv[++i]; }
     else if (x === "--reset-owner") a.resetOwner = true;
     else if (x === "--new-password") a.newPassword = argv[++i];
     else if (!a.vault) a.vault = x;
@@ -51,6 +53,7 @@ Usage:  shop-os-dashboard <vault-path> [options]
 Options:
   --port <N>          Use a specific port (default: first free in 50000-50010)
   --no-browser        Do not open the browser
+  --open <path>       Open the browser at this page, e.g. /employee (staff chat)
   --home <dir>        Data folder (default ~/.shopos/dashboard)
   --reset-owner       Reset the owner password (run on the shop computer), then exit
   --new-password <p>  Password for --reset-owner (prompted if omitted)
@@ -118,6 +121,15 @@ async function main() {
     help();
     process.exit(0);
   }
+  let openPath = "";
+  if (args.openGiven) {
+    const v = validateOpenPath(args.open);
+    if (!v.ok) {
+      die(v.error);
+      return;
+    }
+    openPath = v.path;
+  }
   const home = args.home ? resolve(args.home) : dashboardHome();
 
   if (args.resetOwner) {
@@ -133,7 +145,7 @@ async function main() {
 
   // Already running for this vault (autostart + desktop shortcut)? Reuse it
   // instead of starting a second server on the next port. Skipped with --port.
-  const startup = await decideStartup({ vaultPath, port: args.port, noBrowser: args.noBrowser });
+  const startup = await decideStartup({ vaultPath, port: args.port, noBrowser: args.noBrowser, openPath });
   if (startup.action === "attach") {
     if (startup.openBrowser) {
       console.log(startup.message);
@@ -189,7 +201,7 @@ async function main() {
     console.log(`  This computer: ${c.cyan(`http://localhost:${port}`)}`);
     for (const a of lanAddresses()) console.log(`  Shop network:  ${c.cyan(`http://${a}:${port}`)}`);
     console.log(c.dim("  Press Ctrl-C to stop."));
-    if (!args.noBrowser) setTimeout(() => openBrowser(`http://localhost:${port}`), 250);
+    if (!args.noBrowser) setTimeout(() => openBrowser(`http://localhost:${port}${openPath}`), 250);
   });
 
   const shutdown = () => {
