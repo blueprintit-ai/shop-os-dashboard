@@ -8,7 +8,7 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
   ".svg": "image/svg+xml", ".webp": "image/webp", ".pdf": "application/pdf",
-  ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8",
+  ".woff2": "font/woff2", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8",
 };
 
 export function mimeFor(path) {

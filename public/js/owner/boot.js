@@ -32,10 +32,12 @@ import { mountRing } from "./ring.js";
 import { mountSearch } from "./search.js";
 import { mountTour } from "./tour.js";
 import { openNotesPanel } from "./chat-toggle.js";
+import { mountHexBackground } from "./hex-bg.js";
 
 const layout = await getLayout();
 const allKinds = { ...kindRenderers, skills: mountSkillsDeck, assets: mountAssetsFavorites, status: renderStatusWidget };
 
+mountHexBackground();
 mountRing(document.getElementById("ring-root"));
 mountGrid(document.getElementById("widgets-root"), layout, allKinds);
 

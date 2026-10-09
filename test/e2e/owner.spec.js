@@ -119,3 +119,47 @@ test("owner header chrome is not base.css's white card in dark mode (regression)
     cleanup();
   }
 });
+
+test("reference look: title block shows the shop name, header icons + hex backdrop render, no external requests", async ({ page }) => {
+  const { url, username, password, cleanup } = await bootAsOwner();
+  const external = [];
+  page.on("request", (r) => { if (!r.url().startsWith(url)) external.push(r.url()); });
+  try {
+    await page.goto(`${url}/login`);
+    await page.fill("input[name=username]", username);
+    await page.fill("input[name=password]", password);
+    await page.click("button[type=submit]");
+    await expect(page).toHaveURL(/\/owner$/);
+
+    // Title widget: hex logo + the shop name (fixture vault: "# Acme Cabinets") + product name,
+    // and the same name is in the tab title.
+    await expect(page.locator("#w-title h1 svg.hexlogo")).toBeVisible();
+    await expect(page.locator("#w-title #owner-shop-name")).toHaveText("Acme Cabinets");
+    await expect(page.locator("#w-title h1 span")).toHaveText("- Blueprint OS");
+    await expect(page).toHaveTitle(/Acme Cabinets/);
+
+    // The icon row sits under the name and keeps every control; Users/Logout are icons, not text buttons.
+    for (const id of ["editBtn", "searchBtn", "users-link", "infoBtn", "theme-btn", "logout-btn"]) await expect(page.locator(`#${id}`)).toBeVisible();
+    expect((await page.locator("#logout-btn").innerText()).trim()).toBe("");
+    const nameBox = await page.locator("#w-title h1").boundingBox();
+    const barBox = await page.locator("#owner-header").boundingBox();
+    expect(barBox.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height - 2);
+
+    // Widget header icons are painted, and the hex backdrop canvas has content.
+    const painted = await page.locator("#w-rt canvas.hic").evaluate((c) => c.getContext("2d").getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 0));
+    expect(painted).toBe(true);
+    const hex = await page.locator("#hexCv").evaluate((c) => c.getContext("2d").getImageData(0, 0, c.width, c.height).data.some((v, i) => i % 4 === 3 && v > 0));
+    expect(hex).toBe(true);
+
+    // Outfit actually loads from our own server.
+    await page.evaluate(() => document.fonts.load("400 14px Outfit"));
+    expect(await page.evaluate(() => document.fonts.check("400 14px Outfit"))).toBe(true);
+    expect(external).toEqual([]);
+
+    // Fresh vault: friendly empty states instead of grey sentences.
+    await expect(page.locator("#w-rt .empty .e1")).toHaveText("No routines yet");
+    await expect(page.locator("#w-stats .empty .e1")).toHaveText("No numbers yet");
+  } finally {
+    cleanup();
+  }
+});

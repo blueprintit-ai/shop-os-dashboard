@@ -42,6 +42,12 @@
 
 import { api, escapeHtml } from "/static/js/api.js";
 
+// Friendly empty/unavailable state in the kit's small-caps look. `hint` is
+// trusted markup written in this file (never vault content).
+export function emptyState(title, hint = "") {
+  return `<div class="empty"><div class="e1">${title}</div>${hint ? `<div class="e2">${hint}</div>` : ""}</div>`;
+}
+
 function relTime(ms) {
   const diffMin = Math.max(0, Math.round((Date.now() - ms) / 60000));
   if (diffMin < 1) return "just now";
@@ -52,11 +58,11 @@ function relTime(ms) {
 }
 
 export async function renderBriefing(el) {
-  const res = await api("GET", "/api/notes/recent?limit=1");
-  if (!res.ok) { el.innerHTML = `<p class="muted">Briefing not available.</p>`; return; }
+  const res = await api("GET", "/api/notes/recent?limit=100");
+  if (!res.ok) { el.innerHTML = emptyState("Briefing unavailable", "Could not read your notes just now. Try reloading."); return; }
   const recent = await res.json();
   const daily = recent.find((n) => n.path.startsWith("Daily/"));
-  if (!daily) { el.innerHTML = `<p class="muted">No note in Daily/ yet.</p>`; return; }
+  if (!daily) { el.innerHTML = emptyState("No briefing yet", "Run <code>/morning-briefing</code> and today\u2019s note shows up here."); return; }
   el.innerHTML = `<div class="rows"><div class="rowi"><span class="dot hot"></span><a href="#" data-open="${escapeHtml(daily.path)}">${escapeHtml(daily.title)}</a></div></div>`;
   el.querySelector("[data-open]")?.addEventListener("click", (e) => {
     e.preventDefault();
@@ -66,8 +72,9 @@ export async function renderBriefing(el) {
 
 export async function renderRecent(el) {
   const res = await api("GET", "/api/notes/recent?limit=20");
-  if (!res.ok) { el.innerHTML = `<p class="muted">Recent changes not available.</p>`; return; }
+  if (!res.ok) { el.innerHTML = emptyState("Recent changes unavailable", "Could not read your notes just now."); return; }
   const recent = await res.json();
+  if (!recent.length) { el.innerHTML = emptyState("No recent changes", "Notes you or your agent edit show up here."); return; }
   const rows = recent.map((n) =>
     `<div class="rowi"><span class="dot"></span><a href="#" data-open="${escapeHtml(n.path)}">${escapeHtml(n.title)}</a><span class="meta">${escapeHtml(relTime(n.mtime))}</span></div>`
   ).join("");
@@ -79,14 +86,15 @@ export async function renderRecent(el) {
 
 export async function renderTeamActivity(el) {
   const me = await (await api("GET", "/api/me")).json();
-  if (me.user.role !== "owner") { el.innerHTML = `<p class="muted">Owner only.</p>`; return; }
+  if (me.user.role !== "owner") { el.innerHTML = emptyState("Owner only"); return; }
   el.innerHTML = `<p class="muted">Loading…</p>`;
   // /api/users/activity does not exist yet -- Task 13 adds it alongside the
   // roster widget. Until then this call 404s and the widget shows an error
   // state below; that is expected here, not a bug to fix in this task.
   const res = await api("GET", "/api/users/activity?limit=20");
-  if (!res.ok) { el.innerHTML = `<p class="muted">Activity feed not available yet.</p>`; return; }
+  if (!res.ok) { el.innerHTML = emptyState("Activity unavailable", "The team activity feed could not be loaded."); return; }
   const audit = await res.json();
+  if (!audit.length) { el.innerHTML = emptyState("No activity yet", "Sign-ins and changes by your team appear here."); return; }
   const rows = audit.map((e) =>
     `<div class="rowi"><span class="dot"></span>${escapeHtml(e.username || "?")}<span class="meta">${escapeHtml(e.event)}</span></div>`
   ).join("");
@@ -95,7 +103,7 @@ export async function renderTeamActivity(el) {
 
 export async function renderTeamRoster(el) {
   const res = await api("GET", "/api/users");
-  if (!res.ok) { el.innerHTML = `<p class="muted">Team roster not available.</p>`; return; }
+  if (!res.ok) { el.innerHTML = emptyState("Team unavailable", "The team list could not be loaded."); return; }
   const users = await res.json();
   const rows = users.map((u) =>
     `<div class="rowi"><span class="dot${u.active ? " hot" : ""}"></span>${escapeHtml(u.displayName)}<span class="meta">${escapeHtml(u.role)}</span></div>`
@@ -105,30 +113,36 @@ export async function renderTeamRoster(el) {
 
 export async function renderRoutines(el) {
   const res = await api("GET", "/api/snapshots/routines");
-  if (!res.ok) { el.innerHTML = `<p class="muted">Routines feed not available.</p>`; return; }
+  if (!res.ok) { el.innerHTML = emptyState("Routines unavailable", "The routines feed could not be loaded."); return; }
   const feed = await res.json();
-  if (feed.needsSetup) { el.innerHTML = `<p class="muted">No routines feed yet — see ROUTINES.md.</p>`; return; }
-  if (feed.error) { el.innerHTML = `<p class="muted">${escapeHtml(feed.error)}</p>`; return; }
+  if (feed.needsSetup) { el.innerHTML = emptyState("No routines yet", "They appear here once your agent writes the feed. Guide: <code>ROUTINES.md</code>"); return; }
+  if (feed.error) { el.innerHTML = emptyState("Feed problem", escapeHtml(feed.error)); return; }
   const now = new Date();
   const hhmm = now.toTimeString().slice(0, 5);
-  const rows = feed.routines.map((r) => {
+  if (!feed.routines?.length) { el.innerHTML = emptyState("No routines yet", "They appear here once your agent writes the feed. Guide: <code>ROUTINES.md</code>"); return; }
+  const nextIdx = feed.routines.findIndex((r) => r.t >= hhmm);
+  const rows = feed.routines.map((r, i) => {
     const fired = r.t < hhmm;
+    const next = i === nextIdx;
     const src = feed.sources.find((s) => s.key === r.src)?.label || r.src;
-    return `<div class="brow${fired ? " done" : ""}"><span class="flap">${escapeHtml(r.t)}</span><span class="nm">${escapeHtml(r.n)}</span><span class="srcwrap"><span class="srclab">${escapeHtml(src)}</span></span></div>`;
+    return `<div class="brow${fired ? " done" : ""}${next ? " next" : ""}"><span class="flap">${escapeHtml(r.t)}</span><span class="nm">${escapeHtml(r.n)}</span><span class="srcwrap"><span class="srclab">${escapeHtml(src)}</span></span><span class="st">${fired ? "DONE" : next ? "NEXT" : ""}</span></div>`;
   }).join("");
-  el.innerHTML = `<div class="board"><div class="bwrap"><div class="brows">${rows}</div></div></div>`;
+  el.innerHTML = `<div class="board"><div class="bwrap"><div class="bhead"><span>TIME</span><span>ROUTINE</span><span>STATUS</span></div><div class="brows">${rows}</div></div></div>`;
 }
 
 export async function renderStats(el) {
   const res = await api("GET", "/api/snapshots/stats");
-  if (!res.ok) { el.innerHTML = `<p class="muted">Stats feed not available.</p>`; return; }
+  if (!res.ok) { el.innerHTML = emptyState("Stats unavailable", "The stats feed could not be loaded."); return; }
   const feed = await res.json();
-  if (feed.needsSetup) { el.innerHTML = `<p class="muted">No stats feed yet — see WIRING.md.</p>`; return; }
-  if (feed.error) { el.innerHTML = `<p class="muted">${escapeHtml(feed.error)}</p>`; return; }
+  if (feed.needsSetup) { el.innerHTML = emptyState("No numbers yet", "Your agent fills these in once it is wired to your data. Guide: <code>WIRING.md</code>"); return; }
+  if (feed.error) { el.innerHTML = emptyState("Feed problem", escapeHtml(feed.error)); return; }
   // m.cap legitimately carries a literal "<br>" (see the stats.json fixture
   // shape in test/snapshots.test.js, e.g. "GROSS PROFIT<br>margin") -- escape
   // the caption text but preserve that one intentional line break.
-  el.innerHTML = feed.metrics.map((m) => `<div class="caprow"><span class="bignum">${escapeHtml(m.big)}</span><span class="cap">${escapeHtml(m.cap).replace(/&lt;br&gt;/g, "<br>")}</span></div>`).join("");
+  if (!feed.metrics?.length) { el.innerHTML = emptyState("No numbers yet", "Your agent fills these in once it is wired to your data. Guide: <code>WIRING.md</code>"); return; }
+  const cells = feed.metrics.map((m) => `<div class="caprow"><span class="bignum">${escapeHtml(m.big)}</span><span class="cap">${escapeHtml(m.cap).replace(/&lt;br&gt;/g, "<br>")}</span></div>`).join("");
+  const asOf = feed.asOf ? `<div class="foot2"><i></i>AS OF ${escapeHtml(feed.asOf)}</div>` : "";
+  el.innerHTML = `<div class="statgrid">${cells}</div>${asOf}`;
 }
 
 export const kindRenderers = {

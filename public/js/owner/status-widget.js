@@ -12,6 +12,7 @@
 // poll), this renders once per page load -- a manual reload is already how
 // every other widget in this dashboard picks up new data.
 import { api, escapeHtml } from "/static/js/api.js";
+import { emptyState } from "./data-widgets.js";
 
 export async function renderStatusWidget(el) {
   el.innerHTML = `
@@ -29,7 +30,7 @@ export async function renderStatusWidget(el) {
   const banner = el.querySelector(".update-banner");
 
   const res = await api("GET", "/api/status");
-  if (!res.ok) { el.innerHTML = `<p class="muted">Status not available.</p>`; return; }
+  if (!res.ok) { el.innerHTML = emptyState("Status unavailable", "System status could not be loaded."); return; }
   const status = await res.json();
 
   cardsEl.innerHTML = [

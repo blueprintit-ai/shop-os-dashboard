@@ -122,7 +122,7 @@ export function mountRing(root) {
     const el = document.createElement("div");
     el.className = "oi";
     const seed = ballSeq++;
-    el.innerHTML = `<canvas></canvas><svg viewBox="0 0 48 48" style="inset:${RS.glyphIn}%"></svg>`;
+    el.innerHTML = `<canvas></canvas><svg viewBox="0 0 48 48" style="inset:${RS.glyphIn}%"></svg><span class="agetag"></span>`;
     root.appendChild(el);
     const b = {
       el, born: Date.now(),
@@ -187,6 +187,10 @@ export function mountRing(root) {
          Date.UTC(cr.getFullYear(), cr.getMonth(), cr.getDate())) / 864e5
       ));
       b.ageFrac = Math.max(.04, 1 - days / 30);
+      const tag = b.el.querySelector(".agetag");
+      tag.textContent = days >= 30 ? "30D+" : days + "D";
+      tag.classList.toggle("on", days >= 1); // whole days only, hidden for today's
+
       b.w = 0;
     });
     assignSlots();

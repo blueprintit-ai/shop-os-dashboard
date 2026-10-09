@@ -57,3 +57,5 @@ original work under CC BY 4.0 does not imply any affiliation.
 `vendor/thinking-orbs.js` is MIT-licensed, (c) Jakub Antalik, used unmodified — see the file's own header.
 
 `vendor/qrcode.min.js` is MIT-licensed (c) Kazuhiko Arase, used unmodified — https://github.com/kazuhikoarase/qrcode-generator.
+
+`public/vendor/fonts/` bundles the Outfit and Doto typefaces (latin subset, woff2, taken from the `@fontsource/outfit` and `@fontsource/doto` packages, 5.3.0), both licensed under the SIL Open Font License 1.1: Outfit (c) 2021 The Outfit Project Authors, Doto (c) 2024 The Doto Project Authors. The licence texts are next to the files (`OFL-Outfit.txt`, `OFL-Doto.txt`). The fonts are served locally; the dashboard makes no request to a font CDN.
