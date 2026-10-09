@@ -34,7 +34,7 @@ export const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "p
 // status widget exists for — gating it behind the license check meant the
 // owner's "License" card could never render the failure it was built to show.
 // It is still behind requireUser, so nothing is exposed to anonymous callers.
-const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup", "/api/status"]);
+const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup", "/api/status", "/api/ping"]);
 
 export function defaultLicenseCheck() { return validateLicense(readLicense()); }
 

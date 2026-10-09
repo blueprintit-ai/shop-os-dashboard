@@ -6,6 +6,7 @@ import { platform } from "node:os";
 import { createServer } from "../src/server.js";
 import { checkForUpdate, makeRestart } from "../src/updater.js";
 import { findFreePort, lanAddresses } from "../src/lib/net.js";
+import { decideStartup } from "../src/lib/instance.js";
 import { dashboardHome, shoposAppDir, shoposRuntimeFile } from "../src/lib/paths.js";
 import { JsonStore } from "../src/lib/store.js";
 import { UserStore } from "../src/users.js";
@@ -128,6 +129,21 @@ async function main() {
   const vaultPath = resolve(args.vault);
   if (!existsSync(vaultPath) || !statSync(vaultPath).isDirectory()) {
     die(`Vault folder not found: ${vaultPath}`);
+  }
+
+  // Already running for this vault (autostart + desktop shortcut)? Reuse it
+  // instead of starting a second server on the next port. Skipped with --port.
+  const startup = await decideStartup({ vaultPath, port: args.port, noBrowser: args.noBrowser });
+  if (startup.action === "attach") {
+    if (startup.openBrowser) {
+      console.log(startup.message);
+      openBrowser(startup.url);
+      // let exec() spawn the opener before we leave
+      setTimeout(() => process.exit(0), 300);
+    } else {
+      process.exit(0);
+    }
+    return;
   }
 
   const license = readLicense();

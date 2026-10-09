@@ -41,6 +41,7 @@
 // sketch skipped that.
 
 import { api, escapeHtml } from "/static/js/api.js";
+import { pickDailyNote, hideScaffolding, localISODate } from "./daily-note.js";
 
 // Friendly empty/unavailable state in the kit's small-caps look. `hint` is
 // trusted markup written in this file (never vault content).
@@ -61,7 +62,7 @@ export async function renderBriefing(el) {
   const res = await api("GET", "/api/notes/recent?limit=100");
   if (!res.ok) { el.innerHTML = emptyState("Briefing unavailable", "Could not read your notes just now. Try reloading."); return; }
   const recent = await res.json();
-  const daily = recent.find((n) => n.path.startsWith("Daily/"));
+  const daily = pickDailyNote(recent, localISODate());
   if (!daily) { el.innerHTML = emptyState("No briefing yet", "Run <code>/morning-briefing</code> and today\u2019s note shows up here."); return; }
   el.innerHTML = `<div class="rows"><div class="rowi"><span class="dot hot"></span><a href="#" data-open="${escapeHtml(daily.path)}">${escapeHtml(daily.title)}</a></div></div>`;
   el.querySelector("[data-open]")?.addEventListener("click", (e) => {
@@ -73,7 +74,7 @@ export async function renderBriefing(el) {
 export async function renderRecent(el) {
   const res = await api("GET", "/api/notes/recent?limit=20");
   if (!res.ok) { el.innerHTML = emptyState("Recent changes unavailable", "Could not read your notes just now."); return; }
-  const recent = await res.json();
+  const recent = hideScaffolding(await res.json());
   if (!recent.length) { el.innerHTML = emptyState("No recent changes", "Notes you or your agent edit show up here."); return; }
   const rows = recent.map((n) =>
     `<div class="rowi"><span class="dot"></span><a href="#" data-open="${escapeHtml(n.path)}">${escapeHtml(n.title)}</a><span class="meta">${escapeHtml(relTime(n.mtime))}</span></div>`
