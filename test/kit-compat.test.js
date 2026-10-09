@@ -253,7 +253,7 @@ test("apps: default is the single Second Brain row; everyone signed in can read"
   try {
     for (const as of ["owner", "staff"]) {
       const d = await json(await b.http("GET", "/api/apps", { as }));
-      assert.deepEqual(d.apps, [{ id: "sbRow", name: "Second Brain", sub: "Have one? It auto-links. If not, learn to build it", url: "/notes", icon: "brain" }]);
+      assert.deepEqual(d.apps, [{ id: "sbRow", name: "Second Brain", sub: "Your whole workspace as a living map", url: "/brain", icon: "brain" }]);
     }
     assert.equal((await requestAs(b.server, b.jar, "anon", "GET", "/api/apps")).status, 401);
   } finally { b.cleanup(); }
@@ -263,7 +263,7 @@ test("apps: owner replaces the list; it persists to Dashboard/apps.json and read
   const b = await bootAsOwner();
   try {
     const apps = [
-      { id: "sbRow", name: "Second Brain", sub: "notes", url: "/notes", icon: "brain" },
+      { id: "sbRow", name: "Second Brain", sub: "notes", url: "/brain", icon: "brain" },
       { id: "quotes", name: "Quotes", sub: "Estimates & invoices", url: "http://127.0.0.1:5055/", icon: "docs" },
       { id: "crm", name: "CRM", sub: "", url: "https://crm.example.com/app", icon: "links" },
     ];

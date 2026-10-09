@@ -144,3 +144,7 @@ window.openNoteByTarget = async (target) => {
 };
 
 loadTree();
+
+// /notes?path=<vault-relative path> opens that note straight away (the Second Brain page's "open" links use it).
+const deepLink = new URLSearchParams(location.search).get("path");
+if (deepLink) openNote(deepLink);

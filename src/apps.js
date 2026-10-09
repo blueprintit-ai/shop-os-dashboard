@@ -5,10 +5,10 @@ import { vaultDashboardDir } from "./lib/paths.js";
 // SHOP APPS widget rows (the kit page's launcher). Stored in <vault>/Dashboard/apps.json as
 // [{ id, name, sub, url, icon }]. `icon` is one of the kit page's sprite names (its ICS map;
 // test/kit-compat.test.js checks this list against the synced page). `url` is http(s), or a
-// path on this dashboard (/notes); the page opens it in a new tab with noopener.
+// path on this dashboard (/brain); the page opens it in a new tab with noopener.
 export const APP_ICONS = ["gen", "tele", "brain", "exca", "wall", "docs", "links", "sprint", "story", "edit", "anim"];
 export const MAX_APPS = 24;
-export const DEFAULT_APPS = Object.freeze([Object.freeze({ id: "sbRow", name: "Second Brain", sub: "Have one? It auto-links. If not, learn to build it", url: "/notes", icon: "brain" })]);
+export const DEFAULT_APPS = Object.freeze([Object.freeze({ id: "sbRow", name: "Second Brain", sub: "Your whole workspace as a living map", url: "/brain", icon: "brain" })]);
 
 const appsFile = (vaultPath) => join(vaultDashboardDir(vaultPath), "apps.json");
 
@@ -29,6 +29,12 @@ function rowError(a) {
   return null;
 }
 const clean = (a) => ({ id: a.id, name: a.name.trim(), sub: (a.sub || "").trim(), url: a.url, icon: a.icon });
+
+// Older installs saved the default Second Brain row pointing at /notes; the product now has /brain. Applied on read only
+// (nothing is written back until the owner saves the list).
+function migrate(a) {
+  return a.id === "sbRow" && a.url === "/notes" ? { ...a, url: "/brain", sub: DEFAULT_APPS[0].sub } : a;
+}
 
 export function validateApps(list) {
   if (!Array.isArray(list)) return { error: "apps must be a list" };
@@ -52,7 +58,7 @@ export function readApps(vaultPath) {
   try { raw = JSON.parse(readFileSync(f, "utf8")); } catch { return DEFAULT_APPS.map((a) => ({ ...a })); }
   if (!Array.isArray(raw)) return DEFAULT_APPS.map((a) => ({ ...a }));
   const seen = new Set();
-  return raw.filter((a) => !rowError(a) && !seen.has(a.id) && seen.add(a.id)).slice(0, MAX_APPS).map(clean);
+  return raw.filter((a) => !rowError(a) && !seen.has(a.id) && seen.add(a.id)).slice(0, MAX_APPS).map(clean).map(migrate);
 }
 
 export function writeApps(vaultPath, apps) {

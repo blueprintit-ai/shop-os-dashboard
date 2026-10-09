@@ -29,6 +29,8 @@ import { StatusStore } from "./status.js";
 import { statusRoutes } from "./routes/status-routes.js";
 import { updateRoutes } from "./routes/update-routes.js";
 import { kitCompatRoutes } from "./routes/kit-compat-routes.js";
+import { BrainStore } from "./brain/store.js";
+import { brainRoutes } from "./routes/brain-routes.js";
 
 export const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 // /api/status is exempt because reporting a BROKEN license is part of what the
@@ -47,15 +49,17 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
   const audit = new Audit(join(homeDir, "activity.jsonl"));
   const users = new UserStore(join(homeDir, "users.json"));
   const auth = new Auth({ users, sessionsPath: join(homeDir, "sessions.json"), audit });
-  const index = new LinkIndex(vaultPath); index.build(); index.watch();
+  const index = new LinkIndex(vaultPath); index.build();
+  const brain = new BrainStore(vaultPath); // the Second Brain map (/brain); rescans after the notes watcher sees a change
+  index.watch(() => brain.invalidate());
   const guard = new SessionsGuard({ max: guardMax });
   const chatSessions = new SessionStore();
   const layoutStore = new LayoutStore(homeDir);
   const settingsStore = new SettingsStore(homeDir);
   const statusStore = new StatusStore(homeDir);
-  const ctx = { vaultPath, homeDir, users, auth, audit, index, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore, statusStore, port, appDir, npmBin, restart, updateInfo, applyUpdateImpl };
+  const ctx = { vaultPath, homeDir, users, auth, audit, index, brain, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore, statusStore, port, appDir, npmBin, restart, updateInfo, applyUpdateImpl };
 
-  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx), statusRoutes(ctx), updateRoutes(ctx), kitCompatRoutes(ctx)];
+  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), brainRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx), statusRoutes(ctx), updateRoutes(ctx), kitCompatRoutes(ctx)];
   const gc = setInterval(() => { auth.gc(); chatSessions.gc(); }, 10 * 60 * 1000); gc.unref?.();
 
   const server = createHttpServer(async (req, res) => {

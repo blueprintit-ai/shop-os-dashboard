@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { send, serveStatic, isLoopback } from "../lib/http.js";
 import { readShopName } from "../chat/system-prompt.js";
@@ -18,6 +19,13 @@ function licenseGate(ctx, res) {
   const html = readFileSync(join(ctx.publicDir, "license.html"), "utf8").replace("__REASON__", () => escapeHtml(lic.error || "the license is not valid"));
   send(res, 402, { "content-type": "text/html; charset=utf-8" }, html);
   return true;
+}
+
+// Content-Security-Policy for pages that render vault text (/brain, /notes): scripts only from this origin (the page's two
+// inline blocks carry a per-response nonce), no external images, fonts, frames or connections, so a note cannot beacon out.
+export function pageCsp(nonce) {
+  const script = nonce ? `script-src 'self' 'nonce-${nonce}'` : "script-src 'self'";
+  return `default-src 'self'; ${script}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`;
 }
 
 function redirect(res, to) { res.writeHead(302, { location: to }); res.end(); }
@@ -62,6 +70,21 @@ export function pageRoutes(ctx) {
         .replace("__SHOP_NAME_JS__", () => escapeForTemplate(shop));
       return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
     }
+    if (p === "/brain") {
+      // The Second Brain map: the RoboNuggets kit page synced by tools/sync-brain.mjs, data from /api/brain/*. Owner-only in v1.
+      if (!user) return redirect(res, "/login"), true;
+      if (user.role !== "owner") return redirect(res, "/notes"), true;
+      if (licenseGate(ctx, res)) return true;
+      const shop = readShopName(vaultPath);
+      // the HUD subtitle is a JS string literal holding HTML: the name is HTML-escaped, then JSON-quoted with < as \u003c
+      const tagline = JSON.stringify(`<em>${escapeHtml(shop)}</em>`).replace(/</g, "\\u003c");
+      const nonce = randomBytes(16).toString("base64");
+      const html = page("brain.html")
+        .replace("__SHOP_NAME__", () => escapeHtml(shop))
+        .replace("__BRAIN_TAGLINE_JS__", () => tagline)
+        .replace(/<script>/g, `<script nonce="${nonce}">`); // the kit page's inline blocks are the only attribute-less <script> tags
+      return send(res, 200, { "content-type": "text/html; charset=utf-8", "content-security-policy": pageCsp(nonce) }, html), true;
+    }
     if (p === "/widgets") {
       if (!user) return redirect(res, "/login"), true;
       if (user.role !== "owner") return redirect(res, "/"), true;
@@ -71,7 +94,7 @@ export function pageRoutes(ctx) {
     if (p === "/notes") {
       if (!user) return redirect(res, "/login"), true;
       if (licenseGate(ctx, res)) return true;
-      return send(res, 200, { "content-type": "text/html; charset=utf-8" }, page("notes.html")), true;
+      return send(res, 200, { "content-type": "text/html; charset=utf-8", "content-security-policy": pageCsp() }, page("notes.html")), true;
     }
     if (p === "/users") {
       if (!user || user.role !== "owner") return redirect(res, "/"), true;
