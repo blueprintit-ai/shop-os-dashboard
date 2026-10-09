@@ -16,10 +16,10 @@ test("--reset-owner sets a new password for the single owner and exits 0", async
   const vault = join(root, "vault"); cpSync(FIX, vault, { recursive: true });
   const home = join(root, "home");
   const users = new UserStore(join(home, "users.json"));
-  const owner = await users.create({ username: "glenn", displayName: "Glenn", password: "oldpassword1", role: "owner" });
+  const owner = await users.create({ username: "pat", displayName: "Pat", password: "oldpassword1", role: "owner" });
   const r = spawnSync(process.execPath, [BIN, vault, "--home", home, "--reset-owner", "--new-password", "newpassword22"], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Password updated for glenn/);
+  assert.match(r.stdout, /Password updated for pat/);
   const fresh = new UserStore(join(home, "users.json"));
   const { verifyPassword } = await import("../src/users.js");
   assert.equal(await verifyPassword("newpassword22", fresh.getWithHash(owner.id).passwordHash), true);

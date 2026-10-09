@@ -3,4 +3,4 @@ type: context
 ---
 # Acme Cabinets
 
-We build cabinets in Boise. Owner is [[Glenn Chua]].
+We build cabinets in Boise. Owner is [[Pat Owner]].

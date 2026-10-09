@@ -1,0 +1,83 @@
+/* Blueprint OS additions to the kit toolbar: Users link, status dot and Update. The kit page itself is generated
+   (tools/sync-kit.mjs) and only loads this file; owners only. Buttons reuse the kit's own `.tbar button` styling. */
+(() => {
+  const svg = (inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
+  const USERS = svg('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.7a3.5 3.5 0 0 1 0 6.6M18.5 14.4c1.9.8 3 2.8 3 5.6"/>');
+  const UPDATE = svg('<circle cx="12" cy="12" r="9"/><path d="M12 16V8M8.5 11.5L12 8l3.5 3.5"/>');
+  const COLORS = { ok: '#2aa88a', warn: '#e0a33a', bad: '#c2461f' };
+  const say = (m) => (typeof window.toast === 'function' ? window.toast(m) : undefined);
+  let state = 'warn', problems = ['checking status'], update = null;
+
+  function judge(s) {
+    const bad = [], warn = [];
+    if (!s.license?.ok) bad.push('license: ' + (s.license?.error || 'not valid'));
+    if (!s.vault?.reachable) bad.push('vault not reachable');
+    if (s.claude && !s.claude.present) bad.push('Claude Code not found');
+    else if (s.claude?.signedIn === 'no') bad.push('Claude is signed out');
+    else if (s.claude?.signedIn === 'unknown') warn.push('Claude sign-in not confirmed yet');
+    update = s.update?.updateAvailable ? s.update : null;
+    if (update) warn.push('update available' + (update.latest ? ' (' + update.latest + ')' : ''));
+    state = bad.length ? 'bad' : warn.length ? 'warn' : 'ok';
+    problems = bad.concat(warn);
+  }
+
+  function mk(id, title, inner, onclick) {
+    const b = document.createElement('button');
+    b.id = id; b.title = title; b.setAttribute('aria-label', title); b.dataset.productExtras = '1';
+    b.innerHTML = inner; b.addEventListener('click', onclick);
+    return b;
+  }
+  const dot = () => svg('<circle cx="12" cy="12" r="6" fill="' + COLORS[state] + '" stroke="none"/>');
+  const statusTitle = () => 'Status: ' + (problems.length ? problems.join(' · ') : 'all good');
+
+  async function applyUpdate() {
+    if (!confirm('Update Blueprint OS now? The dashboard restarts and comes back in a minute.')) return;
+    say('updating Blueprint OS...');
+    try {
+      const r = await fetch('/api/update', { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return say('could not update: ' + (j.error || 'HTTP ' + r.status));
+      say('updated - restarting');
+      for (let i = 0; i < 60; i++) {   // wait for the restart, then reload into the new version
+        await new Promise((res) => setTimeout(res, 2000));
+        try { if ((await fetch('/api/ping')).ok && i > 1) return location.reload(); } catch (_) {}
+      }
+    } catch (e) { say('could not update: ' + e.message); }
+  }
+
+  function attach() {
+    document.querySelectorAll('.tbar').forEach((bar) => {
+      bar.querySelectorAll('[data-product-extras]').forEach((e) => e.remove());
+      const after = bar.querySelector('#themeBtn');
+      const els = [
+        mk('usersBtn', 'Users', USERS, () => { location.href = '/users'; }),
+        mk('statusBtn', statusTitle(), dot(), () => say(statusTitle())),
+      ];
+      els[1].dataset.state = state;
+      if (update) els.push(mk('updateBtn', 'Update available - click to update', UPDATE, applyUpdate));
+      let anchor = after;
+      for (const e of els) { if (anchor) anchor.after(e); else bar.append(e); anchor = e; }
+    });
+  }
+
+  let queued = false;
+  const schedule = () => { if (queued) return; queued = true; setTimeout(() => { queued = false; attach(); }, 0); };
+  // The kit rebuilds its title widget (and toolbar) when the layout changes: put the extras back.
+  const missing = () => [...document.querySelectorAll('.tbar')].some((b) => !b.querySelector('[data-product-extras]'));
+
+  async function refresh() {
+    try { const r = await fetch('/api/status'); if (r.ok) judge(await r.json()); } catch (_) { state = 'bad'; problems = ['status unavailable']; }
+    attach();
+  }
+
+  async function init() {
+    let me = null;
+    try { me = await (await fetch('/api/me')).json(); } catch (_) { return; }
+    if (me?.user?.role !== 'owner') return;
+    new MutationObserver(() => { if (missing()) schedule(); }).observe(document.body, { childList: true, subtree: true });
+    attach();
+    await refresh();
+    setInterval(refresh, 5 * 60 * 1000);
+  }
+  init();
+})();

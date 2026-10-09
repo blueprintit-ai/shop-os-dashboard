@@ -1,15 +1,13 @@
-import { join, basename } from "node:path";
+import { join, basename, extname } from "node:path";
 import { statSync, createReadStream, existsSync } from "node:fs";
 import { requireUser } from "../auth.js";
 import { sendJson, readJsonBody } from "../lib/http.js";
-import { scanAssets, setFavorite, saveUpload, assetPath, assetMime, MAX_UPLOAD } from "../assets.js";
+import { scanAssets, setFavorite, saveUpload, listedAssetPath, assetMime, MAX_UPLOAD } from "../assets.js";
+import { effectiveAssetsRoot } from "../settings.js";
 
 const FILE_PREFIX = "/assets/file/";
+const INLINE_EXTS = new Set(["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv"]);
 
-function assetsRoot(settingsStore, homeDir) {
-  const { assetsDir } = settingsStore.get();
-  return assetsDir || join(homeDir, "business-assets");
-}
 function canSeeAssets(user) {
   return user.role === "owner" || user.switches?.assetsView === true;
 }
@@ -17,7 +15,7 @@ function canSeeAssets(user) {
 export function assetsRoutes({ auth, settingsStore, homeDir, audit }) {
   return async (req, res, url) => {
     const p = url.pathname;
-    const root = () => assetsRoot(settingsStore, homeDir);
+    const root = () => effectiveAssetsRoot(settingsStore, homeDir);
 
     if (p === "/api/assets" && req.method === "GET") {
       const user = requireUser(req, res, auth); if (!user) return true;
@@ -38,28 +36,38 @@ export function assetsRoutes({ auth, settingsStore, homeDir, audit }) {
       const user = requireUser(req, res, auth); if (!user) return true;
       if (!canSeeAssets(user)) return sendJson(res, 403, { error: "forbidden" }), true;
       const category = url.searchParams.get("category") || "";
-      const name = url.searchParams.get("name") || "document";
+      const name = url.searchParams.get("name") ?? "";
       const declaredLength = Number(req.headers["content-length"] || 0);
       if (declaredLength > MAX_UPLOAD) return sendJson(res, 413, { error: "file over 50 MB" }), true;
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
+      // content-length can be absent (chunked) or a lie: count what actually arrives and stop buffering at the limit
+      const chunks = []; let received = 0, over = false;
+      for await (const chunk of req) { received += chunk.length; if (received > MAX_UPLOAD) { over = true; chunks.length = 0; } else if (!over) chunks.push(chunk); }
+      if (over) return sendJson(res, 413, { error: "file over 50 MB" }), true;
       const result = saveUpload(root(), category, name, Buffer.concat(chunks));
       audit.log("assets.upload", { userId: user.id, username: user.username, role: user.role, name });
       if (result.error) return sendJson(res, result.code, { error: result.error }), true;
-      return sendJson(res, 200, result), true;
+      return sendJson(res, 200, { ok: true, ...result }), true;
     }
 
     if (p.startsWith(FILE_PREFIX) && req.method === "GET") {
       const user = requireUser(req, res, auth); if (!user) return true;
       if (!canSeeAssets(user)) return sendJson(res, 403, { error: "forbidden" }), true;
       const id = p.slice(FILE_PREFIX.length);
-      const asset = assetPath(root(), id);
+      const asset = listedAssetPath(root(), id);
       if (!asset || !existsSync(asset.abs) || !statSync(asset.abs).isFile()) return sendJson(res, 404, { error: "not-found" }), true;
       audit.log("asset.open", { userId: user.id, username: user.username, role: user.role, path: asset.rel });
-      const download = url.searchParams.has("download");
+      // Business documents are user-supplied and served from the dashboard's own origin, so only
+      // types that cannot run script display inline; everything else (html, svg, xml, json, ...)
+      // downloads. nosniff stops a browser re-typing a file; the CSP sandbox is the backstop.
+      // PDFs are the exception to the sandbox: Chrome's built-in viewer refuses sandboxed documents.
+      const ext = extname(asset.abs).slice(1).toLowerCase();
+      const inline = INLINE_EXTS.has(ext) && !url.searchParams.has("download");
       res.writeHead(200, {
         "content-type": assetMime(asset.abs),
-        "content-disposition": `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(basename(asset.abs))}`,
+        "content-disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(basename(asset.abs))}`,
+        "x-content-type-options": "nosniff",
+        "cross-origin-opener-policy": "same-origin",
+        ...(ext === "pdf" ? {} : { "content-security-policy": "sandbox" }),
       });
       createReadStream(asset.abs).pipe(res);
       return true;

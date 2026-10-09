@@ -376,10 +376,10 @@ test("hashPassword produces scrypt format and verifyPassword round-trips", async
 
 test("create owner then staff; usernames are unique and case-insensitive", async () => {
   const { store, cleanup } = tmpStore();
-  const owner = await store.create({ username: "Glenn", displayName: "Glenn", password: "longenough1", role: "owner" });
+  const owner = await store.create({ username: "Pat", displayName: "Pat", password: "longenough1", role: "owner" });
   assert.equal(owner.role, "owner");
-  assert.equal(store.findByUsername("glenn").id, owner.id);
-  await assert.rejects(store.create({ username: "GLENN", displayName: "x", password: "longenough1", role: "staff" }), { code: "USERNAME_TAKEN" });
+  assert.equal(store.findByUsername("pat").id, owner.id);
+  await assert.rejects(store.create({ username: "PAT", displayName: "x", password: "longenough1", role: "staff" }), { code: "USERNAME_TAKEN" });
   const staff = await store.create({ username: "marco", displayName: "Marco", password: "longenough1", role: "staff" });
   assert.deepEqual(staff.switches.folders, [...DEFAULT_STAFF_FOLDERS]);
   assert.equal(staff.switches.assetsView, false);
@@ -608,7 +608,7 @@ test("Audit appends JSON lines with timestamp and reads them back", () => {
   const dir = mkdtempSync(join(tmpdir(), "sod-audit-"));
   const p = join(dir, "activity.jsonl");
   const a = new Audit(p);
-  a.log("login", { userId: "u1", username: "glenn" });
+  a.log("login", { userId: "u1", username: "pat" });
   a.log("note.view", { userId: "u1", path: "Projects/Acme.md" });
   const rows = readAll(p);
   assert.equal(rows.length, 2);
@@ -635,7 +635,7 @@ async function setup() {
   const users = new UserStore(join(dir, "users.json"));
   const audit = new Audit(join(dir, "activity.jsonl"));
   const auth = new Auth({ users, sessionsPath: join(dir, "sessions.json"), audit });
-  const owner = await users.create({ username: "glenn", displayName: "Glenn", password: "longenough1", role: "owner" });
+  const owner = await users.create({ username: "pat", displayName: "Pat", password: "longenough1", role: "owner" });
   const staff = await users.create({ username: "marco", displayName: "Marco", password: "longenough1", role: "staff" });
   return { dir, users, auth, owner, staff, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
@@ -650,7 +650,7 @@ function fakeRes() {
 
 test("login succeeds, session resolves to user, logout invalidates", async () => {
   const s = await setup();
-  const r = await s.auth.login({ username: "glenn", password: "longenough1", remember: false, ip: "x" });
+  const r = await s.auth.login({ username: "pat", password: "longenough1", remember: false, ip: "x" });
   assert.equal(r.ok, true);
   assert.equal(r.maxAgeSec, 12 * 3600);
   const u = s.auth.userForRequest(fakeReq(r.token));
@@ -663,7 +663,7 @@ test("login succeeds, session resolves to user, logout invalidates", async () =>
 
 test("remember extends to 30 days", async () => {
   const s = await setup();
-  const r = await s.auth.login({ username: "glenn", password: "longenough1", remember: true, ip: "x" });
+  const r = await s.auth.login({ username: "pat", password: "longenough1", remember: true, ip: "x" });
   assert.equal(r.maxAgeSec, 30 * 24 * 3600);
   s.cleanup();
 });
@@ -697,7 +697,7 @@ test("deactivating a user kills their live session on the next request", async (
 
 test("sessions persist across Auth instances", async () => {
   const s = await setup();
-  const r = await s.auth.login({ username: "glenn", password: "longenough1", remember: false, ip: "x" });
+  const r = await s.auth.login({ username: "pat", password: "longenough1", remember: false, ip: "x" });
   const auth2 = new Auth({ users: s.users, sessionsPath: join(s.dir, "sessions.json"), audit: new Audit(join(s.dir, "a.jsonl")) });
   assert.equal(auth2.userForRequest(fakeReq(r.token)).id, s.owner.id);
   s.cleanup();
@@ -712,7 +712,7 @@ test("requireUser sends 401 for anonymous; requireOwner sends 403 for staff", as
   const res2 = fakeRes();
   assert.equal(requireOwner(fakeReq(r.token), res2, s.auth), null);
   assert.equal(res2.status, 403);
-  const ro = await s.auth.login({ username: "glenn", password: "longenough1", remember: false, ip: "x" });
+  const ro = await s.auth.login({ username: "pat", password: "longenough1", remember: false, ip: "x" });
   const res3 = fakeRes();
   assert.equal(requireOwner(fakeReq(ro.token), res3, s.auth).id, s.owner.id);
   assert.equal(res3.status, null);
@@ -901,8 +901,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ```
 test/fixtures/vault/
   CLAUDE.md                       "# Vault\nRouting doc."
-  Context/organization.md         frontmatter type: context, then "# Acme Cabinets\n\nWe build cabinets in Boise. Owner is [[Glenn Chua]]."
-  Context/operator.md             frontmatter "owner: Glenn Chua", then "# Glenn Chua"
+  Context/organization.md         frontmatter type: context, then "# Acme Cabinets\n\nWe build cabinets in Boise. Owner is [[Pat Owner]]."
+  Context/operator.md             frontmatter "owner: Pat Owner", then "# Pat Owner"
   Projects/Acme Kitchen.md        frontmatter type: project, tags: [kitchen, acme]; body: "# Acme Kitchen\n\nCustomer: [[Acme Cabinets|Acme]]. See [[Pricing Sheet#Countertops]] and ![[layout.png]].\n\n> [!note] Deposit received\n> 50% on 2026-08-01.\n\n- [x] Measure\n- [ ] Order doors\n\nStatus is ==on track== #kitchen"
   Projects/layout.png             any 1x1 PNG (67 bytes)
   Resources/Pricing Sheet.md      "# Pricing Sheet\n\n## Countertops\nQuartz $85/sqft.\n\n## Doors\nShaker $42."
@@ -1585,7 +1585,7 @@ import { buildQueryOptions, STAFF_TOOLS } from "../src/chat/options.js";
 
 const VAULT = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "vault");
 const staff = { id: "s1", username: "marco", displayName: "Marco", role: "staff", switches: { folders: ["Projects"], teamFolder: null } };
-const owner = { id: "o1", username: "glenn", displayName: "Glenn", role: "owner", switches: { folders: [], teamFolder: null } };
+const owner = { id: "o1", username: "pat", displayName: "Pat", role: "owner", switches: { folders: [], teamFolder: null } };
 const audit = { events: [], log(e, f) { this.events.push({ e, ...f }); } };
 
 test("staff options restrict tools, use default permission mode, no allowedTools", () => {
@@ -1867,7 +1867,7 @@ test("staff turn cannot read Context/ even when asked to; canUseTool fires", { s
   }
   assert.ok(text.length > 0);
   assert.ok(denied.length >= 1, "expected at least one out-of-scope denial to be audited");
-  assert.doesNotMatch(text, /Glenn Chua/, "operator name must not leak");
+  assert.doesNotMatch(text, /Pat Owner/, "operator name must not leak");
   rmSync(vault, { recursive: true, force: true });
 });
 ```
@@ -1969,7 +1969,7 @@ async function boot({ withOwner = true } = {}) {
     return res;
   };
   if (withOwner) {
-    const r = await http("POST", "/api/setup", { body: { displayName: "Glenn", username: "glenn", password: "longenough1" }, as: "owner" });
+    const r = await http("POST", "/api/setup", { body: { displayName: "Pat", username: "pat", password: "longenough1" }, as: "owner" });
     assert.equal(r.status, 200);
     const s = await http("POST", "/api/users", { as: "owner", body: { username: "marco", displayName: "Marco", password: "longenough1", role: "staff", switches: { folders: ["Projects", "Resources"] } } });
     assert.equal(s.status, 201);
@@ -1984,7 +1984,7 @@ test("setup is loopback-only and only once; GET / redirects by state", async () 
   try {
     let r = await t.http("GET", "/");
     assert.equal(r.status, 302); assert.equal(r.headers.get("location"), "/setup");
-    r = await t.http("POST", "/api/setup", { body: { displayName: "Glenn", username: "glenn", password: "longenough1" }, as: "owner" });
+    r = await t.http("POST", "/api/setup", { body: { displayName: "Pat", username: "pat", password: "longenough1" }, as: "owner" });
     assert.equal(r.status, 200);
     r = await t.http("POST", "/api/setup", { body: { displayName: "X", username: "x2", password: "longenough1" } });
     assert.equal(r.status, 409, "second setup refused");
@@ -2078,7 +2078,7 @@ test("license invalid locks api but not login/me", async () => {
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const setup = await fetch(base + "/api/setup", { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ displayName: "G", username: "glenn", password: "longenough1" }) });
+    const setup = await fetch(base + "/api/setup", { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ displayName: "G", username: "pat", password: "longenough1" }) });
     assert.equal(setup.status, 200);
     const cookie = setup.headers.get("set-cookie").split(";")[0];
     const me = await fetch(base + "/api/me", { headers: { cookie } });
@@ -2723,10 +2723,10 @@ test("--reset-owner sets a new password for the single owner and exits 0", async
   const vault = join(root, "vault"); cpSync(FIX, vault, { recursive: true });
   const home = join(root, "home");
   const users = new UserStore(join(home, "users.json"));
-  const owner = await users.create({ username: "glenn", displayName: "Glenn", password: "oldpassword1", role: "owner" });
+  const owner = await users.create({ username: "pat", displayName: "Pat", password: "oldpassword1", role: "owner" });
   const r = spawnSync(process.execPath, [BIN, vault, "--home", home, "--reset-owner", "--new-password", "newpassword22"], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Password updated for glenn/);
+  assert.match(r.stdout, /Password updated for pat/);
   const fresh = new UserStore(join(home, "users.json"));
   const { verifyPassword } = await import("../src/users.js");
   assert.equal(await verifyPassword("newpassword22", fresh.getWithHash(owner.id).passwordHash), true);

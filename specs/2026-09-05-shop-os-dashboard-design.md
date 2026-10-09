@@ -3,7 +3,7 @@ type: design-spec
 project: shop-os-dashboard
 date: 2026-09-05
 status: approved
-approved-by: Glenn
+approved-by: the owner
 approved-on: 2026-09-05
 tags: [shop-os, design-spec, dashboard, foundation, agentic-os, rubric, auth, note-viewer, installer]
 ---

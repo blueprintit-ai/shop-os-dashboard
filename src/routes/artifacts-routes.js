@@ -40,7 +40,13 @@ export function artifactsRoutes({ vaultPath, auth, audit }) {
           return send(res, 403, { "content-type": "text/plain" }, "Forbidden"), true;
         }
       }
-      serveStatic(res, join(artifactsDir(vaultPath), file));
+      // Reports (and agent-written HTML) display inline but sandboxed: scripts may run, but as an opaque
+      // origin with no cookies or access to the dashboard's API.
+      serveStatic(res, join(artifactsDir(vaultPath), file), {
+        "x-content-type-options": "nosniff",
+        "cross-origin-opener-policy": "same-origin", // the kit opens artifacts with window.open and no noopener
+        "content-security-policy": "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads",
+      });
       return true;
     }
 

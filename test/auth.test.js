@@ -12,7 +12,7 @@ async function setup() {
   const users = new UserStore(join(dir, "users.json"));
   const audit = new Audit(join(dir, "activity.jsonl"));
   const auth = new Auth({ users, sessionsPath: join(dir, "sessions.json"), audit });
-  const owner = await users.create({ username: "glenn", displayName: "Glenn", password: "longenough1", role: "owner" });
+  const owner = await users.create({ username: "pat", displayName: "Pat", password: "longenough1", role: "owner" });
   const staff = await users.create({ username: "marco", displayName: "Marco", password: "longenough1", role: "staff" });
   return { dir, users, auth, owner, staff, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
@@ -27,7 +27,7 @@ function fakeRes() {
 
 test("login succeeds, session resolves to user, logout invalidates", async () => {
   const s = await setup();
-  const r = await s.auth.login({ username: "glenn", password: "longenough1", remember: false, ip: "x" });
+  const r = await s.auth.login({ username: "pat", password: "longenough1", remember: false, ip: "x" });
   assert.equal(r.ok, true);
   assert.equal(r.maxAgeSec, 12 * 3600);
   const u = s.auth.userForRequest(fakeReq(r.token));
@@ -40,7 +40,7 @@ test("login succeeds, session resolves to user, logout invalidates", async () =>
 
 test("remember extends to 30 days", async () => {
   const s = await setup();
-  const r = await s.auth.login({ username: "glenn", password: "longenough1", remember: true, ip: "x" });
+  const r = await s.auth.login({ username: "pat", password: "longenough1", remember: true, ip: "x" });
   assert.equal(r.maxAgeSec, 30 * 24 * 3600);
   s.cleanup();
 });
@@ -82,7 +82,7 @@ test("deactivating a user kills their live session on the next request", async (
 
 test("sessions persist across Auth instances", async () => {
   const s = await setup();
-  const r = await s.auth.login({ username: "glenn", password: "longenough1", remember: false, ip: "x" });
+  const r = await s.auth.login({ username: "pat", password: "longenough1", remember: false, ip: "x" });
   const auth2 = new Auth({ users: s.users, sessionsPath: join(s.dir, "sessions.json"), audit: new Audit(join(s.dir, "a.jsonl")) });
   assert.equal(auth2.userForRequest(fakeReq(r.token)).id, s.owner.id);
   s.cleanup();
@@ -97,7 +97,7 @@ test("requireUser sends 401 for anonymous; requireOwner sends 403 for staff", as
   const res2 = fakeRes();
   assert.equal(requireOwner(fakeReq(r.token), res2, s.auth), null);
   assert.equal(res2.status, 403);
-  const ro = await s.auth.login({ username: "glenn", password: "longenough1", remember: false, ip: "x" });
+  const ro = await s.auth.login({ username: "pat", password: "longenough1", remember: false, ip: "x" });
   const res3 = fakeRes();
   assert.equal(requireOwner(fakeReq(ro.token), res3, s.auth).id, s.owner.id);
   assert.equal(res3.status, null);
@@ -120,7 +120,7 @@ test("gc removes expired sessions and the removed session no longer resolves", a
 test("revokeAllForUser invalidates that user's sessions but not other users' sessions", async () => {
   const s = await setup();
   const staffLogin = await s.auth.login({ username: "marco", password: "longenough1", remember: false, ip: "x" });
-  const ownerLogin = await s.auth.login({ username: "glenn", password: "longenough1", remember: false, ip: "x" });
+  const ownerLogin = await s.auth.login({ username: "pat", password: "longenough1", remember: false, ip: "x" });
   const removed = s.auth.revokeAllForUser(s.staff.id);
   assert.equal(removed, 1);
   assert.equal(s.auth.userForRequest(fakeReq(staffLogin.token)), null);

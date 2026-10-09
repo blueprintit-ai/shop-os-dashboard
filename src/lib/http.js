@@ -17,14 +17,17 @@ export function mimeFor(path) {
 
 export async function readJsonBody(req, maxBytes = 1_000_000) {
   return new Promise((resolve, reject) => {
-    let total = 0;
+    let total = 0, tooBig = false;
     const chunks = [];
+    // Past the limit the rest is drained and dropped (not buffered) so the caller can still answer on the open socket.
     req.on("data", (c) => {
       total += c.length;
-      if (total > maxBytes) { req.destroy(); reject(new Error("Body too large")); }
+      if (tooBig) return;
+      if (total > maxBytes) { tooBig = true; chunks.length = 0; reject(new Error("Body too large")); return; }
       chunks.push(c);
     });
     req.on("end", () => {
+      if (tooBig) return;
       try { const t = Buffer.concat(chunks).toString("utf8"); resolve(t ? JSON.parse(t) : {}); }
       catch (e) { reject(e); }
     });
@@ -41,9 +44,9 @@ export function sendJson(res, status, obj, extraHeaders = {}) {
   send(res, status, { "content-type": "application/json; charset=utf-8", ...extraHeaders }, JSON.stringify(obj));
 }
 
-export function serveStatic(res, absPath) {
+export function serveStatic(res, absPath, extraHeaders = {}) {
   if (!existsSync(absPath)) return send(res, 404, { "content-type": "text/plain" }, "Not found");
-  res.writeHead(200, { "content-type": mimeFor(absPath) });
+  res.writeHead(200, { "content-type": mimeFor(absPath), ...extraHeaders });
   res.end(readFileSync(absPath));
 }
 

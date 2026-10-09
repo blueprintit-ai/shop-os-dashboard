@@ -32,7 +32,7 @@ async function boot({ withOwner = true } = {}) {
     return res;
   };
   if (withOwner) {
-    const r = await http("POST", "/api/setup", { body: { displayName: "Glenn", username: "glenn", password: "longenough1" }, as: "owner" });
+    const r = await http("POST", "/api/setup", { body: { displayName: "Pat", username: "pat", password: "longenough1" }, as: "owner" });
     assert.equal(r.status, 200);
     const s = await http("POST", "/api/users", { as: "owner", body: { username: "marco", displayName: "Marco", password: "longenough1", role: "staff", switches: { folders: ["Projects", "Resources"] } } });
     assert.equal(s.status, 201);
@@ -47,7 +47,7 @@ test("setup is loopback-only and only once; GET / redirects by state", async () 
   try {
     let r = await t.http("GET", "/");
     assert.equal(r.status, 302); assert.equal(r.headers.get("location"), "/setup");
-    r = await t.http("POST", "/api/setup", { body: { displayName: "Glenn", username: "glenn", password: "longenough1" }, as: "owner" });
+    r = await t.http("POST", "/api/setup", { body: { displayName: "Pat", username: "pat", password: "longenough1" }, as: "owner" });
     assert.equal(r.status, 200);
     r = await t.http("POST", "/api/setup", { body: { displayName: "X", username: "x2", password: "longenough1" } });
     assert.equal(r.status, 409, "second setup refused");
@@ -177,7 +177,7 @@ test("chat turn wires an AbortController into options and always releases the gu
     return res;
   };
   try {
-    await http("POST", "/api/setup", { body: { displayName: "Glenn", username: "glenn", password: "longenough1" }, as: "owner" });
+    await http("POST", "/api/setup", { body: { displayName: "Pat", username: "pat", password: "longenough1" }, as: "owner" });
     await http("POST", "/api/users", { as: "owner", body: { username: "marco", displayName: "Marco", password: "longenough1", role: "staff", switches: { folders: ["Projects"] } } });
     await http("POST", "/api/login", { as: "staff", body: { username: "marco", password: "longenough1", remember: false } });
     const { sessionId } = await (await http("POST", "/api/chat/session", { as: "staff", body: {} })).json();
@@ -199,7 +199,7 @@ test("license invalid locks api but not login/me", async () => {
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    const setup = await fetch(base + "/api/setup", { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ displayName: "G", username: "glenn", password: "longenough1" }) });
+    const setup = await fetch(base + "/api/setup", { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ displayName: "G", username: "pat", password: "longenough1" }) });
     assert.equal(setup.status, 200);
     const cookie = setup.headers.get("set-cookie").split(";")[0];
     const me = await fetch(base + "/api/me", { headers: { cookie } });

@@ -28,13 +28,17 @@ import { runsRoutes } from "./routes/runs-routes.js";
 import { StatusStore } from "./status.js";
 import { statusRoutes } from "./routes/status-routes.js";
 import { updateRoutes } from "./routes/update-routes.js";
+import { kitCompatRoutes } from "./routes/kit-compat-routes.js";
 
 export const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 // /api/status is exempt because reporting a BROKEN license is part of what the
 // status widget exists for — gating it behind the license check meant the
 // owner's "License" card could never render the failure it was built to show.
 // It is still behind requireUser, so nothing is exposed to anonymous callers.
-const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup", "/api/status", "/api/ping"]);
+// Also exempt: the owner-only management calls (users, settings, update) so an owner can still add people,
+// fix the assets folder and self-update out of a bad license state. Chat, notes, runs and the kit page's data stay paused.
+const LICENSE_EXEMPT = new Set(["/api/login", "/api/logout", "/api/me", "/api/setup", "/api/status", "/api/ping", "/api/settings", "/api/update"]);
+const licenseExempt = (p) => LICENSE_EXEMPT.has(p) || p === "/api/users" || p.startsWith("/api/users/");
 
 export function defaultLicenseCheck() { return validateLicense(readLicense()); }
 
@@ -51,7 +55,7 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
   const statusStore = new StatusStore(homeDir);
   const ctx = { vaultPath, homeDir, users, auth, audit, index, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore, statusStore, port, appDir, npmBin, restart, updateInfo, applyUpdateImpl };
 
-  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx), statusRoutes(ctx), updateRoutes(ctx)];
+  const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx), statusRoutes(ctx), updateRoutes(ctx), kitCompatRoutes(ctx)];
   const gc = setInterval(() => { auth.gc(); chatSessions.gc(); }, 10 * 60 * 1000); gc.unref?.();
 
   const server = createHttpServer(async (req, res) => {
@@ -60,7 +64,7 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
       if ((req.method === "POST" || req.method === "PATCH" || req.method === "PUT") && !sameOriginOk(req)) {
         return sendJson(res, 403, { error: "cross-origin" });
       }
-      if (url.pathname.startsWith("/api/") && !LICENSE_EXEMPT.has(url.pathname)) {
+      if (url.pathname.startsWith("/api/") && !licenseExempt(url.pathname)) {
         const lic = licenseCheck();
         if (!lic.ok) return sendJson(res, 402, { error: "license", message: lic.error });
       }

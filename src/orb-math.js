@@ -1,5 +1,5 @@
-// Pure orb geometry + layout-block helpers, shared by ring.js (browser) and
-// src/layout.js (server-side validation) and unit-tested under node:test.
+// Pure orb geometry + layout-block helpers for the legacy server-side layout store
+// (src/layout.js, PUT /api/layout; no longer used by the owner page) and unit-tested.
 // No DOM, no imports.
 //
 // Ported from Robonuggets/agentic-os/dashboard.html (CC BY 4.0):

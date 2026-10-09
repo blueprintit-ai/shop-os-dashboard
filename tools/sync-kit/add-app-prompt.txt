@@ -1,0 +1,8 @@
+Add a new app to my Applications widget.
+
+File: Dashboard/apps.json in my vault (a JSON list; create it if it does not exist).
+
+Add one entry to the list, keeping the existing ones:
+{ "id": "<short-id>", "name": "<APP NAME>", "sub": "<one short line on what it does>", "url": "<http://localhost:PORT or https://...>", "icon": "<one of: gen, tele, brain, exca, wall, docs, links, sprint, story, edit, anim>" }
+
+The id is letters, digits, - or _ and is unique. The widget picks the change up on the next page load.
