@@ -1,12 +1,13 @@
-/* Blueprint OS additions to the kit toolbar: Users link, status dot and Update. The kit page itself is generated
+/* Blueprint OS additions to the kit toolbar: Users link, status dot, Update and Log out. The kit page itself is generated
    (tools/sync-kit.mjs) and only loads this file; owners only. Buttons reuse the kit's own `.tbar button` styling. */
 (() => {
   const svg = (inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
   const USERS = svg('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.7a3.5 3.5 0 0 1 0 6.6M18.5 14.4c1.9.8 3 2.8 3 5.6"/>');
   const UPDATE = svg('<circle cx="12" cy="12" r="9"/><path d="M12 16V8M8.5 11.5L12 8l3.5 3.5"/>');
+  const LOGOUT = svg('<path d="M9 4.5H5.5a1.5 1.5 0 0 0-1.5 1.5v12a1.5 1.5 0 0 0 1.5 1.5H9"/><path d="M15.5 8l4 4-4 4M19.5 12H9.5"/>');
   const COLORS = { ok: '#2aa88a', warn: '#e0a33a', bad: '#c2461f' };
   const say = (m) => (typeof window.toast === 'function' ? window.toast(m) : undefined);
-  let state = 'warn', problems = ['checking status'], update = null;
+  let state = 'warn', problems = ['checking status'], update = null, who = '';
 
   function judge(s) {
     const bad = [], warn = [];
@@ -14,7 +15,7 @@
     if (!s.vault?.reachable) bad.push('vault not reachable');
     if (s.claude && !s.claude.present) bad.push('Claude Code not found');
     else if (s.claude?.signedIn === 'no') bad.push('Claude is signed out');
-    else if (s.claude?.signedIn === 'unknown') warn.push('Claude sign-in not confirmed yet (turns green after your first chat reply)');
+    else if (s.claude?.signedIn === 'unknown') warn.push('Claude sign-in not confirmed yet (turns green after the first chat reply in Blueprint OS Chat)');
     update = s.update?.updateAvailable ? s.update : null;
     if (update) warn.push('update available' + (update.latest ? ' (' + update.latest + ')' : ''));
     state = bad.length ? 'bad' : warn.length ? 'warn' : 'ok';
@@ -29,6 +30,12 @@
   }
   const dot = () => svg('<circle cx="12" cy="12" r="6" fill="' + COLORS[state] + '" stroke="none"/>');
   const statusTitle = () => 'Status: ' + (problems.length ? problems.join(' · ') : 'all good');
+
+  // The owner page has no account menu any more (it lived in the chat bar): this is the way out.
+  async function logOut() {
+    try { await fetch('/api/logout', { method: 'POST' }); } catch (_) {}
+    location.href = '/login';
+  }
 
   async function applyUpdate() {
     if (!confirm('Update Blueprint OS now? The dashboard restarts and comes back in a minute.')) return;
@@ -55,6 +62,7 @@
       ];
       els[1].dataset.state = state;
       if (update) els.push(mk('updateBtn', 'Update available - click to update', UPDATE, applyUpdate));
+      els.push(mk('logoutBtn', 'Log out' + (who ? ' (' + who + ')' : ''), LOGOUT, logOut));
       let anchor = after;
       for (const e of els) { if (anchor) anchor.after(e); else bar.append(e); anchor = e; }
     });
@@ -74,45 +82,32 @@
   // size at load (`const W = innerWidth, H = innerHeight`). If the browser window grows afterwards (Brave on
   // Windows often loads into a smaller window, then maximises) the canvases stop short and a flat band shows
   // where they end. The kit does the same on the Mac app; here we reload once the window size has settled, so
-  // the page is laid out for the size it is really shown at. The reload is held back while a chat turn streams,
-  // a widget drags, or a popover is open, and while text is being typed in the chat box (unless the window has
-  // been still for 3 s). Unsent chat text, the transcript scroll position and edit mode survive the reload.
-  const DRAFT_KEY = 'bp-resize-draft';
+  // the page is laid out for the size it is really shown at. The reload is held back while a widget drags or a
+  // popover or search is open. Edit mode survives the reload.
+  const EDIT_KEY = 'bp-resize-edit';
   function restoreAfterResize() {
     let d = null;
-    try { d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); sessionStorage.removeItem(DRAFT_KEY); } catch (_) {}
-    if (!d) return;
-    const inp = document.getElementById('chatIn');
-    if (inp && d.text) { inp.value = d.text; inp.dispatchEvent(new Event('input', { bubbles: true })); }
-    const log = document.getElementById('chatLog');
-    if (log && d.scroll != null) log.scrollTop = d.scroll;
-    if (d.edit && !document.body.classList.contains('edit')) document.getElementById('editBtn')?.click();
+    try { d = sessionStorage.getItem(EDIT_KEY); sessionStorage.removeItem(EDIT_KEY); } catch (_) {}
+    if (d === '1' && !document.body.classList.contains('edit')) document.getElementById('editBtn')?.click();
   }
   function reloadOnResize() {
     restoreAfterResize();
     const base = { w: innerWidth, h: innerHeight };
-    let timer = null, lastResize = 0;
-    const blocked = () => document.querySelector('#chatSend.stop, #profilePop.show, #acctpop.show, #runpop.show, #appop.show')
+    let timer = null;
+    const blocked = () => document.querySelector('#profilePop.show, #runpop.show, #appop.show')
       || document.body.classList.contains('dragging') || document.body.classList.contains('searchopen');
-    const typing = () => { const i = document.getElementById('chatIn'); return !!i && i.value !== '' && document.activeElement === i; };
     const settle = () => {
       timer = null;
       if (Math.abs(innerWidth - base.w) <= 8 && Math.abs(innerHeight - base.h) <= 8) return;
-      if (blocked() || (typing() && Date.now() - lastResize < 3000)) { timer = setTimeout(settle, 500); return; }
-      try {
-        const inp = document.getElementById('chatIn'), log = document.getElementById('chatLog');
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ text: inp ? inp.value : '', scroll: log ? log.scrollTop : null, edit: document.body.classList.contains('edit') }));
-      } catch (_) {}
+      if (blocked()) { timer = setTimeout(settle, 500); return; }
+      try { sessionStorage.setItem(EDIT_KEY, document.body.classList.contains('edit') ? '1' : '0'); } catch (_) {}
       location.reload();
     };
-    addEventListener('resize', () => { lastResize = Date.now(); if (timer) clearTimeout(timer); timer = setTimeout(settle, 500); });
+    addEventListener('resize', () => { if (timer) clearTimeout(timer); timer = setTimeout(settle, 500); });
   }
 
-  // The dot reads /api/status, which changes when a chat turn finishes (Claude sign-in 'unknown' -> 'yes') or a
-  // problem is fixed: re-check right after a turn ends and every 20 s while anything is amber or red.
+  // The dot reads /api/status, which changes when a problem is fixed: re-check every 20 s while anything is amber or red.
   function watchStatus() {
-    const send = document.getElementById('chatSend');
-    if (send) new MutationObserver(() => { if (!send.classList.contains('stop')) refresh(); }).observe(send, { attributes: true, attributeFilter: ['class'] });
     setInterval(() => { if (state !== 'ok') refresh(); }, 20 * 1000);
   }
 
@@ -120,7 +115,8 @@
     reloadOnResize();
     let me = null;
     try { me = await (await fetch('/api/me')).json(); } catch (_) { return; }
-    if (me?.user?.role !== 'owner') return;
+    if (me?.user?.role !== 'owner') return;   // staff are sent to /employee and never load this page
+    who = me.user.username || me.user.displayName || '';
     new MutationObserver(() => { if (missing()) schedule(); }).observe(document.body, { childList: true, subtree: true });
     attach();
     await refresh();

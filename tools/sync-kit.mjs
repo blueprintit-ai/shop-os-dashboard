@@ -37,87 +37,6 @@ const SKOOL_CLASSROOM = "https://www.skool.com/robonuggets/classroom/7e082e48?md
 
 const FONT_LINK = '<link rel="stylesheet" href="/static/css/kit-fonts.css">';
 
-const ACCT_POP_HTML = `<div id="acctpop">
-  <div class="pk">ACCOUNT</div>
-  <div id="acctRows"><div class="row"><span>status</span><span>loading...</span></div></div>
-  <label for="chatModelSel">Model (this chat)</label>
-  <select id="chatModelSel"><option value="">Account default</option></select>
-  <label for="chatEffortSel">Effort (this chat)</label>
-  <select id="chatEffortSel"><option value="">Account default</option></select>
-  <div class="arow">
-    <button class="refresh" id="acctRefresh">REFRESH</button>
-    <button class="switch" id="acctLogout">LOGOUT</button>
-  </div>
-</div>`;
-
-// Same structure as the kit's popover script; only the data source (/api/me),
-// the rows, and the SWITCH ACCOUNT button (which logged the whole machine out of
-// Claude Code) differ. Logout is the product's own: POST /api/logout, then /login.
-const ACCT_POP_JS = `/* ---- account / model / effort popover for the chat bar ---- */
-(() => {
-  const btn = document.getElementById('chatAcct'), pop = document.getElementById('acctpop');
-  const rows = document.getElementById('acctRows');
-  const modelSel = document.getElementById('chatModelSel'), effortSel = document.getElementById('chatEffortSel');
-  const refreshBtn = document.getElementById('acctRefresh'), logoutBtn = document.getElementById('acctLogout');
-  if (!btn || !pop) return;
-  const escA = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-
-  function fillSelects() {
-    if (modelSel.options.length <= 1) MODELS.forEach(m => modelSel.add(new Option(m, m)));
-    if (effortSel.options.length <= 1) EFFORTS.forEach(e => effortSel.add(new Option(e, e)));
-    modelSel.value = window.CHATCFG.model || '';
-    effortSel.value = window.CHATCFG.effort || '';
-  }
-  function saveCfg() {
-    window.CHATCFG = { model: modelSel.value, effort: effortSel.value };
-    try { localStorage.setItem('os-chat-modeff', JSON.stringify(window.CHATCFG)); } catch (_) {}
-  }
-  modelSel.addEventListener('change', saveCfg);
-  effortSel.addEventListener('change', saveCfg);
-
-  fetch(API + '/api/me').then(r => r.json())
-    .then(a => { btn.querySelector('.dot').className = 'dot ' + (a.user ? 'ok' : 'bad'); })
-    .catch(() => {});
-
-  function loadStatus() {
-    rows.innerHTML = '<div class="row"><span>status</span><span>loading...</span></div>';
-    fetch(API + '/api/me').then(r => r.json()).then(a => {
-      const u = a.user;
-      btn.querySelector('.dot').className = 'dot ' + (u ? 'ok' : 'bad');
-      if (!u) { rows.innerHTML = '<div class="row"><span>status</span><span>signed out</span></div>'; return; }
-      rows.innerHTML = \`<div class="row"><span>user</span><span>\${escA(u.displayName || u.username || '-')}</span></div>
-        <div class="row"><span>role</span><span>\${escA(u.role || '-')}</span></div>\`
-        + (u.role === 'owner' ? '<div class="row"><span>users</span><span><a href="/users">Users</a></span></div>' : '');
-    }).catch(() => {
-      rows.innerHTML = '<div class="row"><span>status</span><span>server unreachable</span></div>';
-      btn.querySelector('.dot').className = 'dot bad';
-    });
-  }
-
-  btn.addEventListener('click', e => {
-    e.stopPropagation();
-    const willShow = !pop.classList.contains('show');
-    pop.classList.toggle('show', willShow);
-    if (!willShow) return;
-    fillSelects(); loadStatus();
-    const r = btn.getBoundingClientRect(), pr = pop.getBoundingClientRect();
-    pop.style.left = Math.max(8, Math.min(innerWidth - pr.width - 8, r.left)) + 'px';
-    pop.style.top = Math.max(8, r.top - pr.height - 10) + 'px';
-  });
-  document.addEventListener('pointerdown', e => {
-    if (pop.classList.contains('show') && !e.target.closest('#acctpop') && !e.target.closest('#chatAcct'))
-      pop.classList.remove('show');
-  });
-  addEventListener('keydown', e => { if (e.key === 'Escape') pop.classList.remove('show'); });
-  refreshBtn.addEventListener('click', loadStatus);
-  logoutBtn.addEventListener('click', () => {
-    logoutBtn.disabled = true;
-    fetch(API + '/api/logout', { method: 'POST' }).catch(() => {}).then(() => { location.href = '/login'; });
-  });
-})();
-
-`;
-
 // ---- rule machinery --------------------------------------------------------
 
 // A rule is { id, file (kit file name), doc, find: string|RegExp, replace: string|() => string }
@@ -158,12 +77,30 @@ export const RULES = [
     doc: "(d) Business Assets <title>.",
     find: "<title>Blueprint IT - Business Assets</title>", replace: "<title>Blueprint OS — Business Assets</title>" },
 
-  { id: "acct-popover-html", file: "dashboard.html",
-    doc: "(e) #acctpop contents: 'CLAUDE CODE ACCOUNT' rows + SWITCH ACCOUNT (logs the whole machine out of Claude Code, unsafe on a customer PC) -> product account rows + LOGOUT. The model/effort selects are unchanged.",
-    between: ['<div id="acctpop">', '\n\n<div id="profilePop">'], maxBytes: 1200, replace: ACCT_POP_HTML },
-  { id: "acct-popover-js", file: "dashboard.html",
-    doc: "(e) the popover's script: /api/account -> /api/me, rows = signed-in user + role + Users link (owners), SWITCH ACCOUNT -> POST /api/logout then /login.",
-    between: ["/* ---- account / model / effort popover for the chat bar ---- */", "/* ---- kit boot glue:"], maxBytes: 6000, replace: ACCT_POP_JS },
+  // (e) The chat bar is removed from the owner page (owner's request): there is no in-page chat. Claude Code is used
+  // from the vault folder. Every piece of the bar is cut by its own anchored rule; the kit has no other reference to
+  // these ids (the layout math already uses the whole window height), so nothing is left to throw on a missing element.
+  { id: "chatbar-css", file: "dashboard.html",
+    doc: "(e) the chat bar's CSS (#chatBar, #chatIn, #chatSend, #chatTog, #chatAcct, the #acctpop popover) is removed.",
+    between: ["  /* ================= CHAT BAR: talk to Claude Code from the dashboard ================= */\n", "  /* dashboard profile popover (layout + look presets"], maxBytes: 4500, replace: "/* chat bar CSS removed (sync rule chatbar-css) */\n\n" },
+  { id: "chatlog-css", file: "dashboard.html",
+    doc: "(e) the transcript panel's CSS (#chatLog, the .cm message styles, the dark-mode chat overrides and the kit's own edit-mode dimming of the bar) is removed.",
+    between: ["  #chatLog { position:fixed;", "  /* the brain opens IN PAGE"], maxBytes: 8000, replace: "/* chat transcript CSS removed (sync rule chatlog-css) */\n" },
+  { id: "acctpop-html", file: "dashboard.html",
+    doc: "(e) the #acctpop popover markup (account rows, model and effort selects, REFRESH/SWITCH ACCOUNT) is removed; Log out is a toolbar icon (public/js/product-extras.js).",
+    between: ['<div id="acctpop">', '\n\n<div id="profilePop">'], maxBytes: 1200, replace: "<!-- account popover removed (sync rule acctpop-html) -->" },
+  { id: "chatbar-html", file: "dashboard.html",
+    doc: "(e) the bottom bar markup is removed: #chatLog, #chatBar with the CLAUDE CODE label, ACCOUNT, the input, NEW CHAT, SEND and the chevron.",
+    between: ["<!-- chat bar: a live Claude Code conversation pinned to the bottom of the OS -->", '<button id="tweakFab"'], maxBytes: 1200, replace: "<!-- chat bar removed (sync rule chatbar-html) -->\n" },
+  { id: "chatbar-js", file: "dashboard.html",
+    doc: "(e) the chat bar's script is removed (window.CHATCFG, the /api/chat streaming client, NEW CHAT, SEND/STOP, the transcript render).",
+    between: ["/* model/effort override for the chat widget", "/* ---- dashboard profile popover"], maxBytes: 9000, replace: "/* chat bar script removed (sync rule chatbar-js) */\n\n" },
+  { id: "acctpop-js", file: "dashboard.html",
+    doc: "(e) the account / model / effort popover script is removed.",
+    between: ["/* ---- account / model / effort popover for the chat bar ---- */", "/* ---- kit boot glue:"], maxBytes: 6000, replace: "/* account popover script removed (sync rule acctpop-js) */\n\n" },
+  { id: "restorebar-bottom", file: "dashboard.html",
+    doc: "(e) the 'restore widget' bar sat 76px up so it cleared the chat bar; with no bar it sits near the bottom edge.",
+    find: "#restoreBar { display:none; position:fixed; left:50%; bottom:76px;", replace: "#restoreBar { display:none; position:fixed; left:50%; bottom:24px;" },
 
   { id: "orbs-script-path", file: "dashboard.html",
     doc: "(f) <script src=\"vendor/thinking-orbs.js\"> -> /static/vendor/thinking-orbs.js (the product serves public/ under /static).",
@@ -220,10 +157,6 @@ export const RULES = [
     doc: "(k) the kit's boot script no longer overwrites the inline glyphs, and the click handler is delegated from the document so it survives a rebuild of the title widget.",
     between: ["    themeBtn.querySelector('svg').innerHTML = LIGHT ? MOONPATH : SUNPATH;\n    themeBtn.addEventListener('click', () => {\n      localStorage.setItem('os-theme', LIGHT ? 'dark' : 'light');\n      location.reload();\n    });\n", "  }\n  fetch(API + '/api/skills')"], maxBytes: 300,
     replace: "    document.addEventListener('click', e => {\n      if (!e.target.closest('#themeBtn')) return;\n      localStorage.setItem('os-theme', LIGHT ? 'dark' : 'light');\n      location.reload();\n    });\n" },
-  { id: "edit-mode-chatbar-passthrough", file: "dashboard.html",
-    doc: "(k) the kit's default layout ends the STATS (and any bottom-row) widget at the very bottom of the window, under the 62px chat bar (z-index 70), so its resize handle could not be grabbed while editing the layout. While the layout editor is on, the chat bar and an open transcript are dimmed and let pointer events through to the widgets beneath; leaving edit mode restores them.",
-    find: "  body.chatcollapsed #chatLog { display:none; }",
-    replace: "  body.chatcollapsed #chatLog { display:none; }\n  body.edit #chatBar, body.edit #chatLog { pointer-events:none; opacity:.35; }" },
   { id: "assets-folder-copy", file: "assets.html",
     doc: "(j) upload popup copy: 'your Dropbox' -> 'your Business Assets folder' (the folder is set in Users > Business Assets folder).",
     find: "category's folder in your Dropbox.", replace: "category's folder in your Business Assets folder." },

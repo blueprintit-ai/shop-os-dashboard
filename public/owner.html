@@ -117,7 +117,7 @@
     background:var(--accent); color:#fff; border:0; font-size:13px; line-height:1; cursor:pointer;
     display:none; box-shadow:2px 2px 0 #000; z-index:6; font-family:'Outfit',sans-serif; }
   body.edit .w:not(.chromeless) .wx { display:block; }
-  #restoreBar { display:none; position:fixed; left:50%; bottom:76px; transform:translateX(-50%); z-index:80;
+  #restoreBar { display:none; position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:80;
     gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; max-width:70vw;
     padding:8px 12px; background:var(--cardsolid); border:1px solid var(--accent); border-radius:8px;
     font-size:10px; letter-spacing:.14em; color:var(--mute); }
@@ -624,57 +624,7 @@
   #quoteCard .qa::before, #quoteCard .qa::after { content:''; width:22px; height:1px; background:rgba(var(--ink),.3); }
   html:not(.light) #quoteCard .qt { color:#f6f2e8; }
 
-  /* ================= CHAT BAR: talk to Claude Code from the dashboard ================= */
-  #chatBar { position:fixed; left:0; right:0; bottom:0; z-index:70; display:flex; align-items:flex-end;
-    gap:10px; padding:10px 16px; background:var(--panel); border-top:2px solid rgba(var(--ink),.22);
-    font-family:'Outfit',sans-serif; }
-  #chatBar .cbk { font-size:10px; letter-spacing:3px; color:var(--mute); align-self:center;
-    white-space:nowrap; padding-bottom:1px; }
-  #chatBar .cbk b { color:var(--accent); font-weight:700; }
-  #chatIn { flex:1; min-height:36px; max-height:130px; resize:none; background:var(--card);
-    color:var(--cream); border:1.5px solid var(--linedim); border-radius:8px; padding:9px 12px;
-    font:400 13px/1.45 'Outfit',sans-serif; outline:0; transition:border-color .15s; }
-  #chatIn:focus { border-color:var(--accent); }
-  #chatIn::placeholder { color:var(--mute); }
-  #chatBar button { height:36px; padding:0 14px; border-radius:7px; border:1.5px solid var(--linedim);
-    background:transparent; color:var(--mute); font:600 10px/1 'Outfit',sans-serif; letter-spacing:2px;
-    cursor:pointer; white-space:nowrap; transition:all .12s; }
-  #chatBar button:hover { border-color:var(--accent); color:var(--accent); }
-  #chatSend { background:var(--accent); border-color:var(--accent); color:#fff; }
-  #chatSend:hover { color:#fff; transform:translate(-1px,-1px); box-shadow:3px 3px 0 var(--shadow); }
-  #chatSend.stop { background:transparent; color:var(--accent); }
-  #chatTog { width:36px; padding:0; font-size:14px; }
-  #chatTog svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2.2;
-    stroke-linecap:round; stroke-linejoin:round; transition:transform .2s; }
-  body.chatcollapsed #chatTog svg { transform:rotate(180deg); }
-  #chatAcct { display:flex; align-items:center; gap:5px; }
-  #chatAcct .dot { width:7px; height:7px; border-radius:50%; background:#8d8775; flex:none; }
-  #chatAcct .dot.ok { background:#2aa88a; }
-  #chatAcct .dot.bad { background:#c2461f; }
-
-  /* account / model / effort popover, anchored above the chat bar */
-  #acctpop { position:fixed; z-index:96; display:none; width:min(320px, 92vw);
-    background:var(--cardsolid); border-radius:10px; box-shadow:8px 8px 0 var(--shadow);
-    padding:16px 18px; font-family:'Outfit',sans-serif; }
-  #acctpop.show { display:block; }
-  #acctpop .pk { font-size:10px; letter-spacing:3px; color:var(--accent); font-weight:600; margin-bottom:8px; }
-  #acctpop .row { display:flex; justify-content:space-between; gap:10px; font-size:12px;
-    color:var(--text); padding:5px 0; border-bottom:1px solid var(--linedim); }
-  #acctpop .row span:first-child { color:var(--muted); }
-  #acctpop .row:last-of-type { border-bottom:0; }
-  #acctpop label { display:block; font-size:9.5px; letter-spacing:1.5px; color:var(--muted);
-    margin:12px 0 4px; text-transform:uppercase; }
-  #acctpop select { width:100%; background:var(--card); color:var(--text); border:1.5px solid var(--linedim);
-    border-radius:7px; padding:7px 8px; font:500 12px/1 'Outfit',sans-serif; outline:none; }
-  #acctpop select:focus { border-color:var(--accent); }
-  #acctpop .arow { display:flex; gap:8px; margin-top:14px; }
-  #acctpop .arow button { flex:1; border:0; border-radius:7px; padding:8px 0; font-size:10px;
-    letter-spacing:1.5px; cursor:pointer; font-family:'Outfit',sans-serif;
-    box-shadow:3px 3px 0 var(--shadow); transition:transform .12s, box-shadow .12s; }
-  #acctpop .arow button:hover { transform:translate(-1px,-1px); box-shadow:4px 4px 0 var(--shadow); }
-  #acctpop .refresh { background:var(--card); color:var(--text); }
-  #acctpop .switch { background:#c2461f; color:#fff; }
-  #acctpop .note { font-size:10.5px; color:var(--muted); line-height:1.5; margin-top:8px; }
+/* chat bar CSS removed (sync rule chatbar-css) */
 
   /* dashboard profile popover (layout + look presets, eg. Desktop / Laptop) */
   #profilePop { position:fixed; z-index:96; display:none; width:min(280px, 92vw);
@@ -702,65 +652,7 @@
     letter-spacing:1px; cursor:pointer; background:var(--accent); color:#fff; font-family:'Outfit',sans-serif; }
   #profilePop .note { font-size:10.5px; color:var(--muted); line-height:1.5; margin-top:10px; }
 
-  #chatLog { position:fixed; left:0; right:0; bottom:58px; z-index:69; max-height:42vh; overflow-y:auto;
-    background:var(--panel); border-top:1px solid rgba(var(--ink),.14); padding:14px 18px 10px;
-    font-family:'Outfit',sans-serif; display:none; scrollbar-width:thin;
-    scrollbar-color:rgba(var(--ink),.25) transparent; }
-  #chatLog.on { display:block; }
-  body.chatcollapsed #chatLog { display:none; }
-  body.edit #chatBar, body.edit #chatLog { pointer-events:none; opacity:.35; }
-  .cm { max-width:920px; margin:0 auto 12px; padding:0 0 0 12px; border-left:2px solid rgba(var(--ink),.18); }
-  .cm.user { border-left-color:var(--accent); }
-  .cm .who { font-size:8.5px; letter-spacing:2.6px; color:var(--mute); margin-bottom:4px; text-transform:uppercase; }
-  .cm.user .who { color:var(--accent); }
-  .cm .body { font-size:13px; line-height:1.55; color:var(--cream); }
-  .cm .body.raw { white-space:pre-wrap; word-break:break-word; }
-  .cm .body h1, .cm .body h2, .cm .body h3, .cm .body h4 { margin:10px 0 4px; letter-spacing:-.2px; }
-  .cm .body h2 { font-size:16px; } .cm .body h3 { font-size:14px; }
-  .cm .body p { margin:0 0 8px; } .cm .body ul, .cm .body ol { margin:0 0 8px; padding-left:20px; }
-  .cm .body li { margin:2px 0; }
-  .cm .body code { background:rgba(var(--ink),.10); border-radius:4px; padding:1px 5px;
-    font:400 12px/1.4 'JetBrains Mono','SF Mono',Consolas,monospace; }
-  .cm .body pre, .cm .body pre.code { background:rgba(var(--ink),.08); border:1px solid rgba(var(--ink),.12);
-    border-radius:7px; padding:10px 12px; margin:6px 0 10px; overflow-x:auto; white-space:pre-wrap;
-    font:400 12px/1.5 'JetBrains Mono','SF Mono',Consolas,monospace; }
-  .cm .body pre code { background:none; padding:0; }
-  .cm .body table { border-collapse:collapse; margin:6px 0 10px; font-size:12px; }
-  .cm .body th, .cm .body td { border-bottom:1px solid rgba(var(--ink),.14); padding:4px 10px 4px 0; text-align:left; }
-  .cm .body a { color:var(--accent); }
-  .cm .tools { display:flex; flex-wrap:wrap; gap:5px; margin:4px 0 6px; }
-  .cm .ctool { font:500 9px/1 'Outfit',sans-serif; letter-spacing:1.2px; color:var(--mute);
-    border:1px solid rgba(var(--ink),.22); border-radius:99px; padding:4px 8px; max-width:360px;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .cm .ctool b { color:var(--cream); font-weight:600; margin-right:4px; }
-  .cm .meta { font-size:9px; letter-spacing:1.5px; color:var(--mute); margin-top:4px; }
-  .cm .meta.err { color:#c2461f; }
-  .cm .cursor { display:inline-block; width:7px; height:13px; background:var(--accent); vertical-align:-2px;
-    margin-left:2px; animation:cblink 1s steps(2) infinite; }
-  @keyframes cblink { to { opacity:0; } }
-  /* dark mode: the chat needs more punch than the widget chrome - brighter text,
-     a touch larger, and labels/pills lifted off the near-black panel */
-  html:not(.light) #chatIn { color:#f6f2e8; font-size:14px; background:#1a1914; border-color:rgba(232,226,210,.32); }
-  html:not(.light) #chatIn::placeholder { color:#a8a28f; }
-  html:not(.light) .cm .body { color:#f6f2e8; font-size:14px; line-height:1.6; }
-  /* Claude's replies in phosphor mint: high luminance on the dark panel, and
-     distinct from the blue accent so text never reads as a control */
-  html:not(.light) .cm.ai .body { color:#a6f0c1; }
-  html:not(.light) .cm.ai .body strong { color:#d4ffe4; }
-  html:not(.light) .cm.ai .who { color:#6fd29a; }
-  html:not(.light) .cm.ai { border-left-color:rgba(111,210,154,.55); }
-  html:not(.light) .cm.ai .body code { background:rgba(166,240,193,.14); color:#d4ffe4; }
-  html:not(.light) .cm.ai .body pre, html:not(.light) .cm.ai .body pre.code { color:#c8f7d8; }
-  html:not(.light) .cm .cursor { background:#a6f0c1; }
-  html:not(.light) .cm .who, html:not(.light) .cm .meta { color:#b9b19c; }
-  html:not(.light) .cm .ctool { color:#c9c2ad; border-color:rgba(232,226,210,.38); background:rgba(232,226,210,.06); }
-  html:not(.light) .cm .ctool b { color:#fff; }
-  html:not(.light) .cm .body code { background:rgba(232,226,210,.16); color:#fff; }
-  html:not(.light) .cm .body pre, html:not(.light) .cm .body pre.code { background:#1a1914; border-color:rgba(232,226,210,.22); color:#f6f2e8; }
-  html:not(.light) .cm { border-left-color:rgba(232,226,210,.32); }
-  html:not(.light) #chatBar .cbk { color:#b9b19c; }
-  html:not(.light) #chatBar button { color:#c9c2ad; border-color:rgba(232,226,210,.32); }
-  html:not(.light) #chatSend { color:#fff; }
+/* chat transcript CSS removed (sync rule chatlog-css) */
   /* the brain opens IN PAGE: a frame that grows out of the orb, no new tab.
      It is mounted (and loading) long before the click, so the zoom lands on
      a painted page instead of a white flash. */
@@ -893,18 +785,7 @@ File: os-config.json (the skills list), in my OS folder. Skills render as plain 
   </div>
 </div>
 
-<div id="acctpop">
-  <div class="pk">ACCOUNT</div>
-  <div id="acctRows"><div class="row"><span>status</span><span>loading...</span></div></div>
-  <label for="chatModelSel">Model (this chat)</label>
-  <select id="chatModelSel"><option value="">Account default</option></select>
-  <label for="chatEffortSel">Effort (this chat)</label>
-  <select id="chatEffortSel"><option value="">Account default</option></select>
-  <div class="arow">
-    <button class="refresh" id="acctRefresh">REFRESH</button>
-    <button class="switch" id="acctLogout">LOGOUT</button>
-  </div>
-</div>
+<!-- account popover removed (sync rule acctpop-html) -->
 
 <div id="profilePop">
   <div class="pk">DASHBOARD PROFILE</div>
@@ -964,16 +845,7 @@ File: os-config.json (the skills list), in my OS folder. Skills render as plain 
 <div id="orbHint">CLICK TO OPEN SECOND BRAIN</div>
 <div id="quoteCard" title="click to dismiss"><div class="qk">A thought for the shop</div><div class="qt"></div><div class="qa"></div></div>
 
-<!-- chat bar: a live Claude Code conversation pinned to the bottom of the OS -->
-<div id="chatLog"></div>
-<div id="chatBar">
-  <span class="cbk"><b>CLAUDE</b> CODE</span>
-  <button id="chatAcct" title="Account, model &amp; effort"><span class="dot"></span> ACCOUNT</button>
-  <textarea id="chatIn" rows="1" placeholder="Ask Claude Code anything about this workspace...  (Enter to send, Shift+Enter for a new line)"></textarea>
-  <button id="chatNew" title="Start a fresh conversation">NEW CHAT</button>
-  <button id="chatSend" title="Send (Enter)">SEND</button>
-  <button id="chatTog" title="Show / hide the transcript"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
-</div>
+<!-- chat bar removed (sync rule chatbar-html) -->
 <button id="tweakFab" title="Open tweak panel">◐</button>
 
 <!-- routines come from /api/routines; the old direct include only worked over file:// -->
@@ -4163,128 +4035,7 @@ try {
   addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
 })();
 
-/* model/effort override for the chat widget - shared with the account popover
-   below so a pick there takes effect on the next message with no reload */
-window.CHATCFG = (() => { try { return JSON.parse(localStorage.getItem('os-chat-modeff') || '{}'); } catch (_) { return {}; } })();
-
-/* ---- chat bar: streams a headless Claude Code run into the transcript ---- */
-(() => {
-  const log = document.getElementById('chatLog'), inp = document.getElementById('chatIn');
-  const sendBtn = document.getElementById('chatSend'), newBtn = document.getElementById('chatNew');
-  const tog = document.getElementById('chatTog');
-  if (!log || !inp) return;
-  const KEY = 'os-chat-v1';
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-  let state = { sessionId: null, msgs: [] };
-  try { state = Object.assign(state, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (_) {}
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) {} };
-  let live = null;   /* { controller, el } while a run streams */
-
-  function msgEl(m) {
-    const el = document.createElement('div');
-    el.className = 'cm ' + m.role;
-    const tools = (m.tools || []).map(t => `<span class="ctool" title="${esc(t)}"><b>${esc(t.split(' ')[0])}</b>${esc(t.slice(t.split(' ')[0].length))}</span>`).join('');
-    el.innerHTML = `<div class="who">${m.role === 'user' ? 'You' : 'Claude Code'}</div>`
-      + (tools ? `<div class="tools">${tools}</div>` : '')
-      + (m.html ? `<div class="body">${m.html}</div>` : `<div class="body raw">${esc(m.text || '')}</div>`)
-      + (m.meta ? `<div class="meta${m.err ? ' err' : ''}">${esc(m.meta)}</div>` : '');
-    return el;
-  }
-  function render() {
-    log.innerHTML = '';
-    state.msgs.forEach(m => log.appendChild(msgEl(m)));
-    log.classList.toggle('on', state.msgs.length > 0);
-    log.scrollTop = log.scrollHeight;
-  }
-  function grow() { inp.style.height = 'auto'; inp.style.height = Math.min(130, inp.scrollHeight) + 'px'; }
-  async function renderMd(md) {
-    try { const r = await fetch(API + '/api/chat/render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ md }) });
-          return (await r.json()).html || esc(md); } catch (_) { return esc(md); }
-  }
-
-  async function send() {
-    const text = inp.value.trim();
-    if (!text || live) return;
-    inp.value = ''; grow();
-    state.msgs.push({ role: 'user', text }); save();
-    const ai = { role: 'ai', text: '', tools: [] };
-    state.msgs.push(ai);
-    render();
-    const el = log.lastElementChild, body = el.querySelector('.body');
-    body.innerHTML = '<span class="cursor"></span>';
-    const toolMap = new Map();          /* tool id -> label, so the bare marker upgrades in place */
-    const controller = new AbortController();
-    live = { controller, el };
-    sendBtn.textContent = 'STOP'; sendBtn.classList.add('stop');
-    document.body.classList.remove('chatcollapsed');
-    let buffer = '', done = null;
-    try {
-      const r = await fetch(API + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, sessionId: state.sessionId, model: window.CHATCFG.model || '', effort: window.CHATCFG.effort || '' }), signal: controller.signal });
-      if (!r.ok || !r.body) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + r.status)); }
-      const reader = r.body.getReader(), dec = new TextDecoder();
-      for (;;) {
-        const { value, done: eof } = await reader.read();
-        if (eof) break;
-        buffer += dec.decode(value, { stream: true });
-        let i;
-        while ((i = buffer.indexOf('\n\n')) >= 0) {
-          const chunk = buffer.slice(0, i); buffer = buffer.slice(i + 2);
-          const line = chunk.split('\n').find(l => l.startsWith('data: '));
-          if (!line) continue;
-          let ev; try { ev = JSON.parse(line.slice(6)); } catch (_) { continue; }
-          if (ev.type === 'session' && ev.sessionId) { state.sessionId = ev.sessionId; save(); }
-          else if (ev.type === 'text') {
-            ai.text += ev.text;
-            body.innerHTML = esc(ai.text) + '<span class="cursor"></span>';
-            log.scrollTop = log.scrollHeight;
-          } else if (ev.type === 'tool') {
-            toolMap.set(ev.id, ev.label); ai.tools = [...toolMap.values()];
-            let tw = el.querySelector('.tools');
-            if (!tw) { tw = document.createElement('div'); tw.className = 'tools'; el.insertBefore(tw, body); }
-            tw.innerHTML = ai.tools.map(t => `<span class="ctool" title="${esc(t)}"><b>${esc(t.split(' ')[0])}</b>${esc(t.slice(t.split(' ')[0].length))}</span>`).join('');
-          } else if (ev.type === 'done') { done = ev; if (ev.sessionId) state.sessionId = ev.sessionId; }
-          else if (ev.type === 'error') { done = { isError: true, note: ev.message }; }
-        }
-      }
-    } catch (e) {
-      done = { isError: true, note: e.name === 'AbortError' ? 'stopped' : e.message };
-    }
-    live = null;
-    sendBtn.textContent = 'SEND'; sendBtn.classList.remove('stop');
-    const finalText = ai.text || (done && done.result) || '';
-    ai.text = finalText;
-    ai.html = finalText ? await renderMd(finalText) : '';
-    if (done) {
-      ai.err = !!done.isError;
-      const bits = [];
-      if (done.ms) bits.push((done.ms / 1000).toFixed(1) + 's');
-      if (done.turns > 1) bits.push(done.turns + ' turns');
-      if (done.note) bits.push(done.note);
-      if (done.isError && !finalText && !done.note) bits.push('run failed');
-      ai.meta = bits.join(' · ');
-    }
-    save(); render();
-  }
-  async function stop() {
-    if (!live) return;
-    try { await fetch(API + '/api/chat/stop', { method: 'POST' }); } catch (_) {}
-    live.controller.abort();
-  }
-  sendBtn.addEventListener('click', () => live ? stop() : send());
-  newBtn.addEventListener('click', () => {
-    if (live) stop();
-    state = { sessionId: null, msgs: [] }; save(); render();
-    inp.focus();
-  });
-  tog.addEventListener('click', () => document.body.classList.toggle('chatcollapsed'));
-  inp.addEventListener('input', grow);
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-    e.stopPropagation();    /* keep "/" and "t" shortcuts from firing while typing */
-  });
-  render();
-})();
+/* chat bar script removed (sync rule chatbar-js) */
 
 /* ---- dashboard profile popover (Desktop / Laptop / custom layouts) ---- */
 (() => {
@@ -4373,68 +4124,7 @@ window.CHATCFG = (() => { try { return JSON.parse(localStorage.getItem('os-chat-
   nameInp.addEventListener('keydown', e => { if (e.key === 'Enter') newBtn.click(); });
 })();
 
-/* ---- account / model / effort popover for the chat bar ---- */
-(() => {
-  const btn = document.getElementById('chatAcct'), pop = document.getElementById('acctpop');
-  const rows = document.getElementById('acctRows');
-  const modelSel = document.getElementById('chatModelSel'), effortSel = document.getElementById('chatEffortSel');
-  const refreshBtn = document.getElementById('acctRefresh'), logoutBtn = document.getElementById('acctLogout');
-  if (!btn || !pop) return;
-  const escA = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
-
-  function fillSelects() {
-    if (modelSel.options.length <= 1) MODELS.forEach(m => modelSel.add(new Option(m, m)));
-    if (effortSel.options.length <= 1) EFFORTS.forEach(e => effortSel.add(new Option(e, e)));
-    modelSel.value = window.CHATCFG.model || '';
-    effortSel.value = window.CHATCFG.effort || '';
-  }
-  function saveCfg() {
-    window.CHATCFG = { model: modelSel.value, effort: effortSel.value };
-    try { localStorage.setItem('os-chat-modeff', JSON.stringify(window.CHATCFG)); } catch (_) {}
-  }
-  modelSel.addEventListener('change', saveCfg);
-  effortSel.addEventListener('change', saveCfg);
-
-  fetch(API + '/api/me').then(r => r.json())
-    .then(a => { btn.querySelector('.dot').className = 'dot ' + (a.user ? 'ok' : 'bad'); })
-    .catch(() => {});
-
-  function loadStatus() {
-    rows.innerHTML = '<div class="row"><span>status</span><span>loading...</span></div>';
-    fetch(API + '/api/me').then(r => r.json()).then(a => {
-      const u = a.user;
-      btn.querySelector('.dot').className = 'dot ' + (u ? 'ok' : 'bad');
-      if (!u) { rows.innerHTML = '<div class="row"><span>status</span><span>signed out</span></div>'; return; }
-      rows.innerHTML = `<div class="row"><span>user</span><span>${escA(u.displayName || u.username || '-')}</span></div>
-        <div class="row"><span>role</span><span>${escA(u.role || '-')}</span></div>`
-        + (u.role === 'owner' ? '<div class="row"><span>users</span><span><a href="/users">Users</a></span></div>' : '');
-    }).catch(() => {
-      rows.innerHTML = '<div class="row"><span>status</span><span>server unreachable</span></div>';
-      btn.querySelector('.dot').className = 'dot bad';
-    });
-  }
-
-  btn.addEventListener('click', e => {
-    e.stopPropagation();
-    const willShow = !pop.classList.contains('show');
-    pop.classList.toggle('show', willShow);
-    if (!willShow) return;
-    fillSelects(); loadStatus();
-    const r = btn.getBoundingClientRect(), pr = pop.getBoundingClientRect();
-    pop.style.left = Math.max(8, Math.min(innerWidth - pr.width - 8, r.left)) + 'px';
-    pop.style.top = Math.max(8, r.top - pr.height - 10) + 'px';
-  });
-  document.addEventListener('pointerdown', e => {
-    if (pop.classList.contains('show') && !e.target.closest('#acctpop') && !e.target.closest('#chatAcct'))
-      pop.classList.remove('show');
-  });
-  addEventListener('keydown', e => { if (e.key === 'Escape') pop.classList.remove('show'); });
-  refreshBtn.addEventListener('click', loadStatus);
-  logoutBtn.addEventListener('click', () => {
-    logoutBtn.disabled = true;
-    fetch(API + '/api/logout', { method: 'POST' }).catch(() => {}).then(() => { location.href = '/login'; });
-  });
-})();
+/* account popover script removed (sync rule acctpop-js) */
 
 /* ---- kit boot glue: skills config, home timezone, second-brain probe, first-run tour ---- */
 (() => {
