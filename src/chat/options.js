@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { resolve, isAbsolute } from "node:path";
 import { isPathAllowed, isPrivatePath } from "../scope.js";
 import { VAULT_SERVER_NAME, VAULT_TOOL_NAMES, createVaultServer } from "./vault-tools.js";
@@ -26,6 +27,9 @@ function pathFromInput(toolName, input, cwd) {
 // is exercised directly by the unit tests below, and covers any tool/mode
 // combination where the SDK does still invoke it). The vault tools check
 // every entry they return themselves too; the folder check here is a second lock.
+const UNAVAILABLE = "That file is not available to you. Answer from the other files you can read, and do not try to find or guess it.";
+function isRegularFile(p) { try { return statSync(p).isFile(); } catch { return false; } }
+
 function staffDecision(toolName, input, vaultPath, user) {
   const isVaultTool = STAFF_MCP_TOOLS.includes(toolName);
   if (!STAFF_TOOLS.includes(toolName) && !isVaultTool) {
@@ -33,10 +37,13 @@ function staffDecision(toolName, input, vaultPath, user) {
   }
   const p = pathFromInput(toolName, input, vaultPath);
   if (p !== null && !isPathAllowed(vaultPath, user, p)) {
-    // "private" and "out-of-scope" are told apart only in the audit log; the person (and the model) get a neutral answer for private.
-    if (isPrivatePath(vaultPath, p)) return { deny: true, reason: "private", path: p, message: "That file is not available to you. Answer from the other files you can read, and do not try to find or guess it." };
-    return { deny: true, reason: "out-of-scope", path: p, message: "That file is outside the folders you have access to. Answer from the folders you can read." };
+    // "private" and "out-of-scope" are told apart only in the audit log; the person (and the model) get one neutral answer.
+    return { deny: true, reason: isPrivatePath(vaultPath, p) ? "private" : "out-of-scope", path: p, message: UNAVAILABLE };
   }
+  // Read only ever runs on a file that exists and is a plain file. Its own errors (EISDIR, "does not exist ... your
+  // current working directory is /abs/path") carry absolute paths, and "missing" vs "denied" would tell a guesser
+  // which private files exist, so for staff every one of those is the same neutral answer.
+  if (p !== null && toolName === "Read" && !isRegularFile(p)) return { deny: true, reason: "not-a-file", path: p, message: UNAVAILABLE };
   return { deny: false, path: p };
 }
 
@@ -63,7 +70,8 @@ export function buildQueryOptions({ vaultPath, user, systemPrompt, claudeSession
     tools: [...STAFF_TOOLS],
     mcpServers: { [VAULT_SERVER_NAME]: createVaultServer({ vaultPath, user, audit }) },
     strictMcpConfig: true, // no other MCP server from user, project or plugin config
-    settings: { autoMemoryEnabled: false }, // the owner's chat memory must not surface in a staff turn
+    settings: { autoMemoryEnabled: false, disableBundledSkills: true }, // the owner's chat memory must not surface in a staff turn; no bundled skills
+    skills: [],
     settingSources: [],
     maxTurns: 20,
     canUseTool: async (toolName, input) => {

@@ -134,3 +134,28 @@ test("the staff prompt describes the tools truthfully and tells the model not to
     assert.doesNotMatch(p, /Private/, "the prompt does not even name the Private convention");
   } finally { cleanup(); }
 });
+
+test("Read of a directory, a missing file, a private file and an out-of-folder file all get the identical neutral message", async () => {
+  const c = setup(OWNER_LIST);
+  try {
+    const v = c.vault;
+    const msgs = new Set();
+    for (const file_path of [join(v, "Resources"), "Resources", join(v, "Resources/nope.md"), join(v, "Resources/Private/hr.md"), join(v, "Resources/fm-true.md"), join(v, "Resources/salary-2025.md"), join(v, "Context/operator.md"), join(v, "Resources/Private/nope.md")]) {
+      const d = await c.viaCan("Read", { file_path });
+      assert.equal(d.behavior, "deny", file_path);
+      assert.ok(!d.message.includes(v), "no absolute path");
+      msgs.add(d.message);
+      const h = await c.viaHook("Read", { file_path });
+      assert.equal(h.reason, d.message);
+    }
+    assert.equal(msgs.size, 1, [...msgs].join(" | "));
+  } finally { c.cleanup(); }
+});
+
+test("staff options switch off skills and bundled skills", () => {
+  const c = setup();
+  try {
+    assert.deepEqual(c.o.skills, []);
+    assert.equal(c.o.settings.disableBundledSkills, true);
+  } finally { c.cleanup(); }
+});
