@@ -45,6 +45,8 @@ export function buildTranscript(session) {
     `ended: ${ended.time}`,
     `turn-count: ${session.turns.length}`,
     `tags: [chat-transcript, shop-os-chat]`,
+    // an owner conversation can quote anything in the vault, Private notes included, so it is marked private
+    ...(session.role === "owner" ? ["private: true"] : []),
     "---",
     "",
   ];

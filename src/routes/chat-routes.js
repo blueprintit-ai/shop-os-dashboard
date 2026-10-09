@@ -43,7 +43,7 @@ export function chatRoutes(ctx) {
       const session = chatSessions.get(b.sessionId);
       if (!session) return sendJson(res, 404, { error: "Unknown sessionId" }), true;
       if (session.userId !== user.id) return sendJson(res, 403, { error: "Not your session" }), true;
-      if (session.turns.length) writeTranscript(vaultPath, { ...session, name: user.username });
+      if (session.turns.length) writeTranscript(vaultPath, { ...session, name: user.username, role: user.role });
       chatSessions.end(session.id);
       audit.log("chat.session.end", { userId: user.id, username: user.username, role: user.role, sessionId: session.id, turns: session.turns.length });
       res.writeHead(204); res.end(); return true;

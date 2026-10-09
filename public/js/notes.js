@@ -57,11 +57,11 @@ export async function openNote(path) {
     return;
   }
   if (res.status === 403) {
-    els.viewer.innerHTML = `<p>That note is outside your folders.</p>`;
+    els.viewer.innerHTML = `<p>That note is not available.</p>`;
     return;
   }
   if (res.status === 404) {
-    els.viewer.innerHTML = `<p>Note not found.</p>`;
+    els.viewer.innerHTML = `<p>That note is not available.</p>`;
     return;
   }
   if (!res.ok) {

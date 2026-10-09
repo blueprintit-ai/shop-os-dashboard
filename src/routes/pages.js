@@ -104,7 +104,10 @@ export function pageRoutes(ctx) {
       if (!user) return redirect(res, "/login"), true;
       if (user.role !== "owner" && user.switches?.assetsView !== true) return redirect(res, "/"), true;
       if (licenseGate(ctx, res)) return true;
-      const html = page("assets.html").replace("__ROLE__", user.role);
+      let html = page("assets.html").replace("__ROLE__", user.role);
+      // The synced kit page has an upload button and a drop zone. Staff cannot upload (the server refuses it), so the page is
+      // served to them without the control, by CSS injected here rather than a change to the synced file.
+      if (user.role !== "owner") html = html.replace("</head>", "<style>#upBtn,#drop,#upOv{display:none!important}</style></head>");
       return send(res, 200, { "content-type": "text/html; charset=utf-8" }, html), true;
     }
     return false;

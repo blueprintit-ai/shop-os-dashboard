@@ -75,18 +75,20 @@ export class LinkIndex {
     }
   }
 
-  resolve(target) {
+  // `accept(rel)` lets a caller resolve among only the notes it may use (staff: never one that is private), so a
+  // private note can neither shadow a visible note of the same name nor be handed back to a caller who cannot see it.
+  resolve(target, accept = null) {
+    const ok = accept ?? (() => true);
     const t = String(target).trim().toLowerCase().replace(/\\/g, "/");
     // exact vault-relative path first
-    for (const rel of this.meta.keys()) if (rel.toLowerCase() === t || rel.toLowerCase() === t + ".md") return rel;
+    for (const rel of this.meta.keys()) if ((rel.toLowerCase() === t || rel.toLowerCase() === t + ".md") && ok(rel)) return rel;
     const base = t.split("/").pop();
-    const byBase = this.byBase.get(base) ?? this.byBase.get(base + ".md");
-    if (byBase?.length) return byBase[0];
+    const byBase = [...new Set([...(this.byBase.get(base) ?? []), ...(this.byBase.get(base + ".md") ?? [])])].filter(ok);
+    if (byBase.length) return byBase[0];
     // Obsidian also resolves a link target against a note's title (its H1), not
     // only its filename -- e.g. [[Acme Cabinets]] resolving to a file named
     // organization.md whose first heading is "# Acme Cabinets".
-    const byTitle = this.byTitle.get(base);
-    return byTitle?.[0] ?? null;
+    return (this.byTitle.get(base) ?? []).find(ok) ?? null;
   }
 
   backlinks(relPath) { return [...(this.incoming.get(relPath) ?? [])]; }

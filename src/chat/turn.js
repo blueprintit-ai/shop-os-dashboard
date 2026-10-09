@@ -1,4 +1,5 @@
 import { buildQueryOptions } from "./options.js";
+import { guardStaffPrompt } from "./prompt-guard.js";
 import { buildStaffPrompt, buildOwnerPrompt } from "./system-prompt.js";
 
 export const CHAT_TURN_TIMEOUT_MS = 5 * 60 * 1000;
@@ -29,7 +30,9 @@ export async function runChatTurn({ ctx, user, session, prompt, onEvent, abortCo
     }, CHAT_TURN_TIMEOUT_MS);
     try {
       let observedThisTurn = false;
-      for await (const ev of runTurn({ prompt, options })) {
+      // staff text is made inert before the engine sees it: @mentions are expanded by the CLI before any tool check
+      const enginePrompt = user.role === "owner" ? prompt : guardStaffPrompt(prompt);
+      for await (const ev of runTurn({ prompt: enginePrompt, options })) {
         if (ev.type === "session" && ev.claudeSessionId) chatSessions.setClaudeSessionId(session.id, ev.claudeSessionId);
         if (ev.type === "text") assistantText += ev.delta;
         onEvent(ev);
