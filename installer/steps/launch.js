@@ -14,7 +14,7 @@ function interactive(ctx) {
 
 export function launchStep() {
   return {
-    id: "launch", title: "Opening Claude Code", severity: "warn",
+    id: "launch", title: "Opening Claude Code", severity: "warn", heartbeat: false,
     check: async (ctx) => ctx.flags?.noLaunch === true,
     async action(ctx) {
       const run = ctx.interactive ?? interactive;

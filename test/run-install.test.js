@@ -12,7 +12,7 @@ const snap = async () => ({ os: "x", free_disk_mb: 1, reach: { github: true, npm
 
 test("parseArgs reads flags and env, flags win", () => {
   const a = parseArgs(["--vault", "V", "--no-launch"], { SHOPOS_LICENSE_KEY: "K", SHOPOS_LICENSE_SERVER: "http://x" });
-  assert.deepEqual(a, { licenseKey: "K", vaultPath: "V", noLaunch: true, licenseServer: "http://x", testMode: false });
+  assert.deepEqual(a, { licenseKey: "K", vaultPath: "V", noLaunch: true, licenseServer: "http://x", testMode: false, chooseFolder: false });
   assert.equal(parseArgs(["--license", "FLAG"], { SHOPOS_LICENSE_KEY: "ENV" }).licenseKey, "FLAG");
 });
 
