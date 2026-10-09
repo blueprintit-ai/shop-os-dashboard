@@ -61,3 +61,23 @@ test(".app launcher escapes an embedded single quote", () => {
   const script = readFileSync(join(result.path, "Contents", "MacOS", "Blueprint OS"), "utf8");
   assert.ok(script.includes(`'/Users/pat/Bob'"'"'s Vault'`), `unexpected launcher: ${script}`);
 });
+
+test("createDesktopApp: name + extraArgs write 'Blueprint OS Staff Chat.app' with its own identifier and --open /employee", () => {
+  const desktopDir = mkdtempSync(join(tmpdir(), "desktop-"));
+  const staff = createDesktopApp({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath: "/My Vault", desktopDir, name: "Blueprint OS Staff Chat", extraArgs: ["--open", "/employee"], bundleId: "ai.blueprintit.shop-os-dashboard.staff-chat" });
+  assert.equal(staff.ok, true);
+  assert.equal(staff.path, join(desktopDir, "Blueprint OS Staff Chat.app"));
+  const exe = join(staff.path, "Contents", "MacOS", "Blueprint OS Staff Chat");
+  assert.equal(readFileSync(exe, "utf8"), `#!/bin/bash\nexec '/usr/local/bin/node' '/dash/bin.js' '/My Vault' '--open' '/employee'\n`);
+  const plist = readFileSync(join(staff.path, "Contents", "Info.plist"), "utf8");
+  assert.match(plist, /<key>CFBundleName<\/key><string>Blueprint OS Staff Chat<\/string>/);
+  assert.match(plist, /<key>CFBundleExecutable<\/key><string>Blueprint OS Staff Chat<\/string>/);
+  assert.match(plist, /<key>CFBundleIdentifier<\/key><string>ai\.blueprintit\.shop-os-dashboard\.staff-chat<\/string>/);
+  // the owner app is untouched by the staff one
+  const owner = createDesktopApp({ nodeBin: "/usr/local/bin/node", dashboardBin: "/dash/bin.js", vaultPath: "/My Vault", desktopDir });
+  assert.equal(owner.path, join(desktopDir, "Blueprint OS.app"));
+  assert.match(readFileSync(join(owner.path, "Contents", "Info.plist"), "utf8"), /<string>ai\.blueprintit\.shop-os-dashboard<\/string>/);
+  assert.equal(readFileSync(join(owner.path, "Contents", "MacOS", "Blueprint OS"), "utf8"), `#!/bin/bash\nexec '/usr/local/bin/node' '/dash/bin.js' '/My Vault'\n`);
+  // re-running overwrites
+  assert.equal(createDesktopApp({ nodeBin: "/n", dashboardBin: "/d", vaultPath: "/v", desktopDir, name: "Blueprint OS Staff Chat", extraArgs: ["--open", "/employee"], bundleId: "x.y" }).ok, true);
+});

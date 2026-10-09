@@ -345,3 +345,44 @@ test("dashboard: autostart failure is a warning with a readable message", async 
   assert.equal(r.ok, true);
   assert.equal(r.warnings.length, 1);
 });
+
+// ---- the second desktop icon (staff chat) ----
+const readVbs = (spawns, n) => readFileSync(spawns.filter((s) => s[0] === "cscript")[n][1].find((a) => a.endsWith(".vbs"))).subarray(2).toString("utf16le");
+
+test("dashboard: Windows creates both Blueprint OS.lnk and Blueprint OS Staff Chat.lnk (--open /employee)", async () => {
+  const d = dashCtx("win32");
+  assert.equal((await runSteps([dashboardStep(d.deps)], d.ctx, quiet)).ok, true);
+  const cs = d.spawns.filter((s) => s[0] === "cscript");
+  assert.equal(cs.length, 2);
+  const [owner, staff] = [readVbs(d.spawns, 0), readVbs(d.spawns, 1)];
+  assert.match(owner, /Blueprint OS\.lnk"\)/);
+  assert.ok(!owner.includes("--open"));
+  assert.match(staff, /Blueprint OS Staff Chat\.lnk"\)/);
+  assert.match(staff, /oShortcut\.Arguments = ""\"[^\n]*shop-os-dashboard\.js"" ""[^\n]*Vault"" --open \/employee"/);
+  assert.match(staff, /oShortcut\.Description = "Blueprint OS Staff Chat"/);
+});
+
+test("dashboard: Mac creates both desktop apps; re-running overwrites", async () => {
+  const d = dashCtx("darwin");
+  assert.equal((await runSteps([dashboardStep(d.deps)], d.ctx, quiet)).ok, true);
+  const app = join(d.h, "Desktop", "Blueprint OS Staff Chat.app");
+  assert.ok(existsSync(join(d.h, "Desktop", "Blueprint OS.app")));
+  const exe = join(app, "Contents", "MacOS", "Blueprint OS Staff Chat");
+  assert.match(readFileSync(exe, "utf8"), /'--open' '\/employee'\n$/);
+  assert.match(readFileSync(join(app, "Contents", "Info.plist"), "utf8"), /shop-os-dashboard\.staff-chat/);
+  assert.equal((await runSteps([dashboardStep(d.deps)], d.ctx, quiet)).ok, true);
+});
+
+test("dashboard: a failing staff icon is a warning in the same problems list; the owner icon still gets made", async () => {
+  const d = dashCtx("win32");
+  d.deps.spawnSyncImpl = (cmd, args) => {
+    d.spawns.push([cmd, args]);
+    if (cmd === "cscript" && readFileSync(args.find((a) => a.endsWith(".vbs"))).toString("utf16le").includes("Staff Chat")) return { status: 1, stderr: "staff denied" };
+    return { status: 0 };
+  };
+  const r = await runSteps([dashboardStep(d.deps)], d.ctx, { sleep: async () => {}, retryDelayMs: 0 });
+  assert.equal(r.ok, true);
+  assert.equal(r.warnings.length, 1);
+  assert.match(JSON.stringify(r.warnings), /staff chat desktop shortcut: staff denied/);
+  assert.doesNotMatch(JSON.stringify(r.warnings), /Could not create the desktop shortcut/);
+});

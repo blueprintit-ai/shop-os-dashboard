@@ -34,10 +34,11 @@ export async function findRunningInstance({ vaultPath, fetchImpl = fetch, start 
 
 // Only called when the caller decides probing is allowed; with an explicit
 // --port we never probe (CI health step, tests, power users).
-export async function decideStartup({ vaultPath, port, noBrowser, fetchImpl = fetch }) {
+export async function decideStartup({ vaultPath, port, noBrowser, openPath = "", fetchImpl = fetch }) {
   if (port) return { action: "start" };
   const found = await findRunningInstance({ vaultPath, fetchImpl });
   if (!found) return { action: "start" };
-  const url = `http://localhost:${found.port}`;
-  return { action: "attach", url, openBrowser: !noBrowser, message: `Blueprint OS is already running at ${url}` };
+  const base = `http://localhost:${found.port}`;
+  // openPath (already validated by the CLI, e.g. "/employee") is where the browser goes; the message names the server.
+  return { action: "attach", url: base + openPath, openBrowser: !noBrowser, message: `Blueprint OS is already running at ${base}` };
 }

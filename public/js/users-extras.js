@@ -1,11 +1,13 @@
 // /users page extras for the owner: the Business Assets folder setting (GET/PUT /api/settings) and
-// the phone/LAN access QR (address from /api/status, drawn with the vendored qrcode-generator).
+// the staff chat shortcut section (public/js/staff-chat.js), the phone/LAN access QR (address from /api/status, drawn with the vendored qrcode-generator).
 import { api, escapeHtml, toast } from "/static/js/api.js";
 import { lanUrl } from "/static/js/lan-url.js";
+import { mountStaffSection } from "/static/js/staff-chat.js";
 
 const root = document.getElementById("extras-root");
 
 root.innerHTML = `
+  <section class="extras-card" id="staff-chat"></section>
   <section class="extras-card" id="assets-setting">
     <h2>Business Assets folder</h2>
     <p class="muted">The folder the Business Assets page and widget read from. Sub-folders become categories. Leave empty to use the default (<span id="assets-default"></span>).</p>
@@ -38,6 +40,7 @@ async function loadPhone() {
   const addrEl = document.getElementById("phone-addr"), qrEl = document.getElementById("phone-qr");
   const res = await api("GET", "/api/status");
   const status = res.ok ? await res.json() : null;
+  mountStaffSection(document.getElementById("staff-chat"), status, { toast });
   const url = lanUrl(status);
   if (!url) { addrEl.textContent = "No Wi-Fi address detected: the dashboard is only reachable from this computer."; qrEl.hidden = true; return; }
   addrEl.innerHTML = `<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>`;

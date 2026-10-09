@@ -4,6 +4,7 @@ import { readJsonBody, sendJson } from "../lib/http.js";
 import { requireOwner } from "../auth.js";
 import { HIDDEN_DIRS } from "../scope.js";
 import { readAll } from "../audit.js";
+import { staffUrl, buildStaffShortcut } from "../lib/staff-shortcut.js";
 
 const CODE_STATUS = { USERNAME_TAKEN: 409, INVALID_USERNAME: 400, INVALID_ROLE: 400, WEAK_PASSWORD: 400, LAST_OWNER: 409, NOT_FOUND: 404 };
 function fail(res, e) { return sendJson(res, CODE_STATUS[e.code] ?? 500, { error: e.message, code: e.code ?? "ERROR" }); }
@@ -34,6 +35,16 @@ export function usersRoutes(ctx) {
         const limit = Math.min(100, Number(url.searchParams.get("limit")) || 20);
         const rows = readAll(join(homeDir, "activity.jsonl")).reverse().slice(0, limit);
         return sendJson(res, 200, rows), true;
+      }
+      if (req.method === "GET" && p === "/api/users/staff-shortcut") {
+        // Owner-only download pointing staff at /employee on the best LAN address (same ranking as the phone QR).
+        const ip = ctx.lanAddresses()[0];
+        if (!ip) return sendJson(res, 409, { error: "No shop network address was found on this computer. Connect it to the shop Wi-Fi or network and try again." }), true;
+        const file = buildStaffShortcut(url.searchParams.get("format"), staffUrl(ip, ctx.port ?? req.socket.localPort));
+        if (!file) return sendJson(res, 400, { error: "format must be url, webloc or bookmark" }), true;
+        res.writeHead(200, { "content-type": file.contentType, "content-disposition": `attachment; filename="${file.fileName}"`, "x-content-type-options": "nosniff", "cache-control": "no-store" });
+        res.end(file.body);
+        return true;
       }
       if (req.method === "GET" && p === "/api/users/folders") return sendJson(res, 200, listFolders(vaultPath)), true;
       if (req.method === "GET" && p === "/api/users") return sendJson(res, 200, users.list()), true;

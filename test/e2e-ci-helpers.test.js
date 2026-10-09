@@ -267,3 +267,16 @@ test("readLogs reads every file under a folder recursively; a missing folder giv
 });
 import * as fsAll from "node:fs";
 function require_fs() { return fsAll; }
+
+import { checkDesktopIcons, DESKTOP_ICONS } from "./e2e/assert-install.mjs";
+
+test("checkDesktopIcons requires both the owner and the staff chat icon on each OS", () => {
+  assert.deepEqual(DESKTOP_ICONS.win32, ["Blueprint OS.lnk", "Blueprint OS Staff Chat.lnk"]);
+  assert.deepEqual(DESKTOP_ICONS.other, ["Blueprint OS.app", "Blueprint OS Staff Chat.app"]);
+  const has = (...names) => (p) => names.some((n) => p.endsWith(n));
+  assert.doesNotThrow(() => checkDesktopIcons({ platform: "win32", desktop: "D", exists: has("Blueprint OS.lnk", "Blueprint OS Staff Chat.lnk") }));
+  assert.doesNotThrow(() => checkDesktopIcons({ platform: "darwin", desktop: "D", exists: has("Blueprint OS.app", "Blueprint OS Staff Chat.app") }));
+  assert.throws(() => checkDesktopIcons({ platform: "win32", desktop: "D", exists: (p) => p.endsWith("/Blueprint OS.lnk") || p.endsWith("\\Blueprint OS.lnk") }), /Staff Chat\.lnk/);
+  assert.throws(() => checkDesktopIcons({ platform: "darwin", desktop: "D", exists: (p) => /Blueprint OS\.app$/.test(p) }), /Staff Chat\.app/);
+  assert.throws(() => checkDesktopIcons({ platform: "darwin", desktop: "D", exists: (p) => /Staff Chat\.app$/.test(p) }), /Blueprint OS\.app/);
+});

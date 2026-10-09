@@ -9,6 +9,7 @@ import { LinkIndex } from "./notes/index.js";
 import { SessionsGuard } from "./sessions-guard.js";
 import { SessionStore } from "./chat/sessions.js";
 import { runTurn as defaultRunTurn } from "./chat/run-turn.js";
+import { lanAddresses } from "./lib/net.js";
 import { readLicense, validateLicense } from "./license.js";
 import { dashboardHome } from "./lib/paths.js";
 import { send, sendJson } from "./lib/http.js";
@@ -44,7 +45,7 @@ const licenseExempt = (p) => LICENSE_EXEMPT.has(p) || p === "/api/users" || p.st
 
 export function defaultLicenseCheck() { return validateLicense(readLicense()); }
 
-export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = defaultRunTurn, licenseCheck = defaultLicenseCheck, guardMax = 3, port = null, appDir = null, npmBin = null, restart = () => {}, updateInfo = { updateAvailable: false }, applyUpdateImpl = undefined }) {
+export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = defaultRunTurn, licenseCheck = defaultLicenseCheck, guardMax = 3, port = null, appDir = null, npmBin = null, restart = () => {}, updateInfo = { updateAvailable: false }, applyUpdateImpl = undefined, lanImpl = lanAddresses }) {
   mkdirSync(homeDir, { recursive: true });
   const audit = new Audit(join(homeDir, "activity.jsonl"));
   const users = new UserStore(join(homeDir, "users.json"));
@@ -57,7 +58,7 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
   const layoutStore = new LayoutStore(homeDir);
   const settingsStore = new SettingsStore(homeDir);
   const statusStore = new StatusStore(homeDir);
-  const ctx = { vaultPath, homeDir, users, auth, audit, index, brain, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore, statusStore, port, appDir, npmBin, restart, updateInfo, applyUpdateImpl };
+  const ctx = { vaultPath, homeDir, users, auth, audit, index, brain, guard, chatSessions, runTurn, licenseCheck, publicDir: PUBLIC_DIR, layoutStore, settingsStore, statusStore, port, appDir, npmBin, restart, updateInfo, applyUpdateImpl, lanAddresses: lanImpl };
 
   const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), brainRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx), statusRoutes(ctx), updateRoutes(ctx), kitCompatRoutes(ctx)];
   const gc = setInterval(() => { auth.gc(); chatSessions.gc(); }, 10 * 60 * 1000); gc.unref?.();
