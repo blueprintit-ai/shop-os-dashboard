@@ -74,17 +74,38 @@
   // size at load (`const W = innerWidth, H = innerHeight`). If the browser window grows afterwards (Brave on
   // Windows often loads into a smaller window, then maximises) the canvases stop short and a flat band shows
   // where they end. The kit does the same on the Mac app; here we reload once the window size has settled, so
-  // the page is laid out for the size it is really shown at. Never while a chat turn is streaming.
+  // the page is laid out for the size it is really shown at. The reload is held back while a chat turn streams,
+  // a widget drags, or a popover is open, and while text is being typed in the chat box (unless the window has
+  // been still for 3 s). Unsent chat text, the transcript scroll position and edit mode survive the reload.
+  const DRAFT_KEY = 'bp-resize-draft';
+  function restoreAfterResize() {
+    let d = null;
+    try { d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); sessionStorage.removeItem(DRAFT_KEY); } catch (_) {}
+    if (!d) return;
+    const inp = document.getElementById('chatIn');
+    if (inp && d.text) { inp.value = d.text; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+    const log = document.getElementById('chatLog');
+    if (log && d.scroll != null) log.scrollTop = d.scroll;
+    if (d.edit && !document.body.classList.contains('edit')) document.getElementById('editBtn')?.click();
+  }
   function reloadOnResize() {
+    restoreAfterResize();
     const base = { w: innerWidth, h: innerHeight };
-    let timer = null;
+    let timer = null, lastResize = 0;
+    const blocked = () => document.querySelector('#chatSend.stop, #profilePop.show, #acctpop.show, #runpop.show, #appop.show')
+      || document.body.classList.contains('dragging') || document.body.classList.contains('searchopen');
+    const typing = () => { const i = document.getElementById('chatIn'); return !!i && i.value !== '' && document.activeElement === i; };
     const settle = () => {
       timer = null;
       if (Math.abs(innerWidth - base.w) <= 8 && Math.abs(innerHeight - base.h) <= 8) return;
-      if (document.querySelector('#chatSend.stop') || document.body.classList.contains('dragging')) { timer = setTimeout(settle, 1000); return; }
+      if (blocked() || (typing() && Date.now() - lastResize < 3000)) { timer = setTimeout(settle, 500); return; }
+      try {
+        const inp = document.getElementById('chatIn'), log = document.getElementById('chatLog');
+        sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ text: inp ? inp.value : '', scroll: log ? log.scrollTop : null, edit: document.body.classList.contains('edit') }));
+      } catch (_) {}
       location.reload();
     };
-    addEventListener('resize', () => { if (timer) clearTimeout(timer); timer = setTimeout(settle, 500); });
+    addEventListener('resize', () => { lastResize = Date.now(); if (timer) clearTimeout(timer); timer = setTimeout(settle, 500); });
   }
 
   // The dot reads /api/status, which changes when a chat turn finishes (Claude sign-in 'unknown' -> 'yes') or a

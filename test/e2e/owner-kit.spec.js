@@ -340,10 +340,14 @@ test("loading small and then growing the window re-lays the page out for the rea
   try {
     await openOwner(page, b, { tourSeen: false });
     await page.waitForTimeout(1500);
+    await page.fill("#chatIn", "half-written question");   // unsent draft, input NOT focused
+    await page.evaluate(() => document.getElementById("chatIn").blur());
     await page.setViewportSize({ width: 1624, height: 910 });
     await expect.poll(() => page.evaluate(() => document.getElementById("ringCv").style.height).catch(() => ""), { timeout: 10000 }).toBe("910px");
     const sizes = await page.evaluate(() => ["hexCv", "ringCv", "gridCv"].map((id) => document.getElementById(id).style.width + "x" + document.getElementById(id).style.height));
     expect(sizes).toEqual(["1624pxx910px", "1624pxx910px", "1624pxx910px"]);
+    await expect(page.locator("#chatIn")).toHaveValue("half-written question");
+    expect(await page.evaluate(() => sessionStorage.getItem("bp-resize-draft"))).toBeNull();
     await page.screenshot({ path: join(process.env.PW_SHOTS || ".", "resized.png") }).catch(() => {});
   } finally { await ctx.close(); b.cleanup(); }
 });
@@ -400,4 +404,26 @@ test("the status dot explains an unknown Claude sign-in and goes green after a s
     await expect(page.locator("#chatLog .cm.ai .body")).toContainText("ok");
     await expect(dot).toHaveAttribute("data-state", "ok", { timeout: 8000 });
   } finally { b.cleanup(); }
+});
+
+test("resize reload waits while the chat box is focused with unsent text (until the window is still for 3 s), and not while a popover is open", async ({ browser }) => {
+  const b = await bootAsOwner();
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const page = await ctx.newPage();
+  try {
+    await openOwner(page, b, { tourSeen: false });
+    await page.click("#chatIn"); await page.keyboard.type("typing now");
+    await page.evaluate(() => { window.__still = true; });
+    await page.setViewportSize({ width: 1500, height: 850 });
+    await page.waitForTimeout(2000);
+    expect(await page.evaluate(() => window.__still)).toBe(true);          // not reloaded after 2 s
+    await expect.poll(() => page.evaluate(() => window.__still === true).catch(() => false), { timeout: 8000 }).toBe(false); // reloaded once still for 3 s
+    await expect(page.locator("#chatIn")).toHaveValue("typing now");
+    // a popover open: no reload
+    await page.evaluate(() => { window.__still = true; });
+    await page.click("#profileBtn");
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.waitForTimeout(2000);
+    expect(await page.evaluate(() => window.__still)).toBe(true);
+  } finally { await ctx.close(); b.cleanup(); }
 });
