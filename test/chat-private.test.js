@@ -156,6 +156,7 @@ test("staff options switch off skills and bundled skills", () => {
   const c = setup();
   try {
     assert.deepEqual(c.o.skills, []);
+    assert.ok(["Skill", "SlashCommand", "Grep", "Glob", "Bash"].every((t) => c.o.disallowedTools.includes(t)));
     assert.equal(c.o.settings.disableBundledSkills, true);
   } finally { c.cleanup(); }
 });

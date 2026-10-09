@@ -45,10 +45,19 @@ Staff sign in on the same dashboard and land on `/employee` (Chat and Notes, rea
 Staff (any role other than owner) can never read, list, search, link to, or have the chat read anything private; the owner sees everything. A file or folder is private when:
 
 1. any path segment is named `Private` (any case; at any depth: `Private/...`, `Raw/Private/...`, `Resources/Private/...`),
-2. a markdown note has `private: true` (or `yes`) in its front matter, or
-3. the owner lists it in `<vault>/Dashboard/private-paths.json`: `{ "paths": ["Team/Salaries", "Context/payroll.md"], "patterns": ["salary*", "*payroll*", "bank-*"] }`. Paths are vault-relative prefixes; patterns are case-insensitive, `*` is the only wildcard, and each is matched against every path segment. The file is re-read when it changes (no restart). A corrupt file is logged to the activity log (`private.config-invalid`) and ignored; if a good list was already loaded, that list stays in force.
+2. a markdown note has `private: true` (or `yes`) in its front matter, or its front matter is opened but never closed within the first 64 KB,
+3. the owner lists it in `<vault>/Dashboard/private-paths.json`: `{ "paths": ["Team/Salaries", "Context/payroll.md"], "patterns": ["salary*", "*payroll*", "bank-*"] }`. Paths are vault-relative prefixes; patterns are case-insensitive, `*` is the only wildcard, and each is matched against every path segment (names compare in Unicode NFC). The file is re-read when it changes (no restart). Entries that cannot be used (a pattern with `/`, a path with `..` or a drive letter, over the limits, unknown keys such as `"path"`) are skipped and logged to the activity log (`private.config-entry-ignored`). If the file exists but cannot be used at all (bad JSON, a trailing comma, wrong shape) and no earlier good list was loaded, staff are denied EVERY path until it is fixed (`private.config-invalid`); if a good list was loaded earlier it stays in force. `privateListStatus()` in `src/scope.js` reports which state the list is in and how many entries were ignored, for the Users page, or
+4. it is under the vault's top-level `Chats/` folder (conversation transcripts; owner transcripts also carry `private: true`).
 
-`src/scope.js` `isPathAllowed` is the one check every route uses, applied to the real path (links and junctions into Private are refused). Staff chat gets `Read` plus two in-process tools, `search` and `list` (`src/chat/vault-tools.js`), instead of the SDK's built-in Grep and Glob, which return matches from every file below a folder.
+`src/scope.js` `isPathAllowed` (or a `createScope` for a whole walk) is the one check every route uses, applied to the real path (links and junctions into Private are refused). For staff every "no" is the same `404 {"error":"Not available"}` whether the file is private, listed, outside their folders or missing. Staff chat gets `Read` plus two in-process tools, `search` and `list` (`src/chat/vault-tools.js`), instead of the SDK's built-in Grep and Glob, which return matches from every file below a folder. A staff prompt is made inert before the engine sees it (`src/chat/prompt-guard.js`): `@path` mentions are expanded by Claude Code itself, before any tool check, so every `@` gets a zero-width space, and a prompt that starts with `/` or `!` is prefixed with plain words so it cannot run a slash command or shell line. The stats, routines and snapshot feeds are owner-only.
+
+**Known limits.** What is not covered:
+
+- Hard links the owner creates to a private file cannot be detected (only symlinks, junctions and names are).
+- Only `private: true` / `yes` / `on` / `1` written as a plain `key: value` front matter line is recognized. YAML flow style (`{private: true}`), anchors and aliases, `!!bool` tags, list forms and a nested `private` are not.
+- Anyone who opens the vault directly (Dropbox, Obsidian, the file system, a backup) is outside the dashboard's control.
+- The AI used by the owner (terminal or owner chat) still sees everything; anything it writes into a normal folder is no longer private. Keep derived notes in `Private/`.
+- The staff list/Read answers do not reveal whether a name exists, but a staff member who already knows a path's parent folder can see that a granted folder has other entries only through what `list` shows, which omits private ones.
 
 ## Second Brain page
 

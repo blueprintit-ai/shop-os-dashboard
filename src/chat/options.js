@@ -72,6 +72,8 @@ export function buildQueryOptions({ vaultPath, user, systemPrompt, claudeSession
     strictMcpConfig: true, // no other MCP server from user, project or plugin config
     settings: { autoMemoryEnabled: false, disableBundledSkills: true }, // the owner's chat memory must not surface in a staff turn; no bundled skills
     skills: [],
+    // belt and braces: the allow-list above is `tools`; these names are also refused outright
+    disallowedTools: ["Skill", "SlashCommand", "Agent", "Task", "Bash", "Write", "Edit", "NotebookEdit", "Grep", "Glob", "WebFetch", "WebSearch", "ToolSearch"],
     settingSources: [],
     maxTurns: 20,
     canUseTool: async (toolName, input) => {
