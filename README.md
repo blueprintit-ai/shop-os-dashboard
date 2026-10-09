@@ -57,7 +57,6 @@ Staff (any role other than owner) can never read, list, search, link to, or have
 - Only `private: true` / `yes` / `on` / `1` written as a plain `key: value` front matter line is recognized. YAML flow style (`{private: true}`), anchors and aliases, `!!bool` tags, list forms and a nested `private` are not.
 - Anyone who opens the vault directly (Dropbox, Obsidian, the file system, a backup) is outside the dashboard's control.
 - The AI used by the owner (terminal or owner chat) still sees everything; anything it writes into a normal folder is no longer private. Keep derived notes in `Private/`.
-- The staff list/Read answers do not reveal whether a name exists, but a staff member who already knows a path's parent folder can see that a granted folder has other entries only through what `list` shows, which omits private ones.
 
 ## Second Brain page
 
