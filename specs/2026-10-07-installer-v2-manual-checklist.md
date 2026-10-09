@@ -17,7 +17,9 @@ Preconditions:
 - [ ] Double-click the v2 `.bat` for the test key. No UAC prompt appears.
 - [ ] SmartScreen "More info > Run anyway" works once and the window stays open.
 - [ ] Defender raises no alert for the starter, MinGit, the Claude installer, or the Obsidian installer.
-- [ ] The folder-picker window opens IN FRONT of the console (not hidden behind it), accepts a Dropbox folder, and a name containing a space or an accent works. (The picker is started with `-STA`; front-most behavior is unproven, UNVERIFIED.)
+- [ ] The console prints "Opening the folder window. The first time this can take up to a minute." immediately. If the window is slow, every 10 seconds it prints "Still waiting for the folder window. Look for a window called "Browse For Folder" in your taskbar, or press Alt+Tab. (<n>s)" and stops once the window returns.
+- [ ] The folder-picker window opens IN FRONT of the console (not hidden behind it), accepts a Dropbox folder, and a name containing a space or an accent works. (The picker is started with `-STA` and now shows an invisible owner form and activates it first; front-most behavior is UNVERIFIED until this runs.)
+- [ ] Any other step that takes longer than 8 seconds prints `Still working on "<step title>"... please keep this window open. (<n>s)` every 10 seconds. The folder step and the final Claude sign-in never print it.
 - [ ] Cancel the picker once: the message and support code are shown and the window stays open.
 - [ ] Claude Code opens for sign-in in the browser; after `/exit` it reopens and `/bp-setup` is listed.
 - [ ] Claude Desktop installed on this PC: open its Code tab in the vault folder; `/bp-setup` is listed.
@@ -26,7 +28,8 @@ Preconditions:
 - [ ] STANDARD USER: on a non-admin Windows account, Obsidian installs per-user and opens the vault folder. This was never proven (the CI runner is admin). If it fails the Obsidian step only warns; note the hint shown. (UNVERIFIED.)
 - [ ] The `ShopOSDashboard` scheduled task exists.
 - [ ] The desktop shortcut "Blueprint OS" opens the dashboard.
-- [ ] Re-run the same `.bat`: finishes quickly, nothing duplicated, CLAUDE.md untouched.
+- [ ] Re-run the same `.bat`: finishes quickly, nothing duplicated, CLAUDE.md untouched. It does NOT ask for the folder again: it prints "Using your existing Blueprint OS folder: <path>" (the path is shown on the console only, never sent to support).
+- [ ] Re-run with `--choose-folder` (or set `SHOPOS_CHOOSE_FOLDER=1`): the folder window opens again. Delete the saved folder (or its CLAUDE.md) and re-run: the window also opens, because the saved path is no longer valid.
 - [ ] Unplug the network at "Installing Claude Code": the failure message appears with a support code; the Admin Installs page shows the run within a minute; the alert email arrives.
 - [ ] Non-ASCII Windows username (for example an account named with an accent): the install completes. `tar.exe` and PowerShell 5.1 read paths through the ANSI code page, so this is a real risk for the Node and package extraction. (UNVERIFIED; the CI user name is ASCII.)
 - [ ] Username with an apostrophe (O'Brien): the `.bat` download line works (fixed in license-server `0bdc110`, tested only by text assertions, UNVERIFIED on a real PC).
@@ -36,7 +39,7 @@ Preconditions:
 - [ ] No password prompt anywhere. No Homebrew prompt.
 - [ ] Obsidian lands in `~/Applications` and opens without a Gatekeeper block. If macOS blocks Obsidian on first open, right-click Obsidian.app > Open and record it here. (Never proven, UNVERIFIED.)
 - [ ] A Mac without Xcode Command Line Tools: the installer says to run `xcode-select --install` (or succeeds without it) and reports a hint.
-- [ ] The folder dialog (osascript) appears in front of Terminal.
+- [ ] The folder dialog (osascript) appears in front of Terminal. (No bring-to-front change was made on the Mac; the same 10-second reminders apply. If it opens behind Terminal, note it.)
 - [ ] Desktop item "Blueprint OS.app" opens the dashboard; LaunchAgent `ai.blueprintit.shop-os-dashboard` is loaded after logout/login.
 - [ ] Re-run the `.command`: second run does not fail on the LaunchAgent (a known deferred defect: `launchctl load` on an already loaded plist is not preceded by an unload; if the dashboard step now warns, that is the defect).
 
