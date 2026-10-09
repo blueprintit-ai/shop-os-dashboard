@@ -18,7 +18,7 @@ function writeVbs(path, text) {
 const vbsQuote = (s) => `""${s}""`;
 
 // schtasks /tr is limited to 261 characters, and node + dashboard + vault paths blow past that
-// for a profile like "C:\Users\OC Outfeed". So the task only runs a tiny launcher with a short
+// for a profile like "C:\Users\Jane Doe". So the task only runs a tiny launcher with a short
 // fixed name in the .shopos folder; the long command lives inside the launcher. wscript runs it
 // with no console window (Run ..., 0, False). The launcher is overwritten on every install.
 //

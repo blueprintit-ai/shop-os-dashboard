@@ -60,14 +60,14 @@ import { mkdirSync } from "node:fs";
 
 function longHome() {
   const base = mkdtempSync(join(tmpdir(), "as-"));
-  // a profile like "C:\Users\OC Outfeed" but ~120 chars, with a space and non-ASCII
-  const dir = join(base, "Users", "OC Outfeed Ünïcøde " + "x".repeat(60), ".shopos");
+  // a profile like "C:\Users\Jane Doe" but ~120 chars, with a space and non-ASCII
+  const dir = join(base, "Users", "Jane Doe Ünïcøde " + "x".repeat(60), ".shopos");
   mkdirSync(dir, { recursive: true });
   return dir;
 }
-const LONG_NODE = "C:\\Users\\OC Outfeed\\.shopos\\node\\node-v22.17.0-win-x64\\node.exe";
-const LONG_DASH = "C:\\Users\\OC Outfeed\\.shopos\\package\\shop-os-dashboard-main\\bin\\shop-os-dashboard.js";
-const LONG_VAULT = "C:\\Users\\OC Outfeed\\Documents\\Blueprint OS\\Some Very Long Business Name Folder\\Vault Number One " + "y".repeat(60);
+const LONG_NODE = "C:\\Users\\Jane Doe\\.shopos\\node\\node-v22.17.0-win-x64\\node.exe";
+const LONG_DASH = "C:\\Users\\Jane Doe\\.shopos\\package\\shop-os-dashboard-main\\bin\\shop-os-dashboard.js";
+const LONG_VAULT = "C:\\Users\\Jane Doe\\Documents\\Blueprint OS\\Some Very Long Business Name Folder\\Vault Number One " + "y".repeat(60);
 
 test("registerAutoStart: /tr is only the short launcher call, well under 261 chars, with a long profile and vault", () => {
   const launcherDir = longHome();
