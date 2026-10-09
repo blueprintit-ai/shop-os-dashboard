@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { isPathAllowed, isPrivatePath, allowedRoots, configurePrivateAudit } from "../src/scope.js";
+import { mkdirSync, writeFileSync, statSync, renameSync, utimesSync } from "node:fs";
+import { isPathAllowed, isPrivatePath, allowedRoots, configurePrivateAudit, privateListStatus } from "../src/scope.js";
 import { makeVault, writeConfig, link, STAFF, OWNER, OWNER_LIST } from "./helpers/private-vault.js";
 
 const staffOK = (v, rel) => isPathAllowed(v, STAFF, join(v, rel));
@@ -140,29 +141,139 @@ test("hostile list entries: empty, dot, dotdot, absolute, non-strings, oversized
   } finally { cleanup(); }
 });
 
-test("corrupt or wrongly shaped list: treated as empty, audited once per change; last good list is kept", () => {
+test("unusable list and no earlier good list: staff are denied EVERYTHING (fail closed), once-logged, status says so", () => {
+  const events = [];
+  configurePrivateAudit({ log: (e, f) => events.push({ e, ...f }) });
+  try {
+    for (const bad of ['{ "paths": ["Resources/ok.md"], }', "{ not json", "", "[]", "null", JSON.stringify({ paths: "Resources", patterns: {} }), '{"paths": [1,2,],}']) {
+      const { vault, cleanup } = makeVault({ config: bad });
+      try {
+        events.length = 0;
+        assert.equal(staffOK(vault, "Resources/ok.md"), false, `fail closed for ${JSON.stringify(bad)}`);
+        assert.equal(staffOK(vault, "Projects/Acme.md"), false);
+        assert.deepEqual(allowedRoots(vault, STAFF), []);
+        assert.equal(isPathAllowed(vault, OWNER, join(vault, "Resources", "ok.md")), true, "the owner is never blocked");
+        assert.equal(privateListStatus(vault).state, "invalid-fail-closed");
+        assert.equal(privateListStatus(vault).staffBlocked, true);
+        assert.equal(events.filter((x) => x.e === "private.config-invalid").length, 1, "logged once, not per call");
+        assert.equal(events[0].failClosed, true);
+        writeConfig(vault, { paths: [], patterns: [] });
+        assert.equal(staffOK(vault, "Resources/ok.md"), true, "fixing the file restores access without a restart");
+        assert.equal(privateListStatus(vault).state, "ok");
+      } finally { cleanup(); }
+    }
+  } finally { configurePrivateAudit(null); }
+});
+
+test("a good list that is later saved half-written keeps protecting (last good list)", () => {
   const { vault, cleanup } = makeVault();
   const events = [];
   configurePrivateAudit({ log: (e, f) => events.push({ e, ...f }) });
   try {
-    writeConfig(vault, "{ not json");
-    assert.equal(staffOK(vault, "Resources/salary-2025.md"), true);
-    assert.equal(staffOK(vault, "Resources/salary-2025.md"), true);
-    assert.equal(events.filter((x) => x.e === "private.config-invalid").length, 1, "logged once, not per call");
-    writeConfig(vault, JSON.stringify({ paths: "Resources", patterns: {} }));
-    assert.equal(staffOK(vault, "Resources/salary-2025.md"), true, "wrong shape = empty");
-    writeConfig(vault, "[]");
-    writeConfig(vault, "null");
-    assert.equal(staffOK(vault, "Resources/ok.md"), true);
-    // a good list, then a corrupt save: protection must not silently vanish
     writeConfig(vault, OWNER_LIST);
     assert.equal(staffOK(vault, "Resources/salary-2025.md"), false);
     writeConfig(vault, "{ half written");
     assert.equal(staffOK(vault, "Resources/salary-2025.md"), false, "last good list stays in force");
-    // deleting the file is a deliberate empty
+    assert.equal(staffOK(vault, "Resources/ok.md"), true, "and staff are not locked out");
+    assert.equal(privateListStatus(vault).state, "invalid-kept-previous");
+    assert.equal(events.filter((x) => x.e === "private.config-invalid" && x.keptPreviousList).length, 1);
     writeConfig(vault, { paths: [], patterns: [] });
     assert.equal(staffOK(vault, "Resources/salary-2025.md"), true);
   } finally { configurePrivateAudit(null); cleanup(); }
+});
+
+test("every dropped list entry is audited once per file change and counted in the status", () => {
+  const { vault, cleanup } = makeVault();
+  const events = [];
+  configurePrivateAudit({ log: (e, f) => events.push({ e, ...f }) });
+  try {
+    writeConfig(vault, { path: ["Resources"], paths: ["ok/../x", "C:\\Windows", "", 5, "Resources/Finance"], patterns: ["a/b", "***", "", 7, "salary*"], extra: 1 });
+    assert.equal(staffOK(vault, "Resources/salary-2025.md"), false, "valid entries still work");
+    staffOK(vault, "Resources/ok.md");
+    const ig = events.filter((x) => x.e === "private.config-entry-ignored");
+    assert.equal(ig.length, 10, JSON.stringify(ig.map((x) => x.entry)));
+    assert.ok(ig.some((x) => x.entry === "path" && /unknown top-level key/.test(x.reason)));
+    assert.ok(ig.some((x) => /\.\./.test(x.reason)) && ig.some((x) => /drive letter/.test(x.reason)) && ig.some((x) => /slash/.test(x.reason)));
+    assert.equal(privateListStatus(vault).ignoredEntries, 10);
+    assert.equal(privateListStatus(vault).state, "ok");
+    events.length = 0;
+    staffOK(vault, "Resources/ok.md");
+    assert.equal(events.length, 0, "not logged again until the file changes");
+    const big = { paths: Array.from({ length: 600 }, (_, i) => `x${i}`), patterns: [] };
+    writeConfig(vault, big);
+    staffOK(vault, "Resources/ok.md");
+    assert.equal(privateListStatus(vault).ignoredEntries, 1, "over-limit is counted");
+  } finally { configurePrivateAudit(null); cleanup(); }
+});
+
+test("Unicode: a decomposed name on disk matches a composed list entry and pattern, and the other way round", () => {
+  const nfd = "Cafe\u0301 Re\u0301sume\u0301";
+  const nfc = nfd.normalize("NFC");
+  assert.notEqual(nfd, nfc);
+  const { vault, cleanup } = makeVault({ config: { paths: [`Resources/${nfc}`], patterns: [`*${"re\u0301sume\u0301".normalize("NFC")}*`, "caf\u00e9-*"] } });
+  try {
+    mkdirSync(join(vault, "Resources", nfd), { recursive: true });
+    writeFileSync(join(vault, "Resources", nfd, "a.md"), "x");
+    writeFileSync(join(vault, "Resources", "cafe\u0301-menu.md"), "x");
+    writeFileSync(join(vault, "Resources", "Mon R\u00e9sum\u00e9.md"), "x");
+    assert.equal(isPrivatePath(vault, join(vault, "Resources", nfd, "a.md")), true, "NFD folder vs NFC list path");
+    assert.equal(isPrivatePath(vault, join(vault, "Resources", nfc, "a.md")), true);
+    assert.equal(isPrivatePath(vault, join(vault, "Resources", "cafe\u0301-menu.md")), true, "NFD name vs NFC pattern");
+    assert.equal(isPrivatePath(vault, join(vault, "Resources", "Mon R\u00e9sum\u00e9.md")), true);
+    writeConfig(vault, { paths: [`Resources/${nfd}`], patterns: [`*re\u0301sume\u0301*`] });
+    assert.equal(isPrivatePath(vault, join(vault, "Resources", nfc, "a.md")), true, "NFC folder vs NFD list path");
+    assert.equal(isPrivatePath(vault, join(vault, "Resources", "Mon R\u00e9sum\u00e9.md")), true, "NFC name vs NFD pattern");
+    assert.equal(isPrivatePath(vault, join(vault, "Resources", "ok.md")), false);
+  } finally { cleanup(); }
+});
+
+test("front matter opened but never closed is private (fail closed); a closed one is read normally", () => {
+  const { vault, cleanup } = makeVault();
+  try {
+    writeFileSync(join(vault, "Resources", "unclosed.md"), "---\ntitle: x\nno closing fence ever\n" + "z".repeat(100));
+    writeFileSync(join(vault, "Resources", "unclosed-big.md"), "---\ntitle: x\n" + "a: b\n".repeat(20000) + "---\nbody\n");
+    writeFileSync(join(vault, "Resources", "closed.md"), "---\ntitle: x\n---\nbody\n");
+    writeFileSync(join(vault, "Resources", "hr-note.md"), "Intro\n\n---\n\nafter the rule\n");
+    assert.equal(staffOK(vault, "Resources/unclosed.md"), false);
+    assert.equal(staffOK(vault, "Resources/unclosed-big.md"), false, "closing fence beyond the 64 KB window");
+    assert.equal(staffOK(vault, "Resources/closed.md"), true);
+    assert.equal(staffOK(vault, "Resources/hr-note.md"), true, "a rule in the middle of a note is not front matter");
+  } finally { cleanup(); }
+});
+
+test("same-size, same-mtime rewrites are still noticed (cache keys include ctime and inode)", () => {
+  const { vault, cleanup } = makeVault();
+  try {
+    const f = join(vault, "Resources", "swap.md");
+    writeFileSync(f, "---\nprivate: no\n---\nx");
+    assert.equal(staffOK(vault, "Resources/swap.md"), true);
+    const st = statSync(f);
+    renameSync(f, f + ".old");
+    writeFileSync(f, "---\nprivate: yes\n---\nx"); // same size as before
+    utimesSync(f, st.atime, st.mtime); // same mtime too
+    assert.equal(staffOK(vault, "Resources/swap.md"), false, "new inode / ctime");
+  } finally { cleanup(); }
+});
+
+test("the front matter cache does not collapse at its cap: hot entries survive eviction", async () => {
+  const { vault, cleanup } = makeVault();
+  try {
+    assert.equal(staffOK(vault, "Resources/fm-true.md"), false);
+    for (let i = 0; i < 20; i++) writeFileSync(join(vault, "Resources", `bulk${i}.md`), "---\nprivate: yes\n---\n");
+    for (let i = 0; i < 20; i++) assert.equal(staffOK(vault, `Resources/bulk${i}.md`), false);
+    assert.equal(staffOK(vault, "Resources/fm-true.md"), false);
+  } finally { cleanup(); }
+});
+
+test("the top-level Chats folder is private to staff by default, the owner still sees it", () => {
+  const { vault, cleanup } = makeVault();
+  try {
+    mkdirSync(join(vault, "Chats"), { recursive: true });
+    writeFileSync(join(vault, "Chats", "2026-01-01-pat.md"), "x");
+    const g = { role: "staff", switches: { folders: ["Chats", "Resources"], teamFolder: null } };
+    assert.equal(isPathAllowed(vault, g, join(vault, "Chats", "2026-01-01-pat.md")), false);
+    assert.equal(isPathAllowed(vault, OWNER, join(vault, "Chats", "2026-01-01-pat.md")), true);
+  } finally { cleanup(); }
 });
 
 test("a deny-list change takes effect on the next call, both directions", () => {
