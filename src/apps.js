@@ -5,10 +5,10 @@ import { vaultDashboardDir } from "./lib/paths.js";
 // SHOP APPS widget rows (the kit page's launcher). Stored in <vault>/Dashboard/apps.json as
 // [{ id, name, sub, url, icon }]. `icon` is one of the kit page's sprite names (its ICS map;
 // test/kit-compat.test.js checks this list against the synced page). `url` is http(s), or a
-// path on this dashboard (/notes); the page opens it in a new tab with noopener.
+// path on this dashboard (/brain); the page opens it in a new tab with noopener.
 export const APP_ICONS = ["gen", "tele", "brain", "exca", "wall", "docs", "links", "sprint", "story", "edit", "anim"];
 export const MAX_APPS = 24;
-export const DEFAULT_APPS = Object.freeze([Object.freeze({ id: "sbRow", name: "Second Brain", sub: "Have one? It auto-links. If not, learn to build it", url: "/notes", icon: "brain" })]);
+export const DEFAULT_APPS = Object.freeze([Object.freeze({ id: "sbRow", name: "Second Brain", sub: "Your whole workspace as a living map", url: "/brain", icon: "brain" })]);
 
 const appsFile = (vaultPath) => join(vaultDashboardDir(vaultPath), "apps.json");
 

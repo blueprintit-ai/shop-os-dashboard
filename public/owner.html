@@ -2828,7 +2828,7 @@ const WQUAD = [
       toast('opening second brain');
       Promise.resolve(window.probeSecondBrain ? window.probeSecondBrain() : window.SB_UP).then(up => {
         window.open(up ? 'http://localhost:5210'
-          : '/notes', '_blank');
+          : '/brain', '_blank');
       });
     } },
   { lab:'INSPECT', ic:'<path d="M-8 0 Q0 -6 8 0 Q0 6 -8 0Z"/><circle cx="0" cy="0" r="2.2"/>',
@@ -3521,7 +3521,7 @@ function openSecondBrain() {
     Promise.resolve(window.probeSecondBrain ? window.probeSecondBrain() : false).then(up => {
       portalBusy = false;
       if (up) openSecondBrain();
-      else window.open('/notes', '_blank');
+      else window.open('/brain', '_blank');
     });
     return;
   }
