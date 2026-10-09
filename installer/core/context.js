@@ -1,7 +1,7 @@
 import { homedir, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { runCommand } from "./exec.js";
 import { collectSnapshot } from "./snapshot.js";
@@ -22,6 +22,10 @@ export function createContext(overrides = {}) {
     flags: { noLaunch: false }, extraPath: [], runId: null, supportCode: null, reporter: null,
     pkgDir: PKG_ROOT,
     print: (m) => console.log(m),
+    readText: (p) => readFileSync(p, "utf8"),
+    // Timers are injectable so tests run on fake time; they never keep the process alive on their own.
+    setInterval: (fn, ms) => { const h = setInterval(fn, ms); h?.unref?.(); return h; },
+    clearInterval: (h) => clearInterval(h),
     prompt: async (q, def = "") => {
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       try { const a = (await rl.question(def ? `${q} [${def}] ` : `${q} `)).trim(); return a || def; } finally { rl.close(); }

@@ -17,11 +17,12 @@ import { healthStep } from "./steps/health.js";
 import { launchStep } from "./steps/launch.js";
 
 export function parseArgs(argv, env) {
-  const a = { licenseKey: env.SHOPOS_LICENSE_KEY, vaultPath: env.SHOPOS_VAULT_PATH, noLaunch: env.SHOPOS_NO_LAUNCH === "1", licenseServer: env.SHOPOS_LICENSE_SERVER, testMode: env.SHOPOS_TEST_MODE === "1" };
+  const a = { licenseKey: env.SHOPOS_LICENSE_KEY, vaultPath: env.SHOPOS_VAULT_PATH, noLaunch: env.SHOPOS_NO_LAUNCH === "1", licenseServer: env.SHOPOS_LICENSE_SERVER, testMode: env.SHOPOS_TEST_MODE === "1", chooseFolder: env.SHOPOS_CHOOSE_FOLDER === "1" };
   const takes = { "--license": "licenseKey", "--vault": "vaultPath" };
   for (let i = 0; i < argv.length; i++) {
     const [flag, ...rest] = String(argv[i]).split("=");
     if (flag === "--no-launch") { a.noLaunch = true; continue; }
+    if (flag === "--choose-folder") { a.chooseFolder = true; continue; }
     const key = takes[flag];
     if (!key) continue;
     if (rest.length) { const v = rest.join("="); if (v) a[key] = v; continue; }
@@ -29,7 +30,7 @@ export function parseArgs(argv, env) {
     if (next !== undefined && !String(next).startsWith("--")) { a[key] = next; i++; }
   }
   for (const k of Object.keys(a)) if (a[k] === undefined) delete a[k];
-  return { noLaunch: false, testMode: false, ...a };
+  return { noLaunch: false, testMode: false, chooseFolder: false, ...a };
 }
 
 export const buildSteps = () => [machineCheckStep(), licenseStep(), vaultLocationStep(), claudeCodeStep(), pluginsStep(), obsidianStep(), vaultStep(), dashboardStep(), healthStep(), launchStep()];
@@ -77,7 +78,7 @@ export async function runInstall({ argv = process.argv.slice(2), env = process.e
   let reportSent = false;
   try {
     ctx = createContext({
-      env, licenseKey: args.licenseKey ?? null, vaultPath: args.vaultPath ?? null, flags: { noLaunch: args.noLaunch },
+      env, licenseKey: args.licenseKey ?? null, vaultPath: args.vaultPath ?? null, flags: { noLaunch: args.noLaunch, chooseFolder: args.chooseFolder },
       ...(args.licenseServer ? { licenseServer: args.licenseServer } : {}), ...ctxOverrides,
     });
     print = ctx.print;
@@ -96,6 +97,7 @@ export async function runInstall({ argv = process.argv.slice(2), env = process.e
     const { main, launch } = splitSteps(steps ?? buildSteps());
     const result = await runSteps(main, ctx, {
       reporter: ctx.reporter,
+      onStepStart: (s) => ctx.print(`  > ${s.title}...`),
       onStepDone: (e) => ctx.print(`  ${e.status === "failed" ? "x" : e.status === "warn" ? "!" : e.status === "skipped" ? "-" : "ok"} ${e.title}`),
     });
     const snapshot = await ctx.snapshot().catch(() => undefined);

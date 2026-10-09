@@ -77,10 +77,27 @@ body { overflow: hidden; height: 100vh; }
 .w.chromeless { background: transparent; box-shadow: none; backdrop-filter: none; border-top: 0; z-index: 25; }
 .w.chromeless::after { display: none; }
 
+/* base.css styles every bare <header> as light-theme chrome (white card
+   background, bottom border, bordered buttons). Both the top bar and each
+   widget heading are <header> elements, so reset that chrome here, scoped to
+   them only -- users/assets/employee/login keep base.css's look. */
 .wh {
   padding: 13px 4px 9px; font-size: 12.6px; letter-spacing: 3.6px;
   user-select: none; display: flex; gap: 9px; align-items: center;
+  background: transparent; border-bottom: 0; color: var(--cream);
 }
+#owner-header {
+  background: transparent; color: var(--cream);
+  border-bottom: 1px solid color-mix(in srgb, var(--cream) 14%, transparent);
+}
+#owner-header button, #owner-header a {
+  color: var(--cream); background: none;
+  border: 1px solid color-mix(in srgb, var(--cream) 22%, transparent);
+}
+#theme-btn svg { display: block; margin: 3px 0; }
+#theme-btn .ti-moon, html.light #theme-btn .ti-sun { display: none; }
+html.light #theme-btn .ti-moon { display: block; }
+#owner-header button:hover, #owner-header a:hover { border-color: var(--accent); color: var(--accent); }
 body.edit .wh { cursor: move; }
 .wh .g {
   color: var(--mute); opacity: 0; transition: opacity .15s; font-size: 13px;

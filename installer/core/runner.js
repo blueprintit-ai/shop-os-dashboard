@@ -27,7 +27,42 @@ function field(e, k) {
   try { return e?.[k]; } catch { return undefined; }
 }
 
-export async function runSteps(steps, ctx, { reporter, now = Date.now, sleep = realSleep, retryDelayMs = 1500, onStepDone } = {}) {
+const HEARTBEAT_AFTER_MS = 8000;
+const HEARTBEAT_EVERY_MS = 10000;
+
+// Console-only reassurance for long steps. Never goes to the reporter; never throws; never keeps the process alive.
+function startHeartbeat(step, ctx, now, timers) {
+  if (step.heartbeat === false || typeof ctx?.print !== "function") return null;
+  const t0 = now();
+  let lastAt = null;
+  try {
+    return timers.setInterval(() => {
+      try {
+        const elapsed = now() - t0;
+        if (elapsed < HEARTBEAT_AFTER_MS) return;
+        if (lastAt !== null && elapsed - lastAt < HEARTBEAT_EVERY_MS) return;
+        lastAt = elapsed;
+        ctx.print(`Still working on "${step.title}"... please keep this window open. (${Math.round(elapsed / 1000)}s)`);
+      } catch { /* ignore */ }
+    }, 1000);
+  } catch {
+    return null;
+  }
+}
+
+function stopHeartbeat(handle, timers) {
+  if (handle === null) return;
+  try { timers.clearInterval(handle); } catch { /* ignore */ }
+}
+
+function defaultSetInterval(fn, ms) {
+  const h = setInterval(fn, ms);
+  h?.unref?.();
+  return h;
+}
+
+export async function runSteps(steps, ctx, { reporter, now = Date.now, sleep = realSleep, retryDelayMs = 1500, onStepStart, onStepDone, setInterval: setIv = defaultSetInterval, clearInterval: clearIv = clearInterval } = {}) {
+  const timers = { setInterval: setIv, clearInterval: clearIv };
   const timeline = [];
   for (const step of steps) {
     const entry = { id: step.id, title: step.title, status: "ok", attempts: 0, durationMs: 0 };
@@ -37,11 +72,14 @@ export async function runSteps(steps, ctx, { reporter, now = Date.now, sleep = r
       if (step.check && (await step.check(ctx))) {
         entry.status = "skipped";
       } else {
+        // Console-only: the check said the action will run, so tell the customer now (once, not per attempt).
+        try { onStepStart?.(step); } catch { /* a callback must not break the run */ }
         const max = 1 + (step.retries ?? 0);
         let lastErr = null;
         let failed = false;
         for (let attempt = 1; attempt <= max; attempt++) {
           entry.attempts = attempt;
+          const hb = startHeartbeat(step, ctx, now, timers);
           try {
             await step.action(ctx);
             if (step.verify) {
@@ -51,12 +89,15 @@ export async function runSteps(steps, ctx, { reporter, now = Date.now, sleep = r
             failed = false;
             break;
           } catch (e) {
+            stopHeartbeat(hb, timers);
             lastErr = e;
             failed = true;
             if (attempt < max) {
               safeSend(reporter, { status: "retry", step: step.id, error_message: errText(e) });
               await sleep(retryDelayMs);
             }
+          } finally {
+            stopHeartbeat(hb, timers);
           }
         }
         if (failed) throw lastErr;

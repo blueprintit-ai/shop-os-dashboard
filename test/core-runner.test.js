@@ -165,3 +165,33 @@ test("warn step with failing verify is a warn with error and hint", async () => 
   assert.equal(r.timeline[0].error, "getaddrinfo ENOTFOUND codeload.github.com");
   assert.match(r.timeline[0].hint, /GitHub unreachable/);
 });
+
+test("onStepStart fires after check says run, before the action; done fires after", async () => {
+  const ev = [];
+  const steps = [{ id: "a", title: "A", severity: "stop", check: async () => { ev.push("check"); return false; }, action: async () => { ev.push("action"); } }];
+  await runSteps(steps, {}, { ...opts(fakeReporter()), onStepStart: (s) => ev.push(`start:${s.id}:${s.title}`), onStepDone: (e) => ev.push(`done:${e.status}`) });
+  assert.deepEqual(ev, ["check", "start:a:A", "action", "done:ok"]);
+});
+
+test("onStepStart is not called for skipped steps", async () => {
+  const ev = [];
+  await runSteps([{ id: "a", title: "A", severity: "stop", check: async () => true, action: async () => {} }], {}, { ...opts(fakeReporter()), onStepStart: () => ev.push("start"), onStepDone: (e) => ev.push(e.status) });
+  assert.deepEqual(ev, ["skipped"]);
+});
+
+test("onStepStart fires once for a retried step, and a failure still reports failed", async () => {
+  const ev = [];
+  let n = 0;
+  const steps = [{ id: "a", title: "A", severity: "stop", retries: 2, action: async () => { n++; throw new Error("boom"); } }];
+  const r = await runSteps(steps, {}, { ...opts(fakeReporter()), onStepStart: () => ev.push("start"), onStepDone: (e) => ev.push(e.status) });
+  assert.equal(n, 3);
+  assert.deepEqual(ev, ["start", "failed"]);
+  assert.equal(r.ok, false);
+});
+
+test("onStepStart never reaches the reporter and a throwing callback does not break the run", async () => {
+  const rep = fakeReporter();
+  const r = await runSteps([{ id: "a", title: "A", severity: "stop", action: async () => {} }], {}, { ...opts(rep), onStepStart: () => { throw new Error("cb"); } });
+  assert.equal(r.ok, true);
+  assert.ok(rep.sent.every((e) => !JSON.stringify(e).includes("> ")));
+});
