@@ -62,6 +62,9 @@ button, input, textarea, select { font-family: inherit; }
 /* ---- OS shell: full-viewport canvas, no page scroll ---- */
 body { overflow: hidden; height: 100vh; }
 
+/* faint hexagon-grid backdrop (one static canvas, see js/owner/hex-bg.js) */
+#hexCv { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+
 /* ---- Plan 1's #chat-root/#notes-root ship with base.css's own
    `@media (min-width: 900px) { #notes-root { display: grid; ... } }` rule,
    which is author-origin and beats the browser's default `[hidden]{display:
@@ -93,22 +96,33 @@ body { overflow: hidden; height: 100vh; }
    widget heading are <header> elements, so reset that chrome here, scoped to
    them only -- users/assets/employee/login keep base.css's look. */
 .wh {
-  padding: 13px 4px 9px; font-size: 12.6px; letter-spacing: 3.6px;
+  padding: 13px 4px 9px; font-size: 14px; letter-spacing: 3.6px;
   user-select: none; display: flex; gap: 9px; align-items: center;
   background: transparent; border-bottom: 0; color: var(--cream);
 }
+/* Top bar = the kit's quiet icon row. It is position:fixed and widgets.js keeps
+   it glued under the title widget's big name; the container ignores the
+   pointer so only the icons themselves are clickable. */
 #owner-header {
-  background: transparent; color: var(--cream);
-  border-bottom: 1px solid color-mix(in srgb, var(--cream) 14%, transparent);
+  position: fixed; top: 46px; left: 0; right: 0; z-index: 26;
+  display: flex; justify-content: center; align-items: center; gap: 18px;
+  margin: 0; padding: 0; background: transparent; color: var(--cream);
+  border: 0; pointer-events: none;
 }
 #owner-header button, #owner-header a {
-  color: var(--cream); background: none;
-  border: 1px solid color-mix(in srgb, var(--cream) 22%, transparent);
+  width: 22px; height: 22px; padding: 1px; margin: 0; display: block;
+  color: var(--cream); background: none; border: 0; border-radius: 0; cursor: pointer;
+  pointer-events: auto; line-height: 0;
 }
-#theme-btn svg { display: block; margin: 3px 0; }
+#owner-header svg {
+  width: 100%; height: 100%; display: block; stroke: var(--mute); fill: none; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; transition: stroke .15s;
+}
+#owner-header button:hover svg, #owner-header a:hover svg,
+#owner-header button:focus-visible svg, #owner-header a:focus-visible svg { stroke: var(--accent); }
+#owner-header button:focus-visible, #owner-header a:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 #theme-btn .ti-moon, html.light #theme-btn .ti-sun { display: none; }
 html.light #theme-btn .ti-moon { display: block; }
-#owner-header button:hover, #owner-header a:hover { border-color: var(--accent); color: var(--accent); }
 body.edit .wh { cursor: move; }
 .wh .g {
   color: var(--mute); opacity: 0; transition: opacity .15s; font-size: 13px;
@@ -262,21 +276,16 @@ body.searching .w:not(#w-title), body.searching #orbBox { opacity: .22; transiti
 }
 
 /* ---- title widget (w-title) ---- */
-#w-title .tb { text-align: center; padding: 6px 10px; position: relative; width: 100%; }
+#w-title .tb { display: block; text-align: center; padding: 10px 10px 0; position: relative; width: 100%; }
 #w-title h1 {
   font-size: 26px; font-weight: 700; letter-spacing: -.5px; white-space: nowrap;
   display: flex; align-items: center; justify-content: center; gap: 9px;
 }
 #w-title h1 .hexlogo { width: 26px; height: 26px; flex: 0 0 auto; }
+#w-title h1 { margin: 0; line-height: 1.25; }
+#w-title h1 b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
 #w-title h1 span { color: var(--accent); font-weight: 300; letter-spacing: .5px; }
 #w-title .sub { font-size: 12px; color: var(--mute); }
-.tbar { display: flex; justify-content: center; gap: 18px; margin-top: 7px; }
-.tbar button { width: 22px; height: 22px; background: transparent; border: 0; padding: 1px; cursor: pointer; }
-.tbar button svg {
-  width: 100%; height: 100%; stroke: var(--mute); fill: none; stroke-width: 2;
-  stroke-linecap: round; stroke-linejoin: round; transition: stroke .15s;
-}
-.tbar button:hover svg { stroke: var(--accent); }
 body.edit #editBtn svg, body.searchopen #searchBtn svg { stroke: var(--accent); }
 
 /* ---- generic widget list-row building blocks (routines/briefing/recent/etc) ---- */
@@ -288,6 +297,8 @@ body.edit #editBtn svg, body.searchopen #searchBtn svg { stroke: var(--accent); 
 .rowi:first-child { border-top: 0; }
 .rowi .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cream); opacity: .7; flex: 0 0 auto; }
 .rowi .dot.hot { background: var(--accent); opacity: 1; }
+.rowi a { color: var(--cream); text-decoration: none; }
+.rowi a:hover { color: var(--accent); }
 .rowi .meta { margin-left: auto; font-size: 10.5px; color: var(--mute); white-space: nowrap; }
 
 .hero { display: flex; align-items: baseline; gap: 8px; padding: 2px 0 6px; }
@@ -298,6 +309,7 @@ body.edit #editBtn svg, body.searchopen #searchBtn svg { stroke: var(--accent); 
   display: flex; align-items: center; gap: 9px; font-size: 12px; padding: 4.5px 5px; margin: 0 -5px;
   border-radius: 5px; cursor: pointer;
 }
+a.row2 { color: inherit; text-decoration: none; }
 .row2:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .row2 b { font-weight: 500; white-space: nowrap; }
 .row2 small { display: block; font-size: 10px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -483,3 +495,35 @@ body.edit .wh .addskill { pointer-events: none; opacity: .4; }
 canvas.qr-code { display: block; margin: 4px auto; background: #fff; border-radius: 4px; }
 .update-banner { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent); font-size: 11.5px; }
 .update-banner[hidden] { display: none; }
+
+/* ---- widget header icons (pixel sprites, see js/owner/icons.js) ---- */
+.wh .hic { width: 24px; height: 24px; image-rendering: pixelated; }
+.wh .wt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- empty / unavailable states: a quiet small-caps line + one hint ---- */
+.empty { padding: 4px 0 0; }
+.empty .e1 {
+  display: flex; align-items: center; gap: 8px; font-size: 10.5px; font-weight: 500;
+  letter-spacing: 2.5px; text-transform: uppercase; color: var(--mute);
+}
+.empty .e1::before {
+  content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: 0 0 auto;
+}
+.empty .e2 { margin: 6px 0 0 13px; font-size: 11.5px; line-height: 1.55; color: var(--mute); max-width: 34em; }
+.empty .e2 a, .empty .e2 code { color: var(--accent); font-family: inherit; text-decoration: none; }
+.empty .e2 a { text-decoration: underline dotted; }
+
+/* ---- ring: day tag under each artifact ball (kit's .agetag), hidden for today's ---- */
+.oi .agetag {
+  position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
+  font: 900 8px 'Doto', 'Outfit', monospace; letter-spacing: .5px; color: var(--mute);
+  background: var(--panel); border: 1px solid color-mix(in srgb, var(--cream) 28%, transparent);
+  border-radius: 6px; padding: 1px 5px; display: none; pointer-events: none; z-index: 2; white-space: nowrap;
+}
+.oi .agetag.on { display: block; }
+
+/* ---- stats: 2x2 grid of big number + caption (kit look) ---- */
+.statgrid .caprow { align-items: center; }
+.statgrid .bignum { font-weight: 600; }
+.statgrid .cap { text-transform: uppercase; }
+.wb .foot2 { margin-top: 14px; }

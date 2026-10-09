@@ -15,13 +15,14 @@
 //    Each favorite is a plain link to the real GET /assets/file/:id route
 //    instead, opened in a new tab -- exactly what the brief's own sketch did.
 import { api, escapeHtml } from "/static/js/api.js";
+import { emptyState } from "./data-widgets.js";
 
 export function mountAssetsFavorites(el) {
   render();
 
   async function render() {
     const res = await api("GET", "/api/assets");
-    if (!res.ok) { el.innerHTML = `<p class="muted">Assets not set up yet.</p>`; return; }
+    if (!res.ok) { el.innerHTML = emptyState("Assets unavailable", "Business Assets could not be loaded."); return; }
     const data = await res.json();
     const favs = data.favorites || [];
     const rows = favs.map((f) => `
@@ -30,7 +31,7 @@ export function mountAssetsFavorites(el) {
         <span class="st">&#9733;</span><b>${escapeHtml(f.name)}</b><span class="cat">${escapeHtml(f.category)}</span><span class="act">OPEN &rarr;</span>
       </a>`).join("");
     const count = (data.files || []).length;
-    el.innerHTML = `${rows || `<p class="muted">No favorites pinned yet &mdash; star a document in <a href="/assets" target="_blank">Business Assets</a>.</p>`}
+    el.innerHTML = `${rows || emptyState("Nothing pinned yet", `Star a document in <a href="/assets" target="_blank">Business Assets</a> to keep it here.`)}
       <a class="foot2" href="/assets" target="_blank"><i></i>${count} DOCUMENT${count === 1 ? "" : "S"} &middot; VIEW ALL &rarr;</a>`;
   }
 }

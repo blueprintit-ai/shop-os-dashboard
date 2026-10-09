@@ -20,13 +20,14 @@
 //    needsInput: false -- none of that kit machinery has anything to attach
 //    to in this project (YAGNI).
 import { api, escapeHtml } from "/static/js/api.js";
+import { emptyState } from "./data-widgets.js";
 
 export function mountSkillsDeck(el) {
   render();
 
   async function render() {
     const res = await api("GET", "/api/runs");
-    if (!res.ok) { el.innerHTML = `<p class="muted">Skills not available.</p>`; return; }
+    if (!res.ok) { el.innerHTML = emptyState("Skills unavailable", "The skills list could not be loaded."); return; }
     const { skills, runs } = await res.json();
     const deck = skills.map((s) => `
       <div class="row2 skrow" data-id="${escapeHtml(s.id)}">
