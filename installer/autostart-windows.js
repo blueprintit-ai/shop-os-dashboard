@@ -1,17 +1,40 @@
 // installer/autostart-windows.js
 import { spawnSync as defaultSpawnSync } from "node:child_process";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 
 const TASK_NAME = "ShopOSDashboard";
 
-// Per-user, no /RL HIGHEST, no elevation — /sc ONLOGON registers a login
-// trigger in the current user's own Task Scheduler library.
-export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, spawnSyncImpl = defaultSpawnSync }) {
-  const command = `"${nodeBin}" "${dashboardBin}" "${vaultPath}" --no-browser`;
+const LAUNCHER_NAME = "start-dashboard.vbs";
+
+// VBScript reads a BOM-less file as the ANSI codepage (mangles non-ASCII paths) and does not
+// understand a UTF-8 BOM; it does honour a UTF-16 LE BOM. See createDesktopShortcut below.
+function writeVbs(path, text) {
+  writeFileSync(path, Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(text, "utf16le")]));
+}
+
+// In VBScript a double quote inside a string literal is written "".
+const vbsQuote = (s) => `""${s}""`;
+
+// schtasks /tr is limited to 261 characters, and node + dashboard + vault paths blow past that
+// for a profile like "C:\Users\OC Outfeed". So the task only runs a tiny launcher with a short
+// fixed name in the .shopos folder; the long command lives inside the launcher. wscript runs it
+// with no console window (Run ..., 0, False). The launcher is overwritten on every install.
+//
+// Per-user, no /RL HIGHEST, no elevation: /sc ONLOGON registers a login trigger in the current
+// user's own Task Scheduler library.
+export function registerAutoStart({ nodeBin, dashboardBin, vaultPath, launcherDir = join(homedir(), ".shopos"), spawnSyncImpl = defaultSpawnSync }) {
+  const launcherPath = join(launcherDir, LAUNCHER_NAME);
+  try {
+    mkdirSync(launcherDir, { recursive: true });
+    const command = [nodeBin, dashboardBin, vaultPath].map(vbsQuote).join(" ") + " --no-browser";
+    writeVbs(launcherPath, `Set oShell = CreateObject("WScript.Shell")\r\noShell.Run "${command}", 0, False\r\n`);
+  } catch (e) {
+    return { ok: false, error: `Could not write the launcher: ${e.message}` };
+  }
   const result = spawnSyncImpl("schtasks", [
-    "/create", "/tn", TASK_NAME, "/sc", "ONLOGON", "/tr", command, "/f",
+    "/create", "/tn", TASK_NAME, "/sc", "ONLOGON", "/tr", `wscript.exe "${launcherPath}"`, "/f",
   ], { encoding: "utf8" });
   if (result.status !== 0) return { ok: false, error: result.stderr || `schtasks exited ${result.status}` };
   return { ok: true };
@@ -41,7 +64,7 @@ oShortcut.Save
     // VBScript doesn't recognise it: the three BOM bytes become junk at line 1,
     // column 1 -> "Microsoft VBScript compilation error: Invalid character",
     // seen live on a customer install). VBScript does honour a UTF-16 LE BOM.
-    writeFileSync(vbsPath, Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(vbs, "utf16le")]));
+    writeVbs(vbsPath, vbs);
     const result = spawnSyncImpl("cscript", ["//nologo", vbsPath], { encoding: "utf8" });
     if (result.status !== 0) return { ok: false, error: result.stderr || `cscript exited ${result.status}` };
     return { ok: true, path: shortcutPath };

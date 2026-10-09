@@ -32,6 +32,8 @@ Preconditions:
 - [ ] Re-run with `--choose-folder` (or set `SHOPOS_CHOOSE_FOLDER=1`): the folder window opens again. Delete the saved folder (or its CLAUDE.md) and re-run: the window also opens, because the saved path is no longer valid.
 - [ ] Unplug the network at "Installing Claude Code": the failure message appears with a support code; the Admin Installs page shows the run within a minute; the alert email arrives.
 - [ ] Non-ASCII Windows username (for example an account named with an accent): the install completes. `tar.exe` and PowerShell 5.1 read paths through the ANSI code page, so this is a real risk for the Node and package extraction. (UNVERIFIED; the CI user name is ASCII.)
+- [ ] `ShopOSDashboard` task exists and the dashboard starts after a restart with a profile path containing a space and ~100 characters (for example `C:\Users\OC Outfeed...`). The dashboard step must NOT warn about "Value for '/tr' option cannot be more than 261 character(s)": the task now runs `wscript.exe "<profile>\.shopos\start-dashboard.vbs"` and the launcher holds the long command. Check: `schtasks /query /tn ShopOSDashboard /v /fo list` shows the short Task To Run; sign out and in, the dashboard answers. (UNVERIFIED on real Windows; unit-tested only.)
+- [ ] During a long step the console shows `  > <step title>...` as soon as the step starts (for example `  > Installing Claude Code...`), so the last line on screen is never the previous step's `ok` line. Skipped steps on a re-run show only `  - <title>`. (UNVERIFIED on a real PC.)
 - [ ] Username with an apostrophe (O'Brien): the `.bat` download line works (fixed in license-server `0bdc110`, tested only by text assertions, UNVERIFIED on a real PC).
 
 ### Mac (repeat the whole Windows list in spirit, plus)

@@ -61,7 +61,7 @@ export function dashboardStep(deps = {}) {
       const dashboardBin = join(ctx.pkgDir, "bin", "shop-os-dashboard.js");
       const problems = [];
       const auto = isWin
-        ? win.registerAutoStart({ nodeBin: node.node, dashboardBin, vaultPath: ctx.vaultPath, ...spawnOpt })
+        ? win.registerAutoStart({ nodeBin: node.node, dashboardBin, vaultPath: ctx.vaultPath, launcherDir: ctx.shoposHome, ...spawnOpt })
         : mac.registerAutoStart({ nodeBin: node.node, dashboardBin, vaultPath: ctx.vaultPath, homeOverride: ctx.homeDir, ...spawnOpt });
       if (!auto.ok) problems.push(`Could not register the dashboard to start at login: ${auto.error}`);
       const desktopDir = await desktopDirFor(ctx);
