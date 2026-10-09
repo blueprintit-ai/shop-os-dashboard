@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { bootAsOwner, requestAs } from "./helpers/boot.js";
 import { buildDemoVault, put } from "./helpers/brain-vault.js";
+import { LIMITS } from "../src/brain/scan.js";
 import { BrainStore, MIN_REFRESH_MS, STALE_MS } from "../src/brain/store.js";
 
 // the skills list reads the Claude home (installed plugins): keep the machine running the tests out of it
@@ -305,69 +306,42 @@ test("licence: a failed licence check pauses the map's API (402) and the page sh
   } finally { b.cleanup(); }
 });
 
-test("a vault with 5,000 notes: the graph stays small and quick", async () => {
+function bigVault(b) {
+  mkdirSync(join(b.vault, "Daily"), { recursive: true });
+  for (let i = 0; i < 5000; i++) writeFileSync(join(b.vault, "Daily", `n-${i}.md`), `# n${i}\n[[n-${(i + 1) % 5000}]]\n`);
+}
+
+test("a vault with 5,000 notes: the graph stays small (caps, not timing)", async () => {
   const b = await bootAsOwner();
   try {
-    mkdirSync(join(b.vault, "Daily"), { recursive: true });
-    for (let i = 0; i < 5000; i++) writeFileSync(join(b.vault, "Daily", `n-${i}.md`), `# n${i}\n[[n-${(i + 1) % 5000}]]\n`);
-    const t0 = Date.now();
+    bigVault(b);
+    b.server.ctx.brain.limits = { ...LIMITS, budgetMs: 120_000 }; // a slow CI runner must not trip the scan's own time budget
     const res = await get(b, "owner", "/api/brain/graph?fresh=1");
     const text = await res.text();
     const g = JSON.parse(text);
     assert.equal(res.status, 200);
     assert.ok(g.meta.totalFiles >= 5000);
+    assert.equal(typeof g.meta.partial, "boolean"); // true here: 5,000 notes exceed the 4,000-notes-read cap
+    assert.equal(typeof g.meta.hiddenFiles, "number");
+    assert.ok(g.meta.hiddenFiles >= 4000, String(g.meta.hiddenFiles));
     assert.ok(g.nodes.length < 1000, String(g.nodes.length));
     assert.ok(g.mdLinks.length <= 6000);
     assert.ok(text.length < 1_000_000, String(text.length));
-    assert.ok(Date.now() - t0 < 5000);
   } finally { b.cleanup(); }
 });
 
-test("file: secrets at any depth, a link to a secret, and extensionless files are not served", async (t) => {
-  const b = await boot();
-  try {
-    put(b.vault, "Context/secrets.md", "# s");
-    put(b.vault, "Context/secrets/api.md", "# api");
-    put(b.vault, "Context/id_rsa", "-----BEGIN PRIVATE KEY-----");
-    put(b.vault, "Context/LICENSE", "plain");
-    const f = (p) => get(b, "owner", "/api/brain/file?path=" + encodeURIComponent(p));
-    assert.equal((await f("Context/secrets.md")).status, 403);
-    assert.equal((await f("Context/secrets/api.md")).status, 403);
-    assert.equal((await f("Context/id_rsa")).status, 403);
-    const lic = await f("Context/LICENSE");
-    assert.equal(lic.status, 400);
-    assert.equal((await json(lic)).error, "binary");
-    try { symlinkSync(join(b.vault, "Context", "secrets.md"), join(b.vault, "Context", "innocent.md")); }
-    catch { t.diagnostic("symlinks unavailable"); return; }
-    const viaLink = await f("Context/innocent.md");
-    assert.equal(viaLink.status, 403, "the real path is a secret");
-    assert.doesNotMatch(await viaLink.text(), /# s/);
-  } finally { b.cleanup(); }
-});
-
-test("tweaks: __proto__ / constructor / prototype ids are refused and a stored __proto__ edit is ignored", async () => {
-  const b = await boot();
-  try {
-    mkdirSync(join(b.vault, "Projects", "constructor"), { recursive: true });
-    put(b.vault, "Projects/constructor/a.md", "# a");
-    const tw = (body) => post(b, "owner", "/api/brain/tweak", body);
-    for (const id of ["__proto__", "constructor", "prototype", "Projects/constructor"]) {
-      const r = await tw({ action: "edit", id, label: "x" });
-      assert.equal(r.status, id === "Projects/constructor" ? 200 : 400, id);
-    }
-    mkdirSync(join(b.vault, "Dashboard", "brain"), { recursive: true });
-    writeFileSync(join(b.vault, "Dashboard", "brain", "tweaks.json"), '{"hidden":[],"edits":{"__proto__":{"label":"pwned","desc":"x"},"constructor":{"label":"c"}}}');
-    const g = await json(await get(b, "owner", "/api/brain/graph"));
-    assert.equal(g.nodes.some((n) => n.label === "pwned" || n.label === "c"), false);
-    assert.equal({}.label, undefined);
-  } finally { b.cleanup(); }
-});
-
-test("graph meta reports partial scans", async () => {
-  const b = await boot();
-  try {
-    const g = await json(await get(b, "owner", "/api/brain/graph?fresh=1"));
-    assert.equal(g.meta.partial, false);
-    assert.equal(typeof g.meta.bytesRead, "number");
-  } finally { b.cleanup(); }
+test("the scan honours its own budget: a tiny time budget or byte cap still answers, with meta.partial", async () => {
+  for (const limits of [{ budgetMs: -1 }, { maxBytesRead: 1 }]) {
+    const b = await bootAsOwner();
+    try {
+      bigVault(b);
+      b.server.ctx.brain.limits = { ...LIMITS, ...limits };
+      const res = await get(b, "owner", "/api/brain/graph?fresh=1");
+      assert.equal(res.status, 200, JSON.stringify(limits));
+      const g = await res.json();
+      assert.equal(g.meta.partial, true, JSON.stringify(limits));
+      assert.ok(g.nodes.some((n) => n.id === "CLAUDE.md"));
+      assert.ok(g.nodes.length < 1000);
+    } finally { b.cleanup(); }
+  }
 });

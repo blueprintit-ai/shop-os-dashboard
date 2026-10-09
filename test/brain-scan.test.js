@@ -202,10 +202,11 @@ test("scan: the time budget covers link extraction, partial is reported, the byt
   const v = tmp();
   try {
     for (let i = 0; i < 400; i++) put(v, `Daily/n${i}.md`, `# n${i}\n[[n${(i + 1) % 400}]]\n` + "x".repeat(500));
-    const ticks = [];
-    const t = setInterval(() => ticks.push(1), 1); // proves other timers can run during the scan
+    // deterministic: a setImmediate loop can only advance if the scan hands the event loop back
+    let ticks = 0, stop = false;
+    const spin = () => { if (!stop) { ticks++; setImmediate(spin); } };
+    spin();
     const bytesCapped = await scanVault(v, new Map(), { ...LIMITS, maxBytesRead: 5000, yieldMs: 0 });
-    clearInterval(t);
     assert.equal(bytesCapped.partial, true);
     assert.ok(bytesCapped.scanStats.bytes <= 5000 + LIMITS.mdReadBytes);
     assert.ok(bytesCapped.scanStats.read < 400);
@@ -213,7 +214,8 @@ test("scan: the time budget covers link extraction, partial is reported, the byt
     assert.equal(budget.partial, true);
     const full = await scanVault(v);
     assert.equal(full.partial, false);
-    assert.ok(ticks.length > 0, "a timer ran while the scan was in progress");
+    stop = true;
+    assert.ok(ticks > 0, "the event loop ran while the scan was in progress");
   } finally { rmSync(v, { recursive: true, force: true }); }
 });
 
