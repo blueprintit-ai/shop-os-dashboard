@@ -88,5 +88,5 @@ export async function bootPrivate({ config, staffSwitches = {}, prepare } = {}) 
   if (r.status !== 201) throw new Error("staff " + r.status);
   r = await req("staff", "POST", "/api/login", { username: "marco", password: "longenough1", remember: false });
   if (r.status !== 200) throw new Error("login " + r.status);
-  return { ...made, home, server, base, req, cleanup: () => { server.close(); server.ctx.index.close(); made.cleanup(); } };
+  return { ...made, home, server, base, req, jar, cleanup: () => { server.close(); server.ctx.index.close(); made.cleanup(); } };
 }

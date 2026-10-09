@@ -253,9 +253,9 @@ test("business assets folder inside the vault: Private location, listed paths, f
         assert.equal((await ctx.req("staff", "POST", "/api/assets/favorite", { id: f.id, on: true })).status, 404, f.name);
         if (f.name !== "linked.md") assert.equal((await get(ctx, "owner", `/assets/file/${f.id}`)).status, 200, "owner still opens " + f.name);
       }
-      for (const [cat, name] of [["Hidden", "new.txt"], ["Insurance", "payroll-new.txt"], ["Private", "x.txt"]]) {
+      for (const [cat, name] of [["Hidden", "new.txt"], ["Insurance", "payroll-new.txt"], ["Private", "x.txt"]].concat(dirRel.startsWith("Private") ? [["Insurance", "anything.txt"]] : [])) {
         const up = await fetch(`${ctx.base}/api/assets/upload?category=${cat}&name=${name}`, { method: "POST", headers: { cookie: ctx.jar?.staff ?? "", origin: ctx.base }, body: "x" }).catch(() => null);
-        if (up && dirRel.startsWith("Resources")) assert.ok([401, 403, 404].includes(up.status), `${cat}/${name} -> ${up.status}`);
+        assert.equal(up.status, 404, `${dirRel}: staff upload to ${cat}/${name}`);
       }
     } finally { ctx.cleanup(); }
   }
