@@ -341,3 +341,92 @@ test("the fast paths (tree walk, indexed notes) agree exactly with the full chec
     }
   } finally { cleanup(); }
 });
+
+test("Windows name aliases of a private-front-matter note are private everywhere (stream, trailing dot, trailing space)", async () => {
+  const { createScope } = await import("../src/scope.js");
+  const { LinkIndex } = await import("../src/notes/index.js");
+  const { searchNotes } = await import("../src/notes/search.js");
+  const { vault, cleanup } = makeVault({ config: OWNER_LIST });
+  try {
+    const aliases = ["fm-true.md::$DATA", "fm-true.md:stream", "fm-true.md.", "fm-true.md ", "fm-true.md...  ", "FM-TRUE.MD.", "fm-true.md. .", "fm-yes.md::$DATA", "salary-2025.md.", "bank-statement.txt "];
+    for (const a of aliases) {
+      const p = join(vault, "Resources", a);
+      assert.equal(isPathAllowed(vault, STAFF, p), false, `isPathAllowed ${a}`);
+      assert.equal(isPrivatePath(vault, p), true, `isPrivatePath ${a}`);
+      assert.equal(createScope(vault, STAFF).allowedNote(`Resources/${a}`), false, `allowedNote ${a}`);
+      assert.equal(createScope(vault, STAFF).allowed(p), false);
+    }
+    // aliases of public files stay as they were (nothing is private about them)
+    assert.equal(isPrivatePath(vault, join(vault, "Resources", "ok.md.")), false);
+  } finally { cleanup(); }
+});
+
+test("hidden folders cannot be reached through a name alias, for anyone", () => {
+  const { vault, cleanup } = makeVault();
+  try {
+    for (const seg of [".obsidian.", ".obsidian ", ".obsidian::$INDEX_ALLOCATION", ".OBSIDIAN.", ".git. ", "node_modules.", ".claude..."]) {
+      assert.equal(isPathAllowed(vault, OWNER, join(vault, "Resources", seg, "x.json")), false, `owner ${seg}`);
+      assert.equal(isPathAllowed(vault, STAFF, join(vault, "Resources", seg, "x.json")), false, `staff ${seg}`);
+      assert.equal(isPathAllowed(vault, OWNER, join(vault, seg, "x.json")), false, `owner root ${seg}`);
+    }
+  } finally { cleanup(); }
+});
+
+test("hasWindowsAlias is a pure helper: a colon after the drive letter, or a segment ending in dot or space", async () => {
+  const { hasWindowsAlias } = await import("../src/scope.js");
+  for (const p of ["a/fm.md::$DATA", "a/b:c", "a/b.", "a/b ", "a/b./c", "x\\y.\\z", "a/b..  ", "C:\\v\\a\\b.md:s"]) assert.equal(hasWindowsAlias(p, "win32"), true, p);
+  for (const p of ["a/b.md", "a/..", "./a", "a/.hidden", "C:\\v\\a\\b.md", "C:/v/a", "a b/c d.md", "/"]) assert.equal(hasWindowsAlias(p, "win32"), false, p);
+  assert.equal(hasWindowsAlias("a/b.", "linux"), false, "only Windows resolves these names to another file");
+  assert.equal(hasWindowsAlias("a/b:c", "darwin"), false);
+});
+
+test("on Windows staff paths with alias spellings are refused outright; the owner is not affected", async () => {
+  const { createScope } = await import("../src/scope.js");
+  const { vault, cleanup } = makeVault();
+  try {
+    writeFileSync(join(vault, "Resources", "plain.md. x"), "x");
+    const win = (u) => createScope(vault, u, { platform: "win32" });
+    for (const a of ["ok.md.", "ok.md ", "ok.md::$DATA", "ok.md:s"]) {
+      assert.equal(win(STAFF).allowed(join(vault, "Resources", a)), false, a);
+      assert.equal(win(STAFF).allowedNote(`Resources/${a}`), false, a);
+    }
+    assert.equal(win(STAFF).allowed(join(vault, "Resources", "ok.md")), true);
+    assert.equal(win(OWNER).allowed(join(vault, "Resources", "ok.md.")), true);
+    assert.equal(createScope(vault, STAFF, { platform: "linux" }).allowed(join(vault, "Resources", "ok.md.")), true, "on other systems the canonical file is judged (and is fine)");
+  } finally { cleanup(); }
+});
+
+test("8.3-style names (~) take the full realpath route and cannot hide a link into Private", () => {
+  const { vault, cleanup } = makeVault();
+  try {
+    link(join(vault, "Resources", "Private"), join(vault, "Projects", "PRIVAT~1"));
+    link(join(vault, "Resources", "fm-true.md"), join(vault, "Projects", "FM-TRU~1.MD"));
+    assert.equal(staffOK(vault, "Projects/PRIVAT~1/hr.md"), false);
+    assert.equal(staffOK(vault, "Projects/FM-TRU~1.MD"), false);
+    assert.equal(isPrivatePath(vault, join(vault, "Projects", "PRIVAT~1")), true);
+    mkdirSync(join(vault, "Projects", "REAL~1"));
+    writeFileSync(join(vault, "Projects", "REAL~1", "a.md"), "x");
+    assert.equal(staffOK(vault, "Projects/REAL~1/a.md"), true, "a genuine folder with ~ in its name is still usable");
+  } finally { cleanup(); }
+});
+
+test("an index note whose parent folder was swapped for a link into Private is refused at once (no wait for a rebuild)", async () => {
+  const { LinkIndex } = await import("../src/notes/index.js");
+  const { searchNotes } = await import("../src/notes/search.js");
+  const { renameSync, readdirSync } = await import("node:fs");
+  const { vault, cleanup } = makeVault();
+  try {
+    mkdirSync(join(vault, "Resources", "Sub"), { recursive: true });
+    writeFileSync(join(vault, "Resources", "Sub", "plan.md"), "# plan\nunique-plan-word\n");
+    mkdirSync(join(vault, "Private", "Board"), { recursive: true });
+    writeFileSync(join(vault, "Private", "Board", "plan.md"), "# plan\nunique-plan-word secret-board-token\n");
+    const idx = new LinkIndex(vault); idx.build();
+    assert.equal(searchNotes(vault, STAFF, idx, "unique-plan-word").length, 1);
+    renameSync(join(vault, "Resources", "Sub"), join(vault, "Resources", "Sub.old"));
+    link(join(vault, "Private", "Board"), join(vault, "Resources", "Sub"));
+    assert.deepEqual(searchNotes(vault, STAFF, idx, "unique-plan-word"), [], "index is stale, the check is not");
+    const { createScope } = await import("../src/scope.js");
+    assert.equal(createScope(vault, STAFF).allowedNote("Resources/Sub/plan.md"), false);
+    assert.equal(createScope(vault, OWNER).allowedNote("Resources/Sub/plan.md"), true);
+  } finally { cleanup(); }
+});

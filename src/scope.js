@@ -83,6 +83,42 @@ function normSeg(seg) {
   return s;
 }
 
+const HIDDEN_SET = new Set(HIDDEN_DIRS);
+const hiddenName = (seg) => HIDDEN_SET.has(normSeg(seg));
+
+// What Windows would open for a name: an NTFS stream suffix (":$DATA", ":stream") and trailing dots and spaces are
+// dropped by the file system, so "fm-true.md::$DATA", "fm-true.md." and "fm-true.md " are all fm-true.md.
+function stripAlias(seg) {
+  let s = seg;
+  const colon = s.indexOf(":");
+  if (colon > 0) s = s.slice(0, colon);
+  s = s.replace(/[. \t]+$/, "");
+  return s === "" ? seg : s;
+}
+const isAliasName = (seg) => seg !== "." && seg !== ".." && stripAlias(seg) !== seg;
+
+// The same path with every alias spelling replaced by the name the OS would open. Checked IN ADDITION to the path as typed
+// (on macOS and Linux "a.md." is a different file from "a.md", so both are judged).
+function canonAlias(abs) {
+  const parts = abs.split(sep);
+  let changed = false;
+  const out = parts.map((s, i) => {
+    if (i === 0 && (s === "" || /^[A-Za-z]:$/.test(s))) return s;
+    const t = isAliasName(s) ? stripAlias(s) : s;
+    if (t !== s) changed = true;
+    return t;
+  });
+  return changed ? out.join(sep) : abs;
+}
+
+// Pure and platform-injectable: does this path use a spelling that Windows maps onto another name (a colon after the drive
+// letter, or a segment ending in a dot or a space)? Staff are refused such paths on Windows outright.
+export function hasWindowsAlias(path, platform = process.platform) {
+  if (platform !== "win32") return false;
+  const rest = String(path).replace(/^[A-Za-z]:/, "").replace(/^[\\/]{2}[^\\/]+[\\/][^\\/]+/, "");
+  return rest.split(/[\\/]+/).some((s) => s !== "" && s !== "." && s !== ".." && (s.includes(":") || /[. ]$/.test(s)));
+}
+
 function splitSegs(rel) { return String(rel).split(/[\\/]+/).filter((s) => s !== "" && s !== "."); }
 
 // ---- the owner's list -----------------------------------------------------------------------------------
@@ -203,7 +239,7 @@ function listedPrivate(config, segs) {
 const fmCache = new Map(); // real file -> { key, value }   (insertion order = least recently used first)
 
 function frontMatterPrivate(abs) {
-  if (!NOTE_EXT.test(abs)) return false;
+  if (!NOTE_EXT.test(stripAlias(basename(abs)))) return false;
   let st;
   try { st = statSync(abs); } catch { return false; }
   if (!st.isFile()) return false;
@@ -257,7 +293,7 @@ function segsPrivate(config, segs) {
 
 // Resolves the vault root, the user's folder grants and the owner's list ONCE; every question after that is cheap.
 // Make one per request (or per tree/search/index walk) so changes to the list are picked up on the next request.
-export function createScope(vaultPath, user) {
+export function createScope(vaultPath, user, { platform = process.platform } = {}) {
   const root = real(vaultPath);
   const lexRoot = resolve(vaultPath);
   const config = loadConfig(root);
@@ -311,10 +347,16 @@ export function createScope(vaultPath, user) {
 
   function allowed(candidatePath) {
     const lex = resolve(candidatePath);
+    if (!owner && hasWindowsAlias(lex, platform)) return false;
+    const canon = canonAlias(lex);
+    return allowedOne(lex) && (canon === lex || allowedOne(canon));
+  }
+
+  function allowedOne(lex) {
     const abs = realOf(lex);
     if (!insideOf(root, abs)) return false;
     const segments = relative(root, abs).split(sep).filter(Boolean);
-    if (segments.some((s) => HIDDEN_DIRS.includes(s))) return false;
+    if (segments.some(hiddenName)) return false;
     if (owner) return true;
     if (!grants().some((r) => insideOf(r, abs))) return false; // the cheap test first
     return !isPrivate(lex, abs); // deny wins over every folder grant
@@ -327,7 +369,7 @@ export function createScope(vaultPath, user) {
   function child(dirReal, ent, dirSegs) {
     const abs = join(dirReal, ent.name);
     if (ent.isSymbolicLink()) return allowed(abs) ? { ok: true, segs: relSegs(root, realOf(abs)) } : { ok: false };
-    if (HIDDEN_DIRS.includes(ent.name)) return { ok: false };
+    if (hiddenName(ent.name)) return { ok: false };
     const segs = [...dirSegs, ent.name];
     if (!owner && segsPrivate(config, segs)) return { ok: false };
     if (!owner && ent.isFile() && !config.failClosed && frontMatterPrivate(abs)) return { ok: false };
@@ -339,14 +381,19 @@ export function createScope(vaultPath, user) {
     const abs = join(root, rel);
     if (owner) return allowed(abs);
     const segs = splitSegs(rel);
-    if (segs.some((s) => HIDDEN_DIRS.includes(s))) return false;
+    if (segs.some((s) => hiddenName(s) || isAliasName(s) || s.includes("~"))) return allowed(abs); // odd spellings: the full check
     if (!grants().some((g) => insideOf(g, abs))) return false;
     if (segsPrivate(config, segs)) return false;
+    // the index may be older than the folder structure: the parent must still really be where the index says it is
+    const parent = dirname(abs);
+    let rp = dirReal.get(parent);
+    if (rp === undefined) { rp = realNative(parent); dirReal.set(parent, rp); }
+    if (rp !== parent) return allowed(abs);
     try { if (lstatSync(abs).isSymbolicLink()) return allowed(abs); } catch { return false; }
     return !(NOTE_EXT.test(abs) && frontMatterPrivate(abs));
   }
 
-  return { root, roots: grants, allowed, child, allowedNote, segsOf: (abs) => relSegs(root, abs), isPrivate: (p) => { const lex = resolve(p); return isPrivate(lex, realOf(lex)); }, failClosed: config.failClosed };
+  return { root, roots: grants, allowed, child, allowedNote, segsOf: (abs) => relSegs(root, abs), isPrivate: (p) => { const lex = resolve(p); const canon = canonAlias(lex); return isPrivate(lex, realOf(lex)) || (canon !== lex && isPrivate(canon, realOf(canon))); }, failClosed: config.failClosed };
 }
 
 // True when the file or folder is private under the rules above. Role-blind: callers decide who it applies to.
