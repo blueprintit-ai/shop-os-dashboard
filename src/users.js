@@ -4,7 +4,7 @@ import { JsonStore } from "./lib/store.js";
 
 const scrypt = promisify(scryptCb);
 export const ROLES = Object.freeze(["owner", "staff"]);
-export const DEFAULT_STAFF_FOLDERS = Object.freeze(["Projects", "Resources", "Processes"]);
+export const DEFAULT_STAFF_FOLDERS = Object.freeze(["Projects", "Resources"]);
 export const MIN_PASSWORD_LENGTH = 10;
 export const LOCKOUT_THRESHOLD = 5;
 export const LOCKOUT_MS = 15 * 60 * 1000;
