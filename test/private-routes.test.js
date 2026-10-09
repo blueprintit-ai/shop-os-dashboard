@@ -81,13 +81,13 @@ test("view and raw: every way to name a private file is a 404 for staff, identic
   } finally { ctx.cleanup(); }
 });
 
-test("wikilinks to private notes render as plain text 'private note', never name or link the target", async () => {
+test("wikilinks to private notes render exactly like links that do not resolve: no link, no hint", async () => {
   const ctx = await bootPrivate();
   try {
     const r = await get(ctx, "staff", `/api/notes/view?path=${enc("Projects/Acme.md")}`);
     const body = JSON.parse(r.text);
-    assert.ok(body.html.includes("private note"));
-    assert.ok(!body.html.includes("Salary Review"), "the link text typed in the allowed note names the private note");
+    assert.match(body.html, /<span class="wikilink missing">Salary Review<\/span>/, "same markup as a link to a note that does not exist");
+    assert.ok(!body.html.includes("private note") && !body.html.includes("wikilink private"));
     assert.ok(!body.html.includes("hr.md") && !body.html.includes("Private"));
     // the visible [[Handbook]] resolves to the visible note even though a private note of the same name sorts first
     assert.ok(body.html.includes(enc("Resources/Handbook.md")), body.html);
@@ -95,7 +95,6 @@ test("wikilinks to private notes render as plain text 'private note', never name
     // owner still gets a real link to the private note
     const o = JSON.parse((await get(ctx, "owner", `/api/notes/view?path=${enc("Projects/Acme.md")}`)).text);
     assert.ok(o.html.includes(enc("Resources/Private/hr.md")));
-    assert.ok(!o.html.includes("private note"));
   } finally { ctx.cleanup(); }
 });
 
@@ -104,7 +103,7 @@ test("backlinks from private notes are dropped for staff and kept for the owner"
   try {
     const s = JSON.parse((await get(ctx, "staff", `/api/notes/view?path=${enc("Projects/Acme.md")}`)).text);
     assert.deepEqual(s.backlinks.map((b) => b.path).sort(), ["Resources/Handbook.md"]);
-    assert.ok(!JSON.stringify(s).includes("Salary Review"));
+    assert.ok(!JSON.stringify(s.backlinks).includes("Salary Review"));
     const o = JSON.parse((await get(ctx, "owner", `/api/notes/view?path=${enc("Projects/Acme.md")}`)).text);
     assert.ok(o.backlinks.some((b) => b.path === "Resources/Private/hr.md"));
   } finally { ctx.cleanup(); }
@@ -195,5 +194,22 @@ test("owner user-management folder list does not offer Private folders", async (
   try {
     const f = JSON.parse((await get(ctx, "owner", "/api/users/folders")).text);
     assert.ok(f.folders.includes("Resources") && !f.folders.some((n) => n.toLowerCase() === "private"));
+  } finally { ctx.cleanup(); }
+});
+
+test("one uniform answer: private, listed, private-folder, out-of-folder and missing files are indistinguishable for staff", async () => {
+  const ctx = await bootPrivate({ config: OWNER_LIST });
+  try {
+    const cases = ["Resources/fm-true.md", "Resources/salary-2025.md", "Resources/Private/hr.md", "Private/Salaries.md", "Context/operator.md", "Daily/2026-09-04.md", "Resources/nope.md", "Resources", "Resources/Private", "../../etc/hosts"];
+    for (const route of ["view", "raw"]) {
+      const seen = new Set();
+      for (const p of cases) { const r = await get(ctx, "staff", `/api/notes/${route}?path=${enc(p)}`); seen.add(`${r.status} ${r.text}`); }
+      assert.equal(seen.size, 1, `${route}: ${[...seen].join(" | ")}`);
+      assert.equal([...seen][0], '404 {"error":"Not available"}');
+    }
+    // brain file/open: same single answer
+    const seen = new Set();
+    for (const p of cases.filter((x) => !x.includes(".."))) { const r = await get(ctx, "staff", `/api/brain/file?path=${enc(p)}`); seen.add(`${r.status} ${r.text}`); const o = await ctx.req("staff", "POST", "/api/brain/open", { path: p }); seen.add(`${o.status} ${await o.text()}`); }
+    assert.deepEqual([...seen], ['404 {"error":"Not available"}']);
   } finally { ctx.cleanup(); }
 });

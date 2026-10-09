@@ -136,11 +136,11 @@ test("file and open honor a staff member's folders (scope.js), never the page's 
   try {
     const f = (p) => get(b, "staff", "/api/brain/file?path=" + encodeURIComponent(p));
     assert.equal((await f("Team/acme/Profiles/marco/Marco.md")).status, 200);
-    assert.equal((await f("Context/organization.md")).status, 403);
-    assert.equal((await f("CLAUDE.md")).status, 403);
+    assert.equal((await f("Context/organization.md")).status, 404, "staff get one answer for everything unavailable");
+    assert.equal((await f("CLAUDE.md")).status, 404);
     const o = (p) => post(b, "staff", "/api/brain/open", { path: p });
     assert.equal((await o("Team/acme/Profiles/marco/Marco.md")).status, 200);
-    assert.equal((await o("Context/organization.md")).status, 403);
+    assert.equal((await o("Context/organization.md")).status, 404);
   } finally { b.cleanup(); }
 });
 

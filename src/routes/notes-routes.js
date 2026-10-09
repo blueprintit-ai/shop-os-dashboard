@@ -3,7 +3,7 @@ import { join, basename, extname } from "node:path";
 import { sendJson } from "../lib/http.js";
 import { safeFileHeaders } from "../lib/safe-file-response.js";
 import { requireUser, requireOwner } from "../auth.js";
-import { isPathAllowed, isPrivatePath, toVaultRelative } from "../scope.js";
+import { isPathAllowed, toVaultRelative } from "../scope.js";
 import { buildTree } from "../notes/tree.js";
 import { searchNotes } from "../notes/search.js";
 import { renderNote } from "../notes/render.js";
@@ -27,26 +27,20 @@ export function notesRoutes(ctx) {
       // Resolve only among notes this user may open, so a private note never shadows a visible one of the same name.
       const allowed = (r) => isPathAllowed(vaultPath, user, join(vaultPath, r));
       const rel = index.resolve(target, user.role === "owner" ? null : allowed);
-      if (!rel) {
-        // the name only matches something the user cannot see: if that is private, say so without naming it
-        if (user.role !== "owner") {
-          const hidden = index.resolve(target);
-          if (hidden && isPrivatePath(vaultPath, join(vaultPath, hidden))) return { href: "", exists: false, private: true };
-        }
-        return { href: "", exists: false };
-      }
+      if (!rel) return { href: "", exists: false };
       const route = IMG_EXT.test(rel) || extname(rel).toLowerCase() === ".pdf" ? "raw" : "view";
       return { href: `/api/notes/${route}?path=${encodeURIComponent(rel)}`, exists: true };
     };
   }
 
+  // One answer for everything a staff member cannot open: private, listed, out of their folders, or not there.
   function scopedAbs(user, res, relParam) {
     if (!relParam) { sendJson(res, 400, { error: "path required" }); return null; }
     const abs = join(vaultPath, relParam);
-    // Private looks exactly like a missing file to staff: a guessed name cannot confirm a private note exists.
-    if (user.role !== "owner" && isPrivatePath(vaultPath, abs)) { sendJson(res, 404, { error: "Not found" }); return null; }
-    if (!isPathAllowed(vaultPath, user, abs)) { sendJson(res, 403, { error: "Outside your folders" }); return null; }
-    if (!existsSync(abs) || !statSync(abs).isFile()) { sendJson(res, 404, { error: "Not found" }); return null; }
+    const staff = user.role !== "owner";
+    const unavailable = () => { sendJson(res, 404, { error: "Not available" }); return null; };
+    if (!isPathAllowed(vaultPath, user, abs)) { if (staff) return unavailable(); sendJson(res, 403, { error: "Outside your folders" }); return null; }
+    if (!existsSync(abs) || !statSync(abs).isFile()) { if (staff) return unavailable(); sendJson(res, 404, { error: "Not found" }); return null; }
     return abs;
   }
 
