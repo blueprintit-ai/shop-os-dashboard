@@ -1,13 +1,14 @@
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { JsonStore } from "./lib/store.js";
+import { ORB_DEFAULT, normalizeOrb } from "../public/js/owner/orb-math.js";
 
 export function defaultLayout() {
   return {
     theme: "dark",
     tourSeen: false,
     gridV2: true,
-    orb: { c: 16, r: 9, s: 1.7, z: 2.6 },
+    orb: { ...ORB_DEFAULT },
     removed: [{ id: "w-wheel", name: "ACTION WHEEL", c: 20, r: 2, cs: 4, rs: 4 }],
     widgets: [
       { id: "w-title", name: "TITLE", kind: "title", c: 8, r: 0, cs: 16, rs: 2 },
@@ -32,7 +33,10 @@ export class LayoutStore {
     return new JsonStore(join(this.dir, `${userId}.json`), defaultLayout());
   }
   get(userId) {
-    return this.#storeFor(userId).load();
+    const l = this.#storeFor(userId).load();
+    // Older files have no orb block and hand edits can break it; the client
+    // trusts this shape (ring.js feeds it straight into the orb geometry).
+    return l && typeof l === "object" ? { ...l, orb: normalizeOrb(l.orb) } : l;
   }
   // Post-review fix (finding 8): PUT /api/layout hands this whatever the
   // request body parsed to (src/routes/layout-routes.js does no validation
@@ -51,6 +55,7 @@ export class LayoutStore {
     const safe = { ...defaultLayout(), ...layout };
     if (!Array.isArray(safe.widgets)) safe.widgets = defaultLayout().widgets;
     if (!Array.isArray(safe.removed)) safe.removed = defaultLayout().removed;
+    safe.orb = normalizeOrb(safe.orb); // numeric c/r/s/z in range, anything else -> default or clamped
     this.#storeFor(userId).save(safe);
     return safe;
   }
