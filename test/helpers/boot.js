@@ -39,12 +39,12 @@ async function* fakeRunTurn() {
 //                          this test suite, for callers that want it directly.
 //   - cleanup            : closes the server and index watcher and removes
 //                          the tmp vault/home. MUST be called by every test.
-export async function bootAsOwner({ staffSwitches = {}, runTurn = fakeRunTurn, licenseCheck = () => ({ ok: true }), applyUpdateImpl = undefined } = {}) {
+export async function bootAsOwner({ staffSwitches = {}, runTurn = fakeRunTurn, licenseCheck = () => ({ ok: true }), applyUpdateImpl = undefined, lanImpl = undefined, port = null } = {}) {
   const root = mkdtempSync(join(tmpdir(), "sod-boot-"));
   const vault = join(root, "vault");
   cpSync(FIX, vault, { recursive: true });
   const home = join(root, "home");
-  const server = createServer({ vaultPath: vault, homeDir: home, runTurn, licenseCheck, applyUpdateImpl });
+  const server = createServer({ vaultPath: vault, homeDir: home, runTurn, licenseCheck, applyUpdateImpl, lanImpl, port });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${server.address().port}`;
   const jar = {};
