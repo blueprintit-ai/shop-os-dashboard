@@ -3,7 +3,7 @@ import { join, basename, extname } from "node:path";
 import { sendJson } from "../lib/http.js";
 import { safeFileHeaders } from "../lib/safe-file-response.js";
 import { requireUser, requireOwner } from "../auth.js";
-import { isPathAllowed, toVaultRelative } from "../scope.js";
+import { isPathAllowed, createScope, toVaultRelative } from "../scope.js";
 import { buildTree } from "../notes/tree.js";
 import { searchNotes } from "../notes/search.js";
 import { renderNote } from "../notes/render.js";
@@ -22,10 +22,10 @@ const IMG_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
 export function notesRoutes(ctx) {
   const { vaultPath, auth, audit, index } = ctx;
 
-  function resolveFor(user) {
+  function resolveFor(user, scope = createScope(vaultPath, user)) {
     return (target) => {
       // Resolve only among notes this user may open, so a private note never shadows a visible one of the same name.
-      const allowed = (r) => isPathAllowed(vaultPath, user, join(vaultPath, r));
+      const allowed = (r) => scope.allowedNote(r);
       const rel = index.resolve(target, user.role === "owner" ? null : allowed);
       if (!rel) return { href: "", exists: false };
       const route = IMG_EXT.test(rel) || extname(rel).toLowerCase() === ".pdf" ? "raw" : "view";
@@ -58,7 +58,8 @@ export function notesRoutes(ctx) {
     if (p === "/api/notes/search") return sendJson(res, 200, searchNotes(vaultPath, user, index, url.searchParams.get("q"), {})), true;
     if (p === "/api/notes/recent") {
       const limit = Math.min(100, Number(url.searchParams.get("limit")) || 20);
-      const rows = index.notes().filter((n) => isPathAllowed(vaultPath, user, join(vaultPath, n.path))).sort((a, b) => b.mtime - a.mtime).slice(0, limit);
+      const scope = createScope(vaultPath, user);
+      const rows = index.notes().filter((n) => scope.allowedNote(n.path)).sort((a, b) => b.mtime - a.mtime).slice(0, limit);
       return sendJson(res, 200, rows), true;
     }
     if (p === "/api/notes/view") {
@@ -67,8 +68,9 @@ export function notesRoutes(ctx) {
       if (size > MAX_RENDER) return sendJson(res, 413, { error: "too-large", size }), true;
       const rel = toVaultRelative(vaultPath, abs);
       const md = readFileSync(abs, "utf8");
-      const { html, frontmatter } = renderNote(md, { resolveLink: resolveFor(user) });
-      const backlinks = index.backlinks(rel).filter((b) => isPathAllowed(vaultPath, user, join(vaultPath, b))).map((b) => ({ path: b, title: index.meta.get(b)?.title ?? basename(b) }));
+      const scope = createScope(vaultPath, user);
+      const { html, frontmatter } = renderNote(md, { resolveLink: resolveFor(user, scope) });
+      const backlinks = index.backlinks(rel).filter((b) => scope.allowedNote(b)).map((b) => ({ path: b, title: index.meta.get(b)?.title ?? basename(b) }));
       audit.log("note.view", { userId: user.id, username: user.username, role: user.role, path: rel });
       const title = index.meta.get(rel)?.title ?? basename(abs, extname(abs));
       return sendJson(res, 200, { path: rel, title, html, frontmatter, backlinks }), true;

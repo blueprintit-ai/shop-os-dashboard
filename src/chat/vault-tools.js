@@ -2,7 +2,7 @@ import { closeSync, lstatSync, openSync, readSync, readdirSync, statSync } from 
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { HIDDEN_DIRS, allowedRoots, isPathAllowed, toVaultRelative } from "../scope.js";
+import { HIDDEN_DIRS, createScope, toVaultRelative } from "../scope.js";
 
 // The only way staff chat can search or list the vault. The SDK's built-in Grep and Glob return matches from every
 // file below the folder they are pointed at, whatever a path check on the folder said, so staff do not get them.
@@ -27,16 +27,16 @@ const reply = (text, isError = false) => ({ content: [{ type: "text", text }], .
 function isDirectory(p) { try { return statSync(p).isDirectory(); } catch { return false; } }
 
 // A folder argument -> an absolute directory the user may use, or null. Never throws.
-function resolveFolder(vaultPath, user, folder) {
-  if (folder === undefined || folder === null || folder === "") return { roots: allowedRoots(vaultPath, user), rel: "" };
+function resolveFolder(scope, vaultPath, folder) {
+  if (folder === undefined || folder === null || folder === "") return { roots: scope.roots(), rel: "" };
   if (typeof folder !== "string" || folder.length > 400 || folder.includes("\0")) return null;
   const norm = folder.replace(/\\/g, "/");
   if (norm.startsWith("/") || /^[a-zA-Z]:/.test(norm) || isAbsolute(folder)) return null;
   const segs = norm.split("/").filter((s) => s !== "" && s !== ".");
-  if (segs.length === 0) return { roots: allowedRoots(vaultPath, user), rel: "" };
+  if (segs.length === 0) return { roots: scope.roots(), rel: "" };
   if (segs.includes("..")) return null;
   const abs = resolve(vaultPath, ...segs);
-  if (!isPathAllowed(vaultPath, user, abs) || !isDirectory(abs)) return null;
+  if (!scope.allowed(abs) || !isDirectory(abs)) return null;
   return { roots: [abs], rel: segs.join("/") };
 }
 
@@ -73,7 +73,8 @@ export function vaultSearch(vaultPath, user, args) {
   const a = args && typeof args === "object" ? args : {};
   const query = typeof a.query === "string" ? a.query.trim() : "";
   if (!query || query.length > LIMITS.maxQuery || query.includes("\0")) return reply("Give a word or phrase to search for (up to 200 characters).", true);
-  const target = resolveFolder(vaultPath, user, a.folder);
+  const scope = createScope(vaultPath, user);
+  const target = resolveFolder(scope, vaultPath, a.folder);
   if (!target) return reply(FOLDER_UNAVAILABLE, true);
   const max = Math.max(1, Math.min(LIMITS.maxResults, Number.isFinite(Number(a.max)) ? Math.floor(Number(a.max)) : LIMITS.defaultResults));
   const needle = query.toLowerCase();
@@ -90,7 +91,7 @@ export function vaultSearch(vaultPath, user, args) {
       // Linked folders are never walked (no loops, no way round a folder rule); a linked file is read only if its REAL
       // location passes the same check as everything else.
       if (ent.isSymbolicLink()) { let st; try { st = statSync(abs); } catch { continue; } if (!st.isFile()) continue; }
-      if (!isPathAllowed(vaultPath, user, abs)) continue;
+      if (!scope.allowed(abs)) continue;
       if (ent.isDirectory()) { if (depth < LIMITS.maxDepth) visit(abs, depth + 1); continue; }
       let st; try { st = lstatSync(abs); if (st.isSymbolicLink()) st = statSync(abs); } catch { continue; }
       if (!st.isFile()) continue;
@@ -124,7 +125,8 @@ export function vaultSearch(vaultPath, user, args) {
 
 export function vaultList(vaultPath, user, args) {
   const a = args && typeof args === "object" ? args : {};
-  const target = resolveFolder(vaultPath, user, a.folder);
+  const scope = createScope(vaultPath, user);
+  const target = resolveFolder(scope, vaultPath, a.folder);
   if (!target) return reply(FOLDER_UNAVAILABLE, true);
   if (target.rel === "") {
     const names = target.roots.map((r) => toVaultRelative(vaultPath, r) + "/");
@@ -136,7 +138,7 @@ export function vaultList(vaultPath, user, args) {
   for (const ent of entriesOf(dir)) {
     if (hiddenName(ent.name)) continue;
     const abs = join(dir, ent.name);
-    if (!isPathAllowed(vaultPath, user, abs)) continue;
+    if (!scope.allowed(abs)) continue;
     let st; try { st = statSync(abs); } catch { continue; }
     if (out.length >= LIMITS.maxListEntries) { more++; continue; }
     out.push(st.isDirectory() ? `${basename(abs)}/` : `${ent.name} (${st.size} bytes)`);

@@ -313,3 +313,31 @@ test("an unknown role is treated as staff", () => {
     assert.equal(isPathAllowed(vault, { switches: { folders: ["Resources"] } }, join(vault, "Resources", "Private", "hr.md")), false);
   } finally { cleanup(); }
 });
+
+test("the fast paths (tree walk, indexed notes) agree exactly with the full check on every file", async () => {
+  const { buildTree } = await import("../src/notes/tree.js");
+  const { LinkIndex } = await import("../src/notes/index.js");
+  const { createScope } = await import("../src/scope.js");
+  const { readdirSync } = await import("node:fs");
+  const { vault, cleanup } = makeVault({ config: OWNER_LIST });
+  try {
+    link(join(vault, "Resources", "Private", "hr.md"), join(vault, "Resources", "innocent.md"));
+    link(join(vault, "Resources", "ok.md"), join(vault, "Projects", "ok-link.md"));
+    link(join(vault, "Private"), join(vault, "Projects", "linked-private"));
+    const all = [];
+    const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) walk(p); else all.push(p); } };
+    walk(vault);
+    const users = [STAFF, { ...STAFF, switches: { folders: ["Resources/Private", "Projects/Deep", "Team"], teamFolder: null } }, OWNER];
+    for (const u of users) {
+      const treeFiles = [];
+      const collect = (nodes) => nodes.forEach((n) => (n.type === "dir" ? collect(n.children) : treeFiles.push(join(vault, n.path))));
+      collect(buildTree(vault, u));
+      const expected = all.filter((p) => isPathAllowed(vault, u, p) && !p.includes("/.obsidian/")).sort();
+      // links in the tree are listed as files when the full check allows them
+      assert.deepEqual(treeFiles.sort(), expected, `tree vs full check for ${u.role} ${u.switches.folders}`);
+      const idx = new LinkIndex(vault); idx.build();
+      const sc = createScope(vault, u);
+      for (const n of idx.notes()) assert.equal(sc.allowedNote(n.path), isPathAllowed(vault, u, join(vault, n.path)), n.path);
+    }
+  } finally { cleanup(); }
+});

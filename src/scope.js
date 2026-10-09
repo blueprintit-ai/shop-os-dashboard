@@ -61,17 +61,26 @@ function realDeep(p) {
 
 function isDir(p) { try { return statSync(p).isDirectory(); } catch { return false; } }
 
+const CASE_BLIND = process.platform === "win32";
 function insideOf(root, abs) {
-  const rel = relative(root, abs);
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  if (CASE_BLIND) { const rel = relative(root, abs); return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)); }
+  if (abs === root) return true;
+  const prefix = root.endsWith(sep) ? root : root + sep;
+  return abs.startsWith(prefix);
 }
 
 // How a name compares: Unicode in NFC, what Windows would make of it (stream suffix and trailing dots/spaces dropped), case-folded.
+const normMemo = new Map();
 function normSeg(seg) {
+  const hit = normMemo.get(seg);
+  if (hit !== undefined) return hit;
   let s = String(seg).normalize("NFC");
   const colon = s.indexOf(":");
   if (colon >= 0) s = s.slice(0, colon);
-  return s.replace(/[. \t]+$/, "").trim().toLowerCase();
+  s = s.replace(/[. \t]+$/, "").trim().toLowerCase();
+  if (normMemo.size > 100000) normMemo.clear();
+  normMemo.set(seg, s);
+  return s;
 }
 
 function splitSegs(rel) { return String(rel).split(/[\\/]+/).filter((s) => s !== "" && s !== "."); }
@@ -271,10 +280,12 @@ export function createScope(vaultPath, user) {
 
   function isPrivate(lexAbs, realAbs) {
     if (config.failClosed) return true;
+    // the path as asked for (against the vault as named and as resolved) and where it really is; usually all the same
     const views = [];
-    const l1 = relSegs(lexRoot, lexAbs); if (l1) views.push(l1);
-    const l2 = relSegs(root, lexAbs); if (l2) views.push(l2);
-    const r = relSegs(root, realAbs); if (r) views.push(r);
+    const add = (v) => { if (v && !views.some((x) => x.length === v.length && x.every((s, i) => s === v[i]))) views.push(v); };
+    add(relSegs(lexRoot, lexAbs));
+    if (root !== lexRoot) add(relSegs(root, lexAbs));
+    const r = relSegs(root, realAbs); add(r);
     if (views.length === 0) return false;
     if (views.some((s) => segsPrivate(config, s))) return true;
     return r !== null && frontMatterPrivate(realAbs);
@@ -309,7 +320,33 @@ export function createScope(vaultPath, user) {
     return !isPrivate(lex, abs); // deny wins over every folder grant
   }
 
-  return { root, roots: grants, allowed, isPrivate: (p) => { const lex = resolve(p); return isPrivate(lex, realOf(lex)); }, failClosed: config.failClosed };
+  // ---- fast paths for walks that already know the answer for the folder above ----
+  // A child of a folder that passed `allowed`, listed by readdir: its real path is the folder's real path plus its
+  // name unless it is a link (then the full check runs). Only the child's own name, the owner's list, front matter
+  // and the hidden-folder rule can still say no. `dirSegs` = the folder's vault-relative segments (real path).
+  function child(dirReal, ent, dirSegs) {
+    const abs = join(dirReal, ent.name);
+    if (ent.isSymbolicLink()) return allowed(abs) ? { ok: true, segs: relSegs(root, realOf(abs)) } : { ok: false };
+    if (HIDDEN_DIRS.includes(ent.name)) return { ok: false };
+    const segs = [...dirSegs, ent.name];
+    if (!owner && segsPrivate(config, segs)) return { ok: false };
+    if (!owner && ent.isFile() && !config.failClosed && frontMatterPrivate(abs)) return { ok: false };
+    return { ok: true, segs };
+  }
+
+  // A note path from the link index (relative to the vault, built from a walk that never follows links).
+  function allowedNote(rel) {
+    const abs = join(root, rel);
+    if (owner) return allowed(abs);
+    const segs = splitSegs(rel);
+    if (segs.some((s) => HIDDEN_DIRS.includes(s))) return false;
+    if (!grants().some((g) => insideOf(g, abs))) return false;
+    if (segsPrivate(config, segs)) return false;
+    try { if (lstatSync(abs).isSymbolicLink()) return allowed(abs); } catch { return false; }
+    return !(NOTE_EXT.test(abs) && frontMatterPrivate(abs));
+  }
+
+  return { root, roots: grants, allowed, child, allowedNote, segsOf: (abs) => relSegs(root, abs), isPrivate: (p) => { const lex = resolve(p); return isPrivate(lex, realOf(lex)); }, failClosed: config.failClosed };
 }
 
 // True when the file or folder is private under the rules above. Role-blind: callers decide who it applies to.
