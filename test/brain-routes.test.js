@@ -7,6 +7,9 @@ import { bootAsOwner, requestAs } from "./helpers/boot.js";
 import { buildDemoVault, put } from "./helpers/brain-vault.js";
 import { BrainStore, MIN_REFRESH_MS, STALE_MS } from "../src/brain/store.js";
 
+// the skills list reads the Claude home (installed plugins): keep the machine running the tests out of it
+process.env.CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), "brain-claude-home-"));
+
 const json = async (r) => r.json();
 async function boot(opts) {
   const b = await bootAsOwner(opts);
