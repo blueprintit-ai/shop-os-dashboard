@@ -244,3 +244,22 @@ test("health: passes --home temp dir to the throwaway dashboard", async () => {
   await healthStep(deps).action(healthCtx({ vaultPath: process.cwd() })).catch(() => {});
   assert.ok(args.includes("--home"));
 });
+
+test("console prints '  > <title>...' when a step starts, before its 'ok' line; none for skipped steps", async () => {
+  const printed = [];
+  const mk = (id, title, extra = {}) => ({ id, title, severity: "stop", action: async () => { printed.push(`<action ${id}>`); }, ...extra });
+  const steps = [mk("a", "Doing A"), mk("b", "Doing B", { check: async () => true })];
+  const { exitCode } = await runInstall({
+    argv: ["--license", "SHOP-AB12-CD34-EF56"], env: {}, steps,
+    ctxOverrides: {
+      platform: "darwin", homeDir: home(), print: (m) => printed.push(m), snapshot: async () => ({}),
+      fetchImpl: async () => ({ ok: true }),
+    },
+  });
+  assert.equal(exitCode, 0);
+  const i = printed.indexOf("  > Doing A...");
+  assert.ok(i >= 0);
+  assert.deepEqual(printed.slice(i, i + 3), ["  > Doing A...", "<action a>", "  ok Doing A"]);
+  assert.ok(printed.includes("  - Doing B"));
+  assert.ok(!printed.some((m) => m.includes("> Doing B")));
+});

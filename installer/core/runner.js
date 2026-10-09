@@ -61,7 +61,7 @@ function defaultSetInterval(fn, ms) {
   return h;
 }
 
-export async function runSteps(steps, ctx, { reporter, now = Date.now, sleep = realSleep, retryDelayMs = 1500, onStepDone, setInterval: setIv = defaultSetInterval, clearInterval: clearIv = clearInterval } = {}) {
+export async function runSteps(steps, ctx, { reporter, now = Date.now, sleep = realSleep, retryDelayMs = 1500, onStepStart, onStepDone, setInterval: setIv = defaultSetInterval, clearInterval: clearIv = clearInterval } = {}) {
   const timers = { setInterval: setIv, clearInterval: clearIv };
   const timeline = [];
   for (const step of steps) {
@@ -72,6 +72,8 @@ export async function runSteps(steps, ctx, { reporter, now = Date.now, sleep = r
       if (step.check && (await step.check(ctx))) {
         entry.status = "skipped";
       } else {
+        // Console-only: the check said the action will run, so tell the customer now (once, not per attempt).
+        try { onStepStart?.(step); } catch { /* a callback must not break the run */ }
         const max = 1 + (step.retries ?? 0);
         let lastErr = null;
         let failed = false;

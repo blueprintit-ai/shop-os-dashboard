@@ -97,6 +97,7 @@ export async function runInstall({ argv = process.argv.slice(2), env = process.e
     const { main, launch } = splitSteps(steps ?? buildSteps());
     const result = await runSteps(main, ctx, {
       reporter: ctx.reporter,
+      onStepStart: (s) => ctx.print(`  > ${s.title}...`),
       onStepDone: (e) => ctx.print(`  ${e.status === "failed" ? "x" : e.status === "warn" ? "!" : e.status === "skipped" ? "-" : "ok"} ${e.title}`),
     });
     const snapshot = await ctx.snapshot().catch(() => undefined);
