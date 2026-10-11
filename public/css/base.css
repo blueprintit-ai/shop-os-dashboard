@@ -9,6 +9,8 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* the hidden attribute must win over layout rules like #notes-root's grid, or both employee tabs show at once */
+[hidden] { display: none !important; }
 body {
   background: var(--bg);
   color: var(--fg);
