@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { mkdirSync } from "node:fs";
 import { UserStore } from "./users.js";
 import { Auth, sameOriginOk } from "./auth.js";
+import { hostname as osHostname } from "node:os";
 import { Audit } from "./audit.js";
 import { configurePrivateAudit } from "./scope.js";
 import { LinkIndex } from "./notes/index.js";
@@ -13,7 +14,7 @@ import { runTurn as defaultRunTurn } from "./chat/run-turn.js";
 import { lanAddresses } from "./lib/net.js";
 import { readLicense, validateLicense } from "./license.js";
 import { dashboardHome } from "./lib/paths.js";
-import { send, sendJson } from "./lib/http.js";
+import { send, sendJson, hostAllowed } from "./lib/http.js";
 import { authRoutes } from "./routes/auth-routes.js";
 import { usersRoutes } from "./routes/users-routes.js";
 import { notesRoutes } from "./routes/notes-routes.js";
@@ -64,11 +65,22 @@ export function createServer({ vaultPath, homeDir = dashboardHome(), runTurn = d
 
   const routers = [authRoutes(ctx), usersRoutes(ctx), notesRoutes(ctx), brainRoutes(ctx), chatRoutes(ctx), pageRoutes(ctx), layoutRoutes(ctx), artifactsRoutes(ctx), snapshotsRoutes(ctx), settingsRoutes(ctx), assetsRoutes(ctx), runsRoutes(ctx), statusRoutes(ctx), updateRoutes(ctx), kitCompatRoutes(ctx)];
   const gc = setInterval(() => { auth.gc(); chatSessions.gc(); }, 10 * 60 * 1000); gc.unref?.();
+  // LAN addresses can change (Wi-Fi reconnect), so re-read them at most every 30s.
+  let lanAt = 0, lanList = [];
+  const lanCached = () => {
+    if (Date.now() - lanAt > 30_000) { try { lanList = lanImpl(); } catch { lanList = []; } lanAt = Date.now(); }
+    return lanList;
+  };
+  const host = osHostname().toLowerCase();
+  const localNames = [host, host.endsWith(".local") ? host : `${host}.local`];
 
   const server = createHttpServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://localhost");
-      if ((req.method === "POST" || req.method === "PATCH" || req.method === "PUT") && !sameOriginOk(req)) {
+      if (!hostAllowed(req, { lan: lanCached(), hostnames: localNames })) {
+        return send(res, 421, { "content-type": "text/plain" }, "Unknown host. Open Blueprint OS at http://localhost or the shop network address it shows.");
+      }
+      if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && !sameOriginOk(req)) {
         return sendJson(res, 403, { error: "cross-origin" });
       }
       if (url.pathname.startsWith("/api/") && !licenseExempt(url.pathname)) {

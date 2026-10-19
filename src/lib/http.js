@@ -73,6 +73,21 @@ export function serializeCookie(name, value, { maxAge, httpOnly = true, sameSite
   return parts.join("; ");
 }
 
+// Names this computer answers to. A request whose Host header is anything
+// else came through a hostile DNS name (DNS rebinding): a web page the owner
+// opened pointing its own domain at 127.0.0.1 or the shop LAN address.
+export function hostAllowed(req, { lan = [], hostnames = [] } = {}) {
+  const raw = req.headers?.host;
+  if (!raw) return false;
+  let host, port;
+  try { ({ hostname: host, port } = new URL(`http://${raw}`)); } catch { return false; }
+  host = host.toLowerCase().replace(/^\[|\]$/g, "");
+  const localPort = req.socket?.localPort;
+  if (localPort && String(port || 80) !== String(localPort)) return false;
+  const names = new Set(["localhost", "127.0.0.1", "::1", ...lan, ...hostnames.map((h) => h.toLowerCase())]);
+  return names.has(host);
+}
+
 export function isLoopback(req) {
   const a = req.socket?.remoteAddress ?? "";
   return a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1";
