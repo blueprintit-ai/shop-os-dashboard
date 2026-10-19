@@ -171,3 +171,21 @@ test("validateLicense returns the license body on a 200, and ok:false with the s
   assert.equal(rejected.ok, false);
   assert.equal(rejected.error, "License expired");
 });
+
+test("enableForVault adds the ask list (vault hooks/settings, find -exec/-delete) and keeps existing ask rules", async () => {
+  const { mkdtempSync, readFileSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { enableForVault, buildPermissionAskList } = await import("../installer/vault-setup.js");
+  const vault = mkdtempSync(join(tmpdir(), "sod-ask-"));
+  try {
+    mkdirSync(join(vault, ".claude"), { recursive: true });
+    writeFileSync(join(vault, ".claude", "settings.json"), JSON.stringify({ permissions: { ask: ["Bash(rm *)"] } }));
+    enableForVault(vault, []);
+    const s = JSON.parse(readFileSync(join(vault, ".claude", "settings.json"), "utf8"));
+    assert.ok(s.permissions.ask.includes("Bash(rm *)"), "existing ask rule kept");
+    for (const r of buildPermissionAskList()) assert.ok(s.permissions.ask.includes(r), r);
+    assert.ok(s.permissions.ask.includes("Edit(/.claude/hooks/**)"));
+    assert.ok(s.permissions.allow.includes("Bash(find:*)"), "find stays allowed for everyday use");
+  } finally { rmSync(vault, { recursive: true, force: true }); }
+});

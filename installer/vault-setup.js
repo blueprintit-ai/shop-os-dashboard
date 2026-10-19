@@ -104,6 +104,25 @@ export function buildPermissionAllowList() {
   ];
 }
 
+// Always prompt for these, even though the allow list covers them: Claude Code
+// evaluates ask before allow. Hooks and settings in the vault's .claude/ run
+// commands on later sessions, so a prompt-injected note or web page must not
+// be able to plant one silently. Path rules use Edit (Claude Code ignores
+// Write(...) path rules; Edit covers every file-writing tool). find actions
+// that run or delete are listed for older Claude Code versions that did not
+// already prompt for them.
+export function buildPermissionAskList() {
+  return [
+    "Edit(/.claude/settings.json)",
+    "Edit(/.claude/settings.local.json)",
+    "Edit(/.claude/hooks/**)",
+    "Bash(find * -exec *)",
+    "Bash(find * -execdir *)",
+    "Bash(find * -ok *)",
+    "Bash(find * -delete*)",
+  ];
+}
+
 // Returns { path, warning }: `warning` is non-null only when an existing
 // settings.json could not be parsed and was therefore backed up and replaced.
 export function enableForVault(vaultPath, pluginIds = PLUGINS_TO_ENABLE) {
@@ -114,6 +133,8 @@ export function enableForVault(vaultPath, pluginIds = PLUGINS_TO_ENABLE) {
   if (!settings.permissions) settings.permissions = {};
   const existing = Array.isArray(settings.permissions.allow) ? settings.permissions.allow : [];
   settings.permissions.allow = Array.from(new Set([...existing, ...buildPermissionAllowList()]));
+  const existingAsk = Array.isArray(settings.permissions.ask) ? settings.permissions.ask : [];
+  settings.permissions.ask = Array.from(new Set([...existingAsk, ...buildPermissionAskList()]));
   writeJSON(settingsPath, settings);
   return { path: settingsPath, warning };
 }
