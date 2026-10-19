@@ -1,23 +1,35 @@
 import { randomBytes } from "node:crypto";
 import { JsonStore } from "./lib/store.js";
-import { parseCookies, serializeCookie, sendJson } from "./lib/http.js";
+import { parseCookies, serializeCookie, sendJson, isLoopback } from "./lib/http.js";
 import { verifyPassword } from "./users.js";
 
 export const COOKIE_NAME = "sod_session";
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 export const REMEMBER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// The owner account can run skills and edit the vault, so by default it only
+// works from the shop computer itself. Staff use the shop network.
+// SHOPOS_REMOTE_OWNER=1 lets the owner sign in from other devices too.
+export const remoteOwnerAllowed = () => process.env.SHOPOS_REMOTE_OWNER === "1";
+
 export class Auth {
-  constructor({ users, sessionsPath, audit }) {
+  constructor({ users, sessionsPath, audit, allowRemoteOwner = remoteOwnerAllowed }) {
     this.users = users;
     this.audit = audit;
+    this.allowRemoteOwner = allowRemoteOwner;
     this.store = new JsonStore(sessionsPath, { sessions: {} });
   }
   _load() { return this.store.load().sessions; }
   _save(sessions) { this.store.save({ sessions }); }
 
-  async login({ username, password, remember = false, ip = "" }) {
+  async login({ username, password, remember = false, ip = "", local = true }) {
     const record = this.users.findByUsername(username);
+    // Checked before the password so attempts from the network cannot lock
+    // the owner out of the shop computer.
+    if (record && record.role === "owner" && !local && !this.allowRemoteOwner()) {
+      this.audit.log("login.failed", { userId: record.id, username: record.username, role: record.role, ip, reason: "owner-local-only" });
+      return { ok: false, reason: "owner-local-only" };
+    }
     if (!record) {
       // Burn comparable time so a missing username is not distinguishable by latency.
       await verifyPassword(password ?? "", "scrypt$AAAA$AAAA");
@@ -84,6 +96,7 @@ export class Auth {
     if (!s || s.expiresAt < Date.now()) return null;
     const user = this.users.get(s.userId);
     if (!user || !user.active) return null;
+    if (user.role === "owner" && !isLoopback(req) && !this.allowRemoteOwner()) return null;
     return user;
   }
 

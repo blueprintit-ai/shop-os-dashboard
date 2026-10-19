@@ -18,7 +18,7 @@ async function setup() {
 }
 
 function fakeReq(token, extra = {}) {
-  return { headers: { cookie: token ? `${COOKIE_NAME}=${token}` : "", ...extra.headers }, socket: { remoteAddress: "192.168.1.5" }, method: extra.method ?? "GET" };
+  return { headers: { cookie: token ? `${COOKIE_NAME}=${token}` : "", ...extra.headers }, socket: { remoteAddress: extra.remoteAddress ?? "127.0.0.1" }, method: extra.method ?? "GET" };
 }
 function fakeRes() {
   const r = { status: null, body: null, writeHead(s) { r.status = s; }, end(b) { r.body = b; } };
@@ -134,4 +134,29 @@ test("sameOriginOk accepts matching Origin or Referer and rejects mismatch or ab
   assert.equal(sameOriginOk({ headers: { host, referer: `http://${host}/users` } }), true);
   assert.equal(sameOriginOk({ headers: { host, origin: "http://evil.example" } }), false);
   assert.equal(sameOriginOk({ headers: { host } }), false);
+});
+
+test("owner session only resolves on the shop computer unless remote owner is enabled", async () => {
+  const s = await setup();
+  const o = await s.auth.login({ username: "pat", password: "longenough1" });
+  const st = await s.auth.login({ username: "marco", password: "longenough1" });
+  assert.equal(s.auth.userForRequest(fakeReq(o.token))?.id, s.owner.id);
+  assert.equal(s.auth.userForRequest(fakeReq(o.token, { remoteAddress: "192.168.1.5" })), null, "owner cookie from the LAN is ignored");
+  assert.equal(s.auth.userForRequest(fakeReq(st.token, { remoteAddress: "192.168.1.5" }))?.id, s.staff.id, "staff still work over the LAN");
+  const open = new Auth({ users: s.users, sessionsPath: join(s.dir, "sessions.json"), audit: new Audit(join(s.dir, "a2.jsonl")), allowRemoteOwner: () => true });
+  assert.equal(open.userForRequest(fakeReq(o.token, { remoteAddress: "192.168.1.5" }))?.id, s.owner.id, "opt-in allows remote owner");
+  s.cleanup();
+});
+
+test("owner login from the network is refused before the password check and never locks the owner out", async () => {
+  const s = await setup();
+  for (let i = 0; i < 8; i++) {
+    const r = await s.auth.login({ username: "pat", password: "wrong-password", local: false });
+    assert.equal(r.reason, "owner-local-only");
+  }
+  const local = await s.auth.login({ username: "pat", password: "longenough1", local: true });
+  assert.equal(local.ok, true, "network attempts must not count toward the lockout");
+  const staffRemote = await s.auth.login({ username: "marco", password: "longenough1", local: false });
+  assert.equal(staffRemote.ok, true);
+  s.cleanup();
 });

@@ -20,8 +20,8 @@ export function authRoutes(ctx) {
     }
     if (req.method === "POST" && p === "/api/login") {
       const b = await readJsonBody(req);
-      const r = await auth.login({ username: b.username, password: b.password, remember: !!b.remember, ip: req.socket.remoteAddress });
-      if (!r.ok) return sendJson(res, 401, { ok: false, reason: r.reason }), true;
+      const r = await auth.login({ username: b.username, password: b.password, remember: !!b.remember, ip: req.socket.remoteAddress, local: isLoopback(req) });
+      if (!r.ok) return sendJson(res, r.reason === "owner-local-only" ? 403 : 401, { ok: false, reason: r.reason }), true;
       return sendJson(res, 200, { ok: true, user: { id: r.user.id, displayName: r.user.displayName, role: r.user.role } }, { "set-cookie": auth.issueCookie(r.token, r.maxAgeSec) }), true;
     }
     if (req.method === "POST" && p === "/api/logout") {
